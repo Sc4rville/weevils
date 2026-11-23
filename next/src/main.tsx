@@ -273,8 +273,10 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
             <section className="nx-project nx-autos band" style={{ '--c': 'var(--h24)' } as React.CSSProperties}>
               {/* A tap on its name folds it, like a project's (same motion, kept from one visit to the next). */}
               <div className="nx-project-line">
-                {/* Its name alone, folded or not: only the running row carries the loop (2026-11-23). */}
-                <button className="nx-row nx-project-head" onClick={foldAutos} aria-expanded={!autosFolded}>
+                {/* Laid out like weevils and the repos: its icon in the logo's column, its name under the « w ». No star:
+                    while anything here runs, that icon itself lights up and turns (the app's AutoMark); else it rests. */}
+                <button className="nx-row nx-project-head nx-repo-row" onClick={foldAutos} aria-expanded={!autosFolded}>
+                  <span className="nx-repo-mark nx-autos-mark" aria-hidden>{autos.some((o) => o.state === 'running') ? <AutoMark /> : <Icon name="cycle" />}</span>
                   <span className="nx-row-title nx-project-name">Autonomous</span>
                 </button>
                 <div className="chars">

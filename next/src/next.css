@@ -234,7 +234,11 @@ body { overflow: hidden; }
 .nx-repo-row { gap: 12px; }
 .nx-repo-mark { flex: none; width: 44px; display: flex; align-items: center; }
 .nx-repo-mark .ic { width: 26px; height: 26px; }
-.nx-repo-mark .ic path { stroke-width: 1.5; }
+.nx-repo-mark .ic:not(.auto-mark) path { stroke-width: 1.5; }
+/* Autonomous at rest: its loop, still and in ink like the other marks; running, the app's AutoMark (colour, travelling). */
+.nx-autos-mark .auto-mark { width: 26px; height: 26px; }
+.nx-autos-mark .auto-mark path { stroke-width: 1.5; }
+.nx-autos-mark .auto-mark .run { stroke-width: 2.25; }
 
 /* Automations: one colour for all, the rows a gentle staircase like the stacked blocks of the weevils logo: each row
    one small tone step from the one above (the theme's own step, --dl, as the app's .tone), no line, no gap, no shadow. */

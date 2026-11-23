@@ -10,6 +10,7 @@ import { createRoot } from 'react-dom/client'
 import { AnimatePresence, MotionConfig, animate, motion, useMotionValue, useTransform, type PanInfo } from 'motion/react'
 import type { Optimizer, Project, Session, Snapshot } from '../../shared/api.ts'
 import { autoOfSession } from '../../src/ui/auto-model.ts'
+import { trackFullHeight } from '../../src/ui/viewport.ts'
 import { improvingProject, mainProjectRank, selfProject } from '../../src/ui/recursive-identity.ts'
 import { Ctx, THEME_COLOR, colorSlots, isTheme, type AppCtx, type Page, type Theme } from '../../src/ui/app-context.tsx'
 import { PageView } from '../../src/ui/pages.tsx'
@@ -161,7 +162,9 @@ function ProjectGroup({ snap, project, color, current, open, page, boss }: { sna
             </button>
           </div>
         ) : (
-        <button className={`nx-row nx-project-head ${busy ? 'nx-active' : ''}`} onClick={fold} aria-expanded={!folded}>
+        <button className={`nx-row nx-project-head nx-repo-row ${busy ? 'nx-active' : ''}`} onClick={fold} aria-expanded={!folded}>
+          {/* In the weevils logo's column, its name under the « w » of weevils. */}
+          <span className="nx-repo-mark" aria-hidden><Icon name="repo" /></span>
           <span className="nx-row-title nx-project-name">{project.name}</span>
           {active.some((s) => working(s) && !alone(snap, s)) && <span className="spin fluo"><Icon name="star" /></span>}
         </button>
@@ -270,9 +273,9 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
             <section className="nx-project nx-autos band" style={{ '--c': 'var(--h24)' } as React.CSSProperties}>
               {/* A tap on its name folds it, like a project's (same motion, kept from one visit to the next). */}
               <div className="nx-project-line">
-                {/* Folded, its name carries the loop of what runs inside; open, only the running row has it. */}
+                {/* Its name alone, folded or not: only the running row carries the loop (2026-11-23). */}
                 <button className="nx-row nx-project-head" onClick={foldAutos} aria-expanded={!autosFolded}>
-                  <span className="nx-row-title nx-project-name">Autonomous</span>{autosFolded && autos.some((o) => o.state === 'running') && <AutoMark />}
+                  <span className="nx-row-title nx-project-name">Autonomous</span>
                 </button>
                 <div className="chars">
                   <button className="ch" aria-label="New automation" disabled={creating} onClick={create}>
@@ -386,6 +389,8 @@ function App() {
   const [sideStill, setSideStill] = useState(false)
   const [now, setNow] = useState(Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
+  // Installed on an iPhone, every screen reaches the bottom edge (src/ui/viewport.ts).
+  useEffect(trackFullHeight, [])
   const [session, setSession] = useState<string | null>(() => /#s=([^&]+)/.exec(location.hash)?.[1] ?? null)
   const collapsedY = -(h - STRIP - safeT)
   const y = useMotionValue(session ? collapsedY : 0)

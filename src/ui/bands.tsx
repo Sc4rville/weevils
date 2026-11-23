@@ -670,6 +670,11 @@ function machinesMeta(machines: { online?: boolean }[]) {
 }
 
 /** switchTo: the other interface its last line opens (weevils next from here; next shows this band with « classic »). */
+const SETTINGS_FOLD = 'weevils-settings-open'
+/** Settings stay folded to their one band unless this device last left them open. */
+export const settingsFolded = () => { try { return localStorage.getItem(SETTINGS_FOLD) !== '1' } catch { return true } }
+const saveSettingsFolded = (folded: boolean) => { try { if (folded) localStorage.removeItem(SETTINGS_FOLD); else localStorage.setItem(SETTINGS_FOLD, '1') } catch { /* private mode: this visit only */ } }
+
 export function FootBand({ switchTo = 'next' }: { switchTo?: 'next' | 'classic' } = {}) {
   const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
@@ -683,16 +688,20 @@ export function FootBand({ switchTo = 'next' }: { switchTo?: 'next' | 'classic' 
       /* no time zone: the server's */
     }
   }, [snap.config?.threads])
+  const [folded, setFolded] = useState(() => settingsFolded())
+  const fold = () => setFolded((v) => (saveSettingsFolded(!v), !v))
   // Four sections, language and log out (Scarville, 2026-11-17): everything else lives where it is used — notifications, the phone and
   // old conversations through weevboss's chips, memory through weevboss, finished sessions on their project's page.
   return (
     <section className="band demo settings-band" style={color(colors.__foot ?? 'p3')} aria-label={t.settings}>
+      {/* A tap on its name folds it to this one band or unfolds it; folded unless this device last left it open. */}
       <div className="in head">
         <h2 className="h2" style={{ margin: 0 }}>
-          {t.settings}
+          <button className="settings-fold" onClick={fold} aria-expanded={!folded}>{t.settings}</button>
         </h2>
         <span className="chars meta strong">{offline ? t.reconnecting : ''}</span>
       </div>
+      <Collapse open={!folded}>
       {snap.machines.length > 0 && (
         <Line ch="@" value={snap.machines.length === 1 ? (snap.machines[0].online === false ? `${snap.machines[0].name} · ${t.offline}` : snap.machines[0].name) : machinesMeta(snap.machines)} onClick={() => push({ kind: 'machine', projectId: '' })}>
           {t.machines}
@@ -716,6 +725,7 @@ export function FootBand({ switchTo = 'next' }: { switchTo?: 'next' | 'classic' 
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}
       </Line>
+      </Collapse>
     </section>
   )
 }

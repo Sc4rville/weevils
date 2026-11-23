@@ -934,7 +934,7 @@ a, a:hover, a:focus, a:active, a:visited, button, [role='link'] {
   left: 0;
   right: 0;
   top: var(--vvt, 0px);
-  height: var(--vvh, 100dvh);
+  height: var(--full-h, var(--vvh, 100dvh));
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -3094,7 +3094,7 @@ button.copy.done {
   position: fixed;
   inset-inline: 0;
   top: var(--vvt, 0px);
-  height: var(--vvh, 100dvh);
+  height: var(--full-h, var(--vvh, 100dvh));
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -3625,3 +3625,6 @@ main.stack {
   font-size: 1.125rem; line-height: 1; pointer-events: none;
   filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.35));
 }
+
+/* Settings fold from their name (bands.tsx FootBand): the name is the button, nothing drawn around it. */
+.settings-fold { display: block; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }

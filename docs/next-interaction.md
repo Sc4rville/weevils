@@ -7,7 +7,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
 ## Navigation: one model, like iOS
 
 - **The base screen is weevboss**: its thread, or For you beside it (the words « weevboss · for you » at the top).
-- **The side bar is a drawer from the left.** The ☰ button or an edge swipe opens it, and the edge swipe works on
+- **The side bar is a drawer from the left**, top to the very bottom edge (installed on a phone too). The ☰ button or an edge swipe opens it, and the edge swipe works on
   weevboss's screen only. It follows the finger. It closes past 38 % of its width or on a fling, and a tap outside it
   closes it too.
 - **In the side bar, a project's name folds its sessions away or brings them back.** The fold opens and closes with
@@ -20,6 +20,9 @@ once, and the code follows. Behaviour is never flipped back and forth.
   Its last row runs straight into the settings below: colour alone separates the bands, never a strip (2026-11-22).
   A « + » right of its name, in the column of the projects' « > », makes a new automation and opens its talk, as the
   app's drawer does.
+  **Settings** fold the same way, from their name: folded to their one band unless this device last left them open
+  (2026-11-23), in both apps. Their name is regular weight, like Autonomous: bold in the side bar means active.
+  **A repo row** carries a thin square repo mark in the weevils logo's column, its name under the « w » of weevils.
 - **An automation row always opens the automation** (2026-11-21). Once accepted, it opens on its overview: its
   name in the middle in bold, what it does in one line, a big living link to what it produced (the page its newest run
   published, else that run's results), then its next run, its schedule, its last run and how it went, its count, where
@@ -46,7 +49,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
   reach draws no button.
 - **Backend stays out of the side bar**: the « auto » folder (where automations without a repo run) is never listed;
   « Misc » shows only when one of its conversations needs you. The automation loop shows only on the automation that
-  runs and on the conversation it works in (on the Autonomous name only while it is folded), never on a project.
+  runs and on the conversation it works in, never on a project nor beside the Autonomous name (2026-11-23).
 - **Anything you open is pushed in from the right edge**: a conversation, « / », « > », a file, a photo, a session
   from a page. It does not matter where it was opened from (the side bar, weevboss's thread, For you or a page).
 - **Back pops it out to the right edge**, with its chevron or with a swipe right that follows the finger. It uncovers

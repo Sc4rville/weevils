@@ -64,6 +64,25 @@ afterEach(() => {
 })
 
 describe('settings band', () => {
+  // These read its lines: this device left it open.
+  beforeEach(() => localStorage.setItem('weevils-settings-open', '1'))
+  afterEach(() => localStorage.removeItem('weevils-settings-open'))
+
+  it('folds from its name to its one band, folded by default, and this device remembers it', async () => {
+    localStorage.removeItem('weevils-settings-open')
+    render(<FootBand />, snap([{ id: 'm-7f3a9c', name: 'vps', online: true }]))
+    const name = host.querySelector<HTMLButtonElement>('h2 button.settings-fold')!
+    expect(name.textContent).toBe('settings')
+    expect(name.getAttribute('aria-expanded')).toBe('false')
+    expect(rows()).toEqual([])
+    await click(name)
+    expect(name.getAttribute('aria-expanded')).toBe('true')
+    expect(rows()).toContain('log out')
+    expect(localStorage.getItem('weevils-settings-open')).toBe('1')
+    await click(name)
+    expect(localStorage.getItem('weevils-settings-open')).toBeNull()
+  })
+
   it('is headed settings, with one machines line that says how many are online', async () => {
     render(<FootBand />, snap([{ id: 'm-7f3a9c', name: 'vps', online: true }, { id: 'm-2', name: 'laptop', online: false }]))
     expect(host.querySelector('h2')!.textContent).toBe('settings')

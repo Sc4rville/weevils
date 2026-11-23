@@ -1,4 +1,4 @@
-// Your factory, in weevils next's side bar (docs/next-interaction.md, « Your factory »): one band under Autonomous that
+// factory, in weevils next's side bar (docs/next-interaction.md, « factory »): one band under Autonomous that
 // unfolds, like every band of the side bar, into Machines, Intelligence, Projects and the global Tempo. Each level
 // unfolds again into one band per thing, the same height, the same staircase (one small tone step per band), no line,
 // no box. What it shows is weevils' own: GET /api/factory (server/your-factory.ts), the snapshot, Tempo's own view.
@@ -51,7 +51,7 @@ export function useFactory(live: boolean): [FactoryView | null, (fn: (v: Factory
   return [v, (fn) => shared && publish(fn(shared))]
 }
 
-/** Your factory's bands start folded: open is remembered (false = unfolded in the app's key). */
+/** factory's bands start folded: open is remembered (false = unfolded in the app's key). */
 const isOpen = (key: string) => foldPrefs()[key] === false
 function useFold(key: string): [boolean, () => void] {
   const [open, setOpen] = useState(() => isOpen(key))
@@ -118,7 +118,7 @@ export function useFlips(snap: Snapshot) {
 }
 
 type Row = { id: string; name: string; repos: string[]; project: Project | null }
-/** Your factory's Projects, in a fixed order (a switch never moves its band): every project weevils knows but its own
+/** factory's Projects, in a fixed order (a switch never moves its band): every project weevils knows but its own
  *  block at the top, and those switched off whose project left with their last pin, so they can be switched back on. */
 export function factoryProjects(snap: Snapshot): Row[] {
   const projects = snap.projects.filter((p) => !HIDDEN_IDS.has(p.id) && p.kind !== 'installation' && !selfProject(p))
@@ -446,7 +446,7 @@ export function FactorySection({ snap, colors, page, toBoss }: {
         <button className="nx-row nx-project-head nx-repo-row" onClick={fold} aria-expanded={open}>
           {/* Its icon in the weevils logo's column, its name under the « w », like every band of the side bar. */}
           <span className="nx-repo-mark" aria-hidden><Icon name="factory" /></span>
-          <span className="nx-row-title nx-project-name">your factory</span>
+          <span className="nx-row-title nx-project-name">factory</span>
         </button>
       </div>
       <Collapse open={open}>
@@ -534,7 +534,7 @@ function MachineStrip({ m }: { m: FactoryMachine | undefined }) {
   )
 }
 
-/** A machine's own conversation (Your factory, a machine's band): its health and its host's link on top. Before the
+/** A machine's own conversation (factory, a machine's band): its health and its host's link on top. Before the
  *  first message, the page is the field to write it in; then it is the app's own session page. */
 export function NextMachinePage({ id }: { id: string }) {
   const { snap } = useApp()
@@ -569,7 +569,7 @@ export function NextMachinePage({ id }: { id: string }) {
   }
   return (
     <div ref={box} className="nx-machine">
-      <Shell slot="calm" kicker="your factory" title={name}
+      <Shell slot="calm" kicker="factory" title={name}
         foot={talk ? undefined : <Composer placeholder={`Talk to ${name}…`} label={`Message to ${name}`} onSend={send} sayErrors />}>
         <MachineStrip m={m} />
         {err && <p className="in meta" role="alert">{err}</p>}

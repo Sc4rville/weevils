@@ -23,10 +23,10 @@ once, and the code follows. Behaviour is never flipped back and forth.
   **Settings** fold the same way, from their name: folded to their one band unless this device last left them open
   (2026-11-23), in both apps. Their name is regular weight, like Autonomous: bold in the side bar means active.
   **A repo row** carries a thin square repo mark in the weevils logo's column, its name under the « w » of weevils.
-  **Autonomous** and **Your factory** are laid out the same way (2026-11-23): their icon in that column (the loop; the
+  **Autonomous** and **factory** are laid out the same way (2026-11-23): their icon in that column (the loop; the
   factory), their name under the « w ». A project shows that it works by its star, on the right, in one column just
   left of its « / »; Autonomous by its own icon alone, which lights up and turns while anything in it runs.
-  Their names are lowercase wherever they are drawn, « autonomous » and « your factory », as « weevils », a repo's
+  Their names are lowercase wherever they are drawn, « autonomous » and « factory », as « weevils », a repo's
   name and « settings » are: the side bar's bands and the kicker of the pages they open (2026-11-23).
   **Settings** wear their own icon in that column too (three thin rails with square knobs, 2026-11-23), their name under
   the « w » like every other band's; the gap between an icon and its name stays as it is (not tightened).
@@ -43,7 +43,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
   (`src/ui/factory-page.tsx`): the same small flip goes to its conversation and back. An automation that earned it
   shows one quiet line under its overview's facts, « Ready to become a factory »: a tap unfolds what the unlock does
   and its two answers. Nothing else in next says « factory »: no badge, no counter.
-- **Your factory** (2026-11-23): one band right under Autonomous, the same height, the same staircase, folded until
+- **factory** (2026-11-23; named « your factory » until the same day, now just « factory »): one band right under Autonomous, the same height, the same staircase, folded until
   opened (and remembered). Open, it holds four bands, each one tone step below the last: **Machines**, **Intelligence**,
   **Projects**, and the global **Tempo**. A level's name unfolds its own bands the same way (one per thing, a step
   further in), its last band a « + ». No section titles, no boxes, no buttons beyond the switches.
@@ -179,7 +179,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
 next takes the classic app's light features as they are, never as copies, so they follow by themselves
 (scripts/next-parity.test.ts keeps them):
 - **Settings**: the app's settings band (theme, language, requests, log out; machines, subscriptions and Tempo are in
-  Your factory); its last line goes to the classic app.
+  factory); its last line goes to the classic app.
 - **Notifications**: the app's service worker and push subscription; a tap opens its session, or weevboss.
 - **Page links** (/p/…) opened outside the app: the page, once signed in.
 

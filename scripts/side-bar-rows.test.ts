@@ -55,7 +55,7 @@ it("a project's working star sits in one column just left of its « / »: the na
   expect(body('.nx-boss-row .nx-fold')).toMatch(/flex:\s*1/)
 })
 
-it('Autonomous and Your factory are laid out like weevils and the repos: an icon in the logo column, the name under the « w »', () => {
+it('Autonomous and factory are laid out like weevils and the repos: an icon in the logo column, the name under the « w »', () => {
   const main = fs.readFileSync(path.join(root, 'next/src/main.tsx'), 'utf8')
   const factory = fs.readFileSync(path.join(root, 'next/src/factory.tsx'), 'utf8')
   // Autonomous: its own icon works, lit and turning while something runs, at rest otherwise; no star on its row.
@@ -65,17 +65,19 @@ it('Autonomous and Your factory are laid out like weevils and the repos: an icon
   expect(factory).toMatch(/nx-project-head nx-repo-row[\s\S]{0,300}<Icon name="factory" \/>/)
 })
 
-it('« autonomous » and « your factory » are lowercase wherever they are drawn, like weevils, the repos and settings', () => {
+it('« autonomous » and « factory » are lowercase wherever they are drawn, like weevils, the repos and settings', () => {
   const dir = path.join(root, 'next/src')
   const src = fs.readdirSync(dir).filter((f) => f.endsWith('.tsx') && !f.includes('.test.')).map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n')
   const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$|\{\/\*[\s\S]*?\*\/\}/gm, '')
   // Drawn: as a band's name (JSX text) or as a page's kicker; never with a capital.
   expect(code).toMatch(/>autonomous<\/span>/)
-  expect(code).toMatch(/>your factory<\/span>/)
+  expect(code).toMatch(/>factory<\/span>/)
   expect(code).toMatch(/kicker="autonomous"/)
-  expect(code).toMatch(/kicker="your factory"/)
-  expect(code).not.toMatch(/>\s*(Autonomous|Your factory)\s*</)
-  expect(code).not.toMatch(/["'`](Autonomous|Your factory)["'`]/)
+  expect(code).toMatch(/kicker="factory"/)
+  expect(code).not.toMatch(/>\s*(Autonomous|Factory|[Yy]our factory)\s*</)
+  expect(code).not.toMatch(/["'`](Autonomous|Factory|[Yy]our factory)["'`]/)
+  // Its name is just « factory » (2026-11-23), nowhere « your factory ».
+  expect(code).not.toMatch(/[Yy]our factory/)
   // …and no style puts a capital back.
   expect(css).not.toMatch(/text-transform:\s*(capitalize|uppercase)/)
 })
@@ -87,7 +89,7 @@ it('settings wears its own icon in the same column, through the app\'s own band'
   expect(icons).toMatch(/\n  settings: '[^']+'/)
 })
 
-it('your factory > Projects: a small switch, then the side bar’s own « / » and « > » on every band', () => {
+it('factory > Projects: a small switch, then the side bar’s own « / » and « > » on every band', () => {
   const fx = fs.readFileSync(path.join(root, 'next/src/factory.tsx'), 'utf8')
   const band = fx.slice(fx.indexOf('function projectBand'))
   expect(band).toMatch(/<Switch small /)

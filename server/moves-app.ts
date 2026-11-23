@@ -2,6 +2,7 @@
 // proposals weevboss says in one line, the watch of the vault's leases on the machine that serves the app, and the
 // routes `weevils weevbook agree | move | machines` call. Nothing here moves a conversation by itself.
 
+import fs from 'node:fs'
 import type http from 'node:http'
 import path from 'node:path'
 import { accounts } from './claude-accounts.ts'
@@ -12,8 +13,9 @@ import { claudeAccountOf } from './weevbook/engines.ts'
 import type { HubSync } from './weevbook/hub.ts'
 import type { Provider } from './weevbook/journal.ts'
 import { askMove, clearMoves, moveThread, noteResult, openProposals, settle, startVaultWatch, type MachineLine, type MoveHost, type MoveRequest, type MoveResult, type Proposal } from './weevbook/proposals.ts'
-import { resumeThread, type Launch, type ResumeResult } from './weevbook/resume.ts'
-import { Sessions, accountOf } from './weevbook/sync.ts'
+import { currentFolder, readCodeState, readFiles, type CodeState } from './weevbook/code-state.ts'
+import { resumeThread, type Launch, type ResumeResult, type SourceMachine } from './weevbook/resume.ts'
+import { Sessions, accountOf, machinePart } from './weevbook/sync.ts'
 import { vaultSource } from './weevbook/vault-raw.ts'
 import type { VaultOptions } from './weevbook/vault.ts'
 
@@ -85,7 +87,32 @@ export function startMoves(o: MovesOptions) {
     { id: o.machine.id, name: o.machine.name, here: true, online: true },
     ...w.remotes.flatMap((r) => (r.snap?.machines[0] ? [{ id: r.snap.machines[0].id, name: r.snap.machines[0].name || r.snap.machines[0].id, here: false, online: r.online }] : [])),
   ]
-  const remoteOf = (machine: string) => w.remotes.find((r) => r.snap?.machines[0]?.id === machine)
+  const remoteOf = (machine: string) => w.remotes.find((r) => r.snap?.machines[0]?.id === machine) ?? w.remotes.find((r) => !!r.snap?.machines[0] && machinePart(r.snap.machines[0].id) === machinePart(machine))
+
+  /** The repository a thread's session of this machine works in now (its newest line's folder), as it is. */
+  const codeOf = async (thread: string): Promise<CodeState | null> => {
+    const s = new Sessions(sessionsFile)
+    await s.load()
+    const mine = s.all().filter((r) => r.thread === thread && !r.moved && fs.existsSync(r.file))
+    const rec = mine.sort((a, b) => fs.statSync(b.file).mtimeMs - fs.statSync(a.file).mtimeMs)[0]
+    const folder = rec ? currentFolder(rec.file, rec.provider) : null
+    return folder ? readCodeState(folder) : null
+  }
+
+  /** The machine a thread leaves, asked through the tunnel: null when it does not answer. An older weevils there
+   *  (no such route) answers, without its code. */
+  const source = async (machine: string, thread: string): Promise<SourceMachine | null> => {
+    const remote = remoteOf(machine)
+    if (!remote?.online) return null
+    const q = encodeURIComponent(thread)
+    let code: CodeState | null = null
+    try {
+      code = (await remote.call<{ code: CodeState | null }>('GET', `/api/weevbook/code?thread=${q}`)).code ?? null
+    } catch (e) {
+      if ((e as { status?: number }).status !== 404) return null
+    }
+    return { code, files: async (paths) => (await remote.call<{ files: Record<string, string> }>('POST', '/api/weevbook/code/files', { thread, paths })).files ?? {} }
+  }
 
   /** The thread a provider session of this machine belongs to (its id, or the start of it). */
   const threadOf = async (session: string): Promise<string | null> => {
@@ -123,7 +150,7 @@ export function startMoves(o: MovesOptions) {
     const out = await resumeThread({
       thread: r.thread, dir: path.join(o.dataDir, 'weevbook'), dataDir: o.dataDir, sessions: sessionsFile, machine: o.machine.id, home: o.home, claudeDir: o.claudeDir, codexDir: o.codexDir,
       roots: o.roots, projectsDir: o.projectsDir, ...(o.hub ? { hub: o.hub } : {}), ...(o.sync ? { sync: o.sync } : {}), ...(v ? { vault: vaultSource(v) } : {}), ...(account ? { account } : {}), ...(provider ? { provider } : {}),
-      force: !!r.force, launch, log: o.log,
+      force: !!r.force, launch, source, log: o.log,
     })
     return !out.ok && out.why === 'other-provider' ? { ...out, detail: tr(M).otherProvider(out.detail) } : out
   }
@@ -179,6 +206,14 @@ export function startMoves(o: MovesOptions) {
     return [
       ['GET', /^\/api\/weevbook\/machines$/, local((_req, res) => json(res, 200, { machines: machines() }))],
       ['GET', /^\/api\/weevbook\/thread$/, local(async (_req, res, url) => json(res, 200, { thread: await threadOf(url.searchParams.get('session') ?? '') }))],
+      // The machine that takes a thread of this one asks for its code (code-state.ts): the state, then the files.
+      ['GET', /^\/api\/weevbook\/code$/, local(async (_req, res, url) => json(res, 200, { code: await codeOf(url.searchParams.get('thread') ?? '') }))],
+      ['POST', /^\/api\/weevbook\/code\/files$/, local(async (req, res) => {
+        const b = await readBody(req)
+        const code = await codeOf(String(b?.thread ?? ''))
+        const paths = Array.isArray(b?.paths) ? b.paths.filter((p: unknown): p is string => typeof p === 'string') : []
+        json(res, 200, { files: code ? await readFiles(code.folder, paths) : {} })
+      })],
       ['POST', /^\/api\/weevbook\/move$/, local(async (req, res) => {
         const b = await readBody(req)
         json(res, 200, await move({ thread: String(b?.thread ?? ''), ...(typeof b?.to === 'string' ? { to: b.to } : {}), ...(typeof b?.engine === 'string' ? { engine: b.engine } : {}), ...(typeof b?.account === 'string' ? { account: b.account } : {}), force: b?.force === true }))

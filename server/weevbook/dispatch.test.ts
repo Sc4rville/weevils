@@ -136,7 +136,38 @@ describe('one test per row of the decision table', () => {
     const out = (m: MachineFacts) => ({ engines: m.engines.map((e) => ({ ...e, signedIn: false })) })
     const t = table()
     expect(decide(input({ table: table({ laptop: out(t.machines[0]), server: out(t.machines[1]) }) }))).toMatchObject({ hold: 'not-signed-in' })
-    expect(decide(input({ table: table({ laptop: off }), thread: { checkpoint: 'none' } }))).toMatchObject({ hold: 'only-there', reason: 'the code of this thread can only continue on laptop; laptop has been silent since 13:50' })
+    expect(decide(input({ table: table({ laptop: off }), thread: { checkpoint: 'none' } }))).toMatchObject({ hold: 'only-there', reason: 'the code of this thread can only continue on laptop; laptop has been silent since 13:50; its repository is not known on server' })
+  })
+})
+
+describe('a move ordered by the person, for a thread whose code does not travel (kind none)', () => {
+  const ORIGIN = 'https://github.com/me/shop-app.git'
+  const quotas = { 'claude:a3f9c1': q(41, 41) }
+  it('the machine left is never a candidate, alive or not; a machine with a clone of the same repository takes it (rung 2)', () => {
+    // The laptop is on and its engine has room: without the order, the thread would stay.
+    expect(decide(input({ ledger: [], table: table({ quotas }), thread: { checkpoint: 'none' } })).rule).toBe('stay')
+    const cloned = table({ quotas, server: { repos: ['git@github.com:me/shop-app'] } })
+    expect(decide(input({ ledger: [], table: cloned, away: 'laptop', thread: { checkpoint: 'none', repo: ORIGIN } }))).toMatchObject({
+      rule: 'machine', engine: 'claude:a3f9c1@server', rung: 2,
+      reason: `laptop is on, and the person moves the thread off it; server has a clone of ${ORIGIN} and the same account: claude a3f9c1 is at 41 %`,
+    })
+    // The dispatcher's own table (no order) also lets a silent laptop's thread go to a clone of its repository.
+    const silent = table({ quotas, laptop: { seen: NOW - ALIVE_FOR - 1 }, server: { repos: [ORIGIN] } })
+    expect(decide(input({ ledger: [], table: silent, thread: { checkpoint: 'none', repo: ORIGIN } }))).toMatchObject({ rule: 'machine', engine: 'claude:a3f9c1@server' })
+  })
+  it('without a clone of it: only-there, and the reason says the truth about the machine left', () => {
+    // Alive: not "silent since 00:00".
+    expect(decide(input({ ledger: [], table: table({ quotas }), away: 'laptop', thread: { checkpoint: 'none', repo: ORIGIN } }))).toMatchObject({
+      hold: 'only-there', reason: `the code of this thread can only continue on laptop; laptop is on, and the person moves the thread off it; no clone of ${ORIGIN} on server`,
+    })
+    // Never heard of (seen 0, as resume.ts lists a machine it could not ask): no made-up time.
+    const unheard = table({ quotas, laptop: { seen: 0, answers: false } })
+    expect(decide(input({ ledger: [], table: unheard, away: 'laptop', thread: { checkpoint: 'none' } }))).toMatchObject({
+      hold: 'only-there', reason: 'the code of this thread can only continue on laptop; laptop has not answered; its repository is not known on server',
+    })
+    // Another repository on the server: the same hold.
+    const other = table({ quotas, server: { repos: ['https://github.com/me/other.git'] } })
+    expect(decide(input({ ledger: [], table: other, away: 'laptop', thread: { checkpoint: 'none', repo: ORIGIN } })).hold).toBe('only-there')
   })
 })
 

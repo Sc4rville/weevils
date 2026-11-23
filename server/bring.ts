@@ -242,7 +242,7 @@ const isDir = (p: string) => {
   }
 }
 
-async function findClone(origin: string, d: PlaceDeps): Promise<string | null> {
+export async function findClone(origin: string, d: PlaceDeps): Promise<string | null> {
   for (const root of d.roots) {
     let names: string[] = []
     try {

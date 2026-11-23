@@ -77,6 +77,7 @@ export async function moveMain(args: string[], out: (line: string) => void): Pro
         }
         if (r.stole) out(t.stole)
         out(t.moved(r.thread, r.machine, r.turn))
+        if (r.code) out(r.code)
         return 0
       }
       case 'machines': {

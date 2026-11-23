@@ -15,9 +15,10 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { claudeSlug, place, realGit, rewritePaths, type PlaceDeps } from '../bring.ts'
+import { claudeSlug, findClone, place, realGit, rewritePaths, type PlaceDeps } from '../bring.ts'
 import { restoreCheckpoint, type Restored } from './checkpoint.ts'
-import { decide, threadFacts, type MachineFacts, type Quota } from './dispatch.ts'
+import { bringCode, uncheckedCode, type CodeReport, type CodeState } from './code-state.ts'
+import { decide, threadFacts, type MachineFacts, type Quota, type ThreadFacts } from './dispatch.ts'
 import { HubSync, REMOTE, draft, legCount, openLeg, safeTurns } from './hub.ts'
 import { parseEngine, slugify, type CheckpointEvent, type EventDraft, type JournalEvent, type LegId, type MetaEvent, type Provider } from './journal.ts'
 import { OBSERVE_EVERY, STEAL_BOUND, stealable, type GitRunner, type Intent } from './lease.ts'
@@ -39,6 +40,14 @@ export interface Launch {
   text: string
   thread: string
   turn: number
+}
+
+/** The machine a thread leaves, asked directly (weevilsd: through the tunnel it has to it). */
+export interface SourceMachine {
+  /** The repository the thread's session works in over there, as it is now (null: the session is not in one). */
+  code: CodeState | null
+  /** Files of that repository, base64, by path (some may be missing: too large, or gone). */
+  files: (paths: string[]) => Promise<Record<string, string>>
 }
 
 export interface ResumeOptions {
@@ -79,6 +88,8 @@ export interface ResumeOptions {
   /** Another session works in this folder now (default: a session file of it written in the last 2 minutes). */
   busy?: (cwd: string) => boolean
   git?: PlaceDeps['git']
+  /** The machine the thread leaves, asked now: null when it does not answer (it is then taken for silent). */
+  source?: (machine: string, thread: string) => Promise<SourceMachine | null>
   log?: (line: string) => void
 }
 
@@ -97,6 +108,9 @@ export type ResumeResult =
       file: string
       session: string
       restored: Restored | null
+      /** A thread whose code does not travel (`kind: none`), continued on this machine's clone of its repository:
+       *  what was pulled, carried and left of the other machine's code. */
+      code?: CodeReport
       /** The lease was stolen first (its holder had gone silent). */
       stole: boolean
       launched: boolean
@@ -114,6 +128,34 @@ export type ResumeResult =
 
 const fail = (why: Extract<ResumeResult, { ok: false }>['why'], detail: string, more: { wait?: number; holder?: string } = {}): ResumeResult => ({ ok: false, why, detail, ...more })
 const zero = (now: number): Quota => ({ readAt: now, fiveHour: { used: 0, resetsAt: null }, week: { used: 0, resetsAt: null } })
+
+/**
+ * The table a resume decides on (dispatch.ts): this machine, signed in, and the machine the thread leaves, never a
+ * candidate (`away`), with the truth about it: asked now, it answered or not. A thread whose code does not travel can
+ * continue on a clone of its repository here: its origin is the one the other machine says, else its checkpoints'.
+ */
+async function resumeTable(o: ResumeOptions, x: { me: string; at: number; mine: string; last: { engine: string }; project: string | null; events: readonly JournalEvent[] }) {
+  const old = parseEngine(x.last.engine)!
+  const src = old.machine !== x.me && o.source ? await o.source(old.machine, o.thread).catch(() => null) : null
+  const repo = src?.code?.origin ?? x.events.filter((e): e is CheckpointEvent => e.type === 'checkpoint' && !!e.repo).at(-1)?.repo ?? null
+  const clone = repo ? await findClone(repo, { home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, git: o.git ?? realGit }).catch(() => null) : null
+  const machines: MachineFacts[] = [{ machine: x.me, seen: x.at, answers: true, projects: x.project ? [x.project] : [], ...(clone && repo ? { repos: [repo] } : {}), engines: [{ engine: x.mine, signedIn: true }] }]
+  if (old.machine !== x.me) machines.push({ machine: old.machine, seen: src ? x.at : 0, answers: !!src, projects: [], engines: [{ engine: x.last.engine, signedIn: true }] })
+  return { machines, away: old.machine !== x.me ? old.machine : undefined, repo, clone, src, from: old.machine }
+}
+
+/** The other machine's code brought into this clone, for a thread whose checkpoint does not travel. */
+async function codeHere(t: Awaited<ReturnType<typeof resumeTable>>, facts: ThreadFacts, log?: (line: string) => void): Promise<CodeReport | undefined> {
+  if (facts.checkpoint !== 'none' || !t.clone) return undefined
+  if (!t.src) return uncheckedCode(t.clone, t.from)
+  if (!t.src.code) return { ...uncheckedCode(t.clone, t.from), checked: true, line: `${t.from}'s session is not in a repository: nothing to compare with ${t.clone}` }
+  try {
+    return await bringCode({ state: t.src.code, clone: t.clone, machine: t.from, files: t.src.files })
+  } catch (e) {
+    log?.(`[resume] code from ${t.from}: ${(e as Error).message}`)
+    return { ...uncheckedCode(t.clone, t.from), line: `${t.clone}: the code of ${t.from} could not be compared (${(e as Error).message})` }
+  }
+}
 
 /** A session of the folder was written in the last two minutes: someone works there. */
 export function busyByFiles(claudeDir: string) {
@@ -213,6 +255,8 @@ export async function placeAndRestore(o: {
   events: readonly JournalEvent[]
   /** The last leg's folder, on the machine it ran on. */
   cwd: string
+  /** The repository's origin when no checkpoint names one (a thread of `kind: none` going to a clone of it). */
+  origin?: string
   /** The weevbook's repository, and its runner with the hub as remote (null: no hub). */
   gitDir: string
   git: GitRunner
@@ -261,7 +305,7 @@ export async function placeAndRestore(o: {
       }
     }
     const existed = new Set(await fsp.readdir(o.projectsDir).catch(() => [] as string[]))
-    const p = await place({ cwd: o.cwd, origin: ck?.repo, branch: ck?.branch }, { home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, git: o.placeGit ?? realGit })
+    const p = await place({ cwd: o.cwd, origin: ck?.repo ?? o.origin, branch: ck?.branch }, { home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, git: o.placeGit ?? realGit })
     const fresh = path.dirname(p.to) === path.resolve(o.projectsDir) && !existed.has(path.basename(p.to))
     let cwd = p.cwd
     let restored: Restored | null = null
@@ -387,6 +431,11 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   if (!got) return fail('unreachable', 'fetch')
   const { seen, events } = got
   if (seen.lease?.state === 'working') return fail('held', `${seen.lease.holder} took it meanwhile`, { holder: seen.lease.holder })
+  // The thread's machine never held its lease on this hub (it joined with a vault, and this hub only has the thread
+  // from the vault): the lease that machine respects is the vault's, so the resume takes that one.
+  const lastLeg = events.filter((e) => e.type === 'leg.start').at(-1)
+  const legMachine = lastLeg?.type === 'leg.start' ? parseEngine(lastLeg.engine)?.machine : undefined
+  if (o.vault && !stole && legMachine && legMachine !== me && seen.lease && machinePart(seen.lease.holder) !== legMachine) return resumeLocal(o, t0)
   const open = openLeg(events)
   if (open && parseEngine(open.engine)?.machine === me) return fail('own-leg', `its leg ${open.leg} is this machine's own session ${open.session}: continue it in the app`)
   const legs = events.filter((e) => e.type === 'leg.start')
@@ -407,12 +456,10 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   const checkpoints = events.filter((e): e is CheckpointEvent => e.type === 'checkpoint')
   const ckEvent = checkpoints.at(-1)
   const at = now()
-  const old = parseEngine(last.engine)!
-  const table: MachineFacts[] = [{ machine: me, seen: at, answers: true, projects: project ? [project] : [], engines: [{ engine: mine, signedIn: true }] }]
-  if (old.machine !== me) table.push({ machine: old.machine, seen: 0, answers: false, projects: [], engines: [{ engine: last.engine, signedIn: true }] })
+  const tb = await resumeTable(o, { me, at, mine, last, project, events })
   const retry = nx.kind === 'dispatch' && nx.retry
-  const facts = threadFacts(events, { project, cloneable: !!ckEvent?.repo, retry, turn: nx.kind === 'dispatch' ? nx.turn : turns.length })
-  const d = decide({ now: at, thread: facts, table: { machines: table, quotas: { [`${provider}:${account(provider)}`]: zero(at) } }, ledger: [], preferred: provider })
+  const facts = { ...threadFacts(events, { project, cloneable: !!ckEvent?.repo, retry, turn: nx.kind === 'dispatch' ? nx.turn : turns.length }), repo: tb.repo }
+  const d = decide({ now: at, thread: facts, table: { machines: tb.machines, quotas: { [`${provider}:${account(provider)}`]: zero(at) } }, ledger: [], preferred: provider, away: tb.away })
   if (d.rule === 'hold' || !d.engine) return fail('hold', `${d.hold ?? 'hold'}: ${d.reason}`)
   if (parseEngine(d.engine)?.provider !== provider) return fail('hold', `only ${provider} resumes in step 3`)
   const rung: 1 | 2 = d.rung === 1 ? 1 : 2
@@ -423,11 +470,13 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   let cwd = last.cwd
   const session = last.session
   const sessionFile = findSession(provider, session, o.claudeDir, o.codexDir)
+  let code: CodeReport | undefined
   if (rung === 2 || !sessionFile) {
-    const p = await placeAndRestore({ thread: id, events, cwd: last.cwd, gitDir: book.gitDir, git: sync.git, hub: true, vault: o.vault, dataDir: o.dataDir, home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, placeGit: o.git, busy: o.busy, log: o.log })
+    const p = await placeAndRestore({ thread: id, events, cwd: last.cwd, origin: tb.clone ? (tb.repo ?? undefined) : undefined, gitDir: book.gitDir, git: sync.git, hub: true, vault: o.vault, dataDir: o.dataDir, home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, placeGit: o.git, busy: o.busy, log: o.log })
     if (p.onlyThere) return fail('hold', `only-there: ${p.onlyThere}`)
     cwd = p.cwd
     restored = p.restored
+    code = await codeHere(tb, facts, o.log)
   }
 
   // 5. The journal and the lease, in one push: leg.end (moved), assigned, leg.start, running.
@@ -522,6 +571,7 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
     file,
     session,
     restored,
+    ...(code ? { code } : {}),
     stole,
     launched,
     ms: Date.now() - t0,
@@ -613,12 +663,10 @@ async function resumeFromVault(o: ResumeOptions, t0: number, claimed: { yes: boo
   const mine = `${provider}:${account(provider)}@${me}`
   const project = events.find((e): e is MetaEvent => e.type === 'meta' && e.project !== undefined)?.project ?? null
   const ckEvent = events.filter((e): e is CheckpointEvent => e.type === 'checkpoint').at(-1)
-  const old = parseEngine(last.engine)!
-  const table: MachineFacts[] = [{ machine: me, seen: t, answers: true, projects: project ? [project] : [], engines: [{ engine: mine, signedIn: true }] }]
-  if (old.machine !== me) table.push({ machine: old.machine, seen: 0, answers: false, projects: [], engines: [{ engine: last.engine, signedIn: true }] })
+  const tb = await resumeTable(o, { me, at: t, mine, last, project, events })
   const dispatching = nx.kind === 'dispatch'
-  const facts = threadFacts(events, { project, cloneable: !!ckEvent?.repo, retry: dispatching && nx.retry, turn: dispatching ? nx.turn : turns.length })
-  const d = decide({ now: t, thread: facts, table: { machines: table, quotas: { [`${provider}:${account(provider)}`]: zero(t) } }, ledger: [], preferred: provider })
+  const facts = { ...threadFacts(events, { project, cloneable: !!ckEvent?.repo, retry: dispatching && nx.retry, turn: dispatching ? nx.turn : turns.length }), repo: tb.repo }
+  const d = decide({ now: t, thread: facts, table: { machines: tb.machines, quotas: { [`${provider}:${account(provider)}`]: zero(t) } }, ledger: [], preferred: provider, away: tb.away })
   if (d.rule === 'hold' || !d.engine) return fail('hold', `${d.hold ?? 'hold'}: ${d.reason}`)
   if (parseEngine(d.engine)?.provider !== provider) return fail('hold', `only ${provider} resumes in step 3`)
   const rung: 1 | 2 = d.rung === 1 ? 1 : 2
@@ -629,6 +677,7 @@ async function resumeFromVault(o: ResumeOptions, t0: number, claimed: { yes: boo
   let cwd = last.cwd
   let restored: Restored | null = null
   let slim: Map<string, Buffer> | undefined
+  let code: CodeReport | undefined
   if (rung === 2 || !sessionFile) {
     try {
       slim = await vaultRaw(book, vault, id, events, provider, session)
@@ -637,10 +686,11 @@ async function resumeFromVault(o: ResumeOptions, t0: number, claimed: { yes: boo
     }
     const probe = await withBook(() => rebuild(book, id, events!, provider, session, last.cwd, slim))
     if (!probe) return fail('no-session', 'the vault does not hold the lines of this conversation yet: its machine has not pushed them')
-    const p = await placeAndRestore({ thread: id, events, cwd: last.cwd, gitDir: book.gitDir, git: hubRunner(book.gitDir), hub: false, vault, dataDir: o.dataDir, home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, placeGit: o.git, busy: o.busy, log: o.log })
+    const p = await placeAndRestore({ thread: id, events, cwd: last.cwd, origin: tb.clone ? (tb.repo ?? undefined) : undefined, gitDir: book.gitDir, git: hubRunner(book.gitDir), hub: false, vault, dataDir: o.dataDir, home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, placeGit: o.git, busy: o.busy, log: o.log })
     if (p.onlyThere) return fail('hold', `only-there: ${p.onlyThere}`)
     cwd = p.cwd
     restored = p.restored
+    code = await codeHere(tb, facts, o.log)
   }
 
   // The journal, here: the other machine's leg closed, this one opened, the turn running.
@@ -710,6 +760,7 @@ async function resumeFromVault(o: ResumeOptions, t0: number, claimed: { yes: boo
     file,
     session,
     restored,
+    ...(code ? { code } : {}),
     stole: claim.stole || !!lost,
     launched,
     ms: Date.now() - t0,

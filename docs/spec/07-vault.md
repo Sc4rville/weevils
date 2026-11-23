@@ -264,6 +264,15 @@ As built (step 4), for machines that share a vault and no hub:
   machine named (through the tunnel it already has to it). An idle lease is taken over; one whose machine went silent
   is stolen; one still renewed is refused ("the laptop is at work on it right now"), and taken with `--force` once the
   person said so. `--account` makes that Claude account the active one first.
+- **The machine left, asked.** The machine that takes the thread asks the one it leaves directly (the tunnel), never
+  guesses: it answered or not, and the refusal says which (no "silent since 00:00" for a machine never read). That
+  machine is never a candidate of the table (`away`). A thread whose code does not travel (`kind: none`: opened in the
+  home folder, or too large) still moves when this machine has a clone of the repository its session works in (the
+  `cwd` of its newest line, as the machine left says it; else a checkpoint's `repo`): the clone is pulled forward to
+  the other HEAD when git can fast-forward, each uncommitted file that differs is carried when this clone's own copy is
+  untouched on the same commit, and everything else is named in the answer (`code-state.ts`), never overwritten.
+  Nothing is touched on the machine left. A hub that only has the thread from the vault (its machine joined with a
+  vault) leaves the lease to the vault: the resume takes the vault's.
 - **The resume** is step 3's, with the lease in front: the thread's lease is taken `working` before anything is
   written (so that no machine takes it over meanwhile), given back idle when the resume is refused, and the resumed
   journal is pushed at once with its lease. The steal writes `turn failed` (`machine-lost`) and `leg.end`

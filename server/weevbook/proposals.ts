@@ -119,7 +119,7 @@ export interface MoveRequest {
   force?: boolean
 }
 export type MoveResult =
-  | { ok: true; thread: string; machine: string; turn: number | null; engine: string; stole: boolean; launched: boolean }
+  | { ok: true; thread: string; machine: string; turn: number | null; engine: string; stole: boolean; launched: boolean; code?: string }
   | { ok: false; why: string; detail: string; holder?: string; wait?: number }
 
 export interface MoveHost {
@@ -150,7 +150,7 @@ export async function moveThread(h: MoveHost, r: MoveRequest): Promise<MoveResul
   }
   const done = await h.resume({ thread, engine: r.engine, account: r.account, force: r.force })
   if (!done.ok) return { ok: false, why: done.why, detail: done.detail, ...(done.holder ? { holder: done.holder } : {}), ...(done.wait !== undefined && Number.isFinite(done.wait) ? { wait: done.wait } : {}) }
-  return { ok: true, thread, machine: target.name, turn: done.turn, engine: done.engine, stole: done.stole, launched: done.launched }
+  return { ok: true, thread, machine: target.name, turn: done.turn, engine: done.engine, stole: done.stole, launched: done.launched, ...(done.code ? { code: done.code.line } : {}) }
 }
 
 // ---------------------------------------------------------------- the watch

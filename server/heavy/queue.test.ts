@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { acquire, hasRoom, slotCount, status, tickets } from './queue.ts'
 
 let dir: string
@@ -38,7 +38,9 @@ describe('heavy-job queue', () => {
     const order: string[] = []
     let waited = 0
     const c = acquire({ ...base, cmd: 'c', slots: 2, onWait: () => waited++ }).then((s) => (order.push('c'), s))
-    await new Promise((r) => setTimeout(r, 30))
+    // Polled, never a fixed sleep: a loaded machine (the CI behind a dozen agents) is slow to tick.
+    await vi.waitFor(() => expect(waited).toBe(1), { timeout: 20_000 })
+    await new Promise((r) => setTimeout(r, 5))
     const d = acquire({ ...base, cmd: 'd', slots: 2 }).then((s) => (order.push('d'), s))
     await new Promise((r) => setTimeout(r, 60))
     expect(order).toEqual([])
@@ -48,7 +50,7 @@ describe('heavy-job queue', () => {
     a!.release()
     const sc = await c
     await new Promise((r) => setTimeout(r, 60))
-    expect(order).toEqual(['c'])
+    expect(order).toEqual(['c']) // d waits: its turn comes after c's, and c took the slot
     b!.release()
     const sd = await d
     expect(order).toEqual(['c', 'd'])
@@ -67,6 +69,15 @@ describe('heavy-job queue', () => {
     expect(got).toBe(false)
     a!.release()
     ;(await b)!.release()
+  })
+
+  it('runs at once when its queue folder disappears (nothing left to wait in, no error)', async () => {
+    const a = await acquire({ ...base, cmd: 'a', slots: 1 })
+    const b = acquire({ ...base, cmd: 'b', slots: 1 })
+    await new Promise((r) => setTimeout(r, 30))
+    fs.rmSync(dir, { recursive: true, force: true })
+    expect(await b).toBeTruthy()
+    a!.release()
   })
 
   it('drops the tickets of processes that are gone', async () => {

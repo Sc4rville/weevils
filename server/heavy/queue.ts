@@ -146,12 +146,15 @@ export interface Slot {
  * Nothing heavy running here: the job starts at once whatever the load (the load is somebody else's, waiting would not
  * lower it). Otherwise: its turn in line, a free slot, and room on the machine.
  */
+let seq = 0
+
 export async function acquire(o: AcquireOptions): Promise<Slot | null> {
   const dir = o.dir ?? heavyDir()
   fs.mkdirSync(dir, { recursive: true })
   const pid = o.pid ?? process.pid
   const at = Date.now()
-  const file = path.join(dir, `${String(at).padStart(14, '0')}-${pid}-${Math.random().toString(36).slice(2, 6)}.json`)
+  // Named so that the order of names is the order of arrival (a counter for two tickets of one process in the same ms).
+  const file = path.join(dir, `${String(at).padStart(14, '0')}-${String(++seq).padStart(6, '0')}-${pid}-${Math.random().toString(36).slice(2, 6)}.json`)
   const ticket: Ticket = { pid, at, cmd: o.cmd.slice(0, 200), cwd: o.cwd, state: 'waiting', ...(o.from ? { from: o.from } : {}) }
   const write = (t: Ticket) => {
     fs.writeFileSync(`${file}.tmp`, JSON.stringify(t))
@@ -176,7 +179,13 @@ export async function acquire(o: AcquireOptions): Promise<Slot | null> {
       return true
     })
     if (go) return { release, waitedMs: Date.now() - at }
-    if (!fs.existsSync(file)) write(ticket) // removed from outside (a clean-up): back in line, same place
+    // The whole queue folder gone (deleted by hand, a test's temporary folder): no queue left to wait in, run now.
+    if (!fs.existsSync(dir)) return { release: () => undefined, waitedMs: Date.now() - at }
+    try {
+      if (!fs.existsSync(file)) write(ticket) // removed from outside (a clean-up): back in line, same place
+    } catch {
+      return { release, waitedMs: Date.now() - at }
+    }
     if (!told && o.onWait) {
       told = true
       const all = tickets(dir)

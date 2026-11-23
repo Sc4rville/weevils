@@ -61,6 +61,42 @@ it('leaves text paste and native selection alone, isolates text gestures, and pr
   await act(async () => field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   expect(send).toHaveBeenCalledTimes(1)
 })
+const pointer = (fine: boolean) => vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('coarse') ? !fine : fine && q.includes('fine'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }))
+const key = async (field: HTMLTextAreaElement, init: KeyboardEventInit) => {
+  const e = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...init })
+  await act(async () => { field.dispatchEvent(e) })
+  return e
+}
+it('on a computer, Enter sends from the roomy box and Shift+Enter or a composing word keeps writing', async () => {
+  pointer(true)
+  act(() => root.render(<Composer label="message" placeholder="message" multiline onSend={send} draft={{ text: 'hello', n: 1 }} />))
+  const field = host.querySelector('textarea')!
+  expect((await key(field, { shiftKey: true })).defaultPrevented).toBe(false)
+  expect((await key(field, { isComposing: true })).defaultPrevented).toBe(false)
+  expect(send).not.toHaveBeenCalled()
+  expect((await key(field, {})).defaultPrevented).toBe(true)
+  expect(send).toHaveBeenCalledWith('hello')
+  vi.unstubAllGlobals()
+})
+it('on a computer, Shift+Enter in the one-line box opens a new line in the roomy box; Enter then sends both lines', async () => {
+  pointer(true)
+  render({ text: 'first', n: 1 })
+  await key(host.querySelector('textarea')!, { shiftKey: true })
+  const roomy = host.querySelector('textarea')!
+  expect(roomy.classList.contains('horizontal-editor')).toBe(false)
+  expect(roomy.value).toBe('first\n')
+  expect(send).not.toHaveBeenCalled()
+  await key(roomy, {})
+  expect(send).toHaveBeenCalledWith('first')
+  vi.unstubAllGlobals()
+})
+it('on a phone, Return in the roomy box adds a line and only the send button sends', async () => {
+  pointer(false)
+  act(() => root.render(<Composer label="message" placeholder="message" multiline onSend={send} draft={{ text: 'hello', n: 1 }} />))
+  expect((await key(host.querySelector('textarea')!, {})).defaultPrevented).toBe(false)
+  expect(send).not.toHaveBeenCalled()
+  vi.unstubAllGlobals()
+})
 it('does not read the clipboard when persistent access is unavailable or denied', async () => {
   const read = vi.fn()
   vi.spyOn(document, 'hasFocus').mockReturnValue(true)

@@ -8,7 +8,7 @@ import { flowLines, flowParagraph, mermaidFlow } from './diagram'
 import { DiagramView } from './diagram-view'
 import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import { useCaptureSuggestion } from './capture-suggestion'
 import { pasteFiles, useDropTarget } from './file-drop'
@@ -358,6 +358,14 @@ const blobToB64 = (b: Blob) =>
     r.readAsDataURL(b)
   })
 
+/** A computer's keyboard sends with Enter and adds a line with Shift+Enter, in every box to write a message in. A
+ * phone or a tablet (a finger as its main pointer) keeps its own way: the on-screen Return adds a line, the send button
+ * sends. A computer is anything whose main pointer is not a finger: a mouse, a trackpad, or none reported (some
+ * browsers report none). Never while an input method is still composing a word (Japanese, Chinese, accents…). */
+export const keyboardSends = () => typeof matchMedia !== 'function' || !matchMedia('(pointer: coarse)').matches
+export const enterSends = (e: ReactKeyboardEvent<HTMLElement>) =>
+  e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing && e.keyCode !== 229 && keyboardSends()
+
 /** weevils next (next/) only: its box to write in is the roomy one everywhere (several lines, + then mic and send under
  *  the text). Off in the app. */
 export const composerLook = { multiline: false }
@@ -483,7 +491,8 @@ export function Composer({
     const form = e.currentTarget
     // Use the live value: mobile IME may commit its final characters on blur.
     if (submitting.current || busy || disabled) return
-    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    // On a phone the keyboard closes; on a computer the box keeps the focus, to write the next message at once.
+    if (!keyboardSends()) (document.activeElement as HTMLElement | null)?.blur?.()
     const original = field.current?.value ?? text
     const typed = original.trim()
     if (!typed && !files.length && !held) return
@@ -639,7 +648,12 @@ export function Composer({
             onKeyDown={(e) => {
               if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
               e.preventDefault()
-              if (!e.shiftKey) e.currentTarget.form?.requestSubmit()
+              if (!e.shiftKey) return e.currentTarget.form?.requestSubmit()
+              if (!keyboardSends()) return
+              // Shift+Enter on a computer: a new line, and the box becomes the roomy one that keeps it.
+              const box = e.currentTarget, from = box.selectionStart ?? box.value.length, to = box.selectionEnd ?? from
+              caret.current = from + 1
+              setText(`${box.value.slice(0, from)}\n${box.value.slice(to)}`)
             }}
             onTouchStart={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
@@ -661,6 +675,11 @@ export function Composer({
             onChange={(e) => setText(e.target.value)}
             onFocus={onFocus}
             onPaste={onPaste}
+            onKeyDown={(e) => {
+              if (!enterSends(e)) return
+              e.preventDefault()
+              e.currentTarget.form?.requestSubmit()
+            }}
             placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
             aria-label={label}
             autoComplete="off"

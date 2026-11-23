@@ -8,7 +8,7 @@ import { api } from '../api'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/relay'
 import { useApp } from './app-context'
-import { Line, Prose } from './bits'
+import { Line, Prose, enterSends } from './bits'
 import { Shell } from './shell'
 import { threadsOn } from './threads-on'
 
@@ -136,7 +136,7 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
               if (note.trim()) act('adjust', note.trim())
             }}
           >
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.adjustPlaceholder} aria-label={t.adjustPlaceholder} rows={2} />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (enterSends(e)) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }} placeholder={t.adjustPlaceholder} aria-label={t.adjustPlaceholder} rows={2} />
             <button className="link" disabled={!note.trim() || !!busy}>
               {t.send}
             </button>

@@ -60,6 +60,7 @@ import { ProviderHealth } from './provider-health.ts'
 import { preferredTool, providerStatus, setProviderRoute } from './provider.ts'
 import type { InfraDetail, MachineBrief, MachineFacts, Reach, TokenRate, UsageToday } from '../shared/infra.ts'
 import { facts } from './discover.ts'
+import { applyKeys, factoryRoutes, talkContext, type FactoryDeps } from './your-factory.ts'
 import { Setup, installPlan, shellEnv, which, writeConfig } from './setup.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
@@ -95,6 +96,8 @@ import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 import { startMoves } from './moves-app.ts'
 
 const w = new Weevils()
+// Your factory: API keys turned off stay out of the environment from the start (server/your-factory.ts).
+applyKeys(w.factory.intelOff, CONFIG_FILE)
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
 /** A signed brief's spoken line: the sender's own (`weevils send|new --say`), else asked of the cheap model at once. */
 const saysFor = (text: string, say: unknown) => (typeof say === 'string' && say.trim() ? w.says.given(text, say) : w.says.want(text))
@@ -189,6 +192,8 @@ const readMailKeys = () => {
 readMailKeys()
 mailSeen = mailKeys()
 fs.watchFile(CONFIG_FILE, { interval: 3000 }, () => {
+  // Your factory: a key turned off stays out of the environment, even written again (server/your-factory.ts).
+  applyKeys(w.factory.intelOff, CONFIG_FILE)
   readMailKeys()
   if (mailKeys() === mailSeen) return
   resetAuthors()
@@ -373,6 +378,8 @@ if (foryou) {
 
 let codexSeen = { at: 0, ok: false }
 const codexReady = () => {
+  // Turned off in Your factory: never handed work (server/your-factory.ts).
+  if (w.factory.intelOff.includes('codex')) return false
   if (Date.now() - codexSeen.at > 30_000) codexSeen = { at: Date.now(), ok: !!which('codex') && fs.existsSync(path.join(path.dirname(CODEX_DIR), 'auth.json')) }
   return codexSeen.ok
 }
@@ -383,6 +390,7 @@ const claudeAccounts = new ClaudeAccounts({
 })
 setAccounts(claudeAccounts)
 const health = new ProviderHealth(path.join(DATA_DIR, 'provider-health.json'), async () => ({ ...(await quotas()), claude: await claudeAccounts.quota() }), tool => {
+  if (w.factory.intelOff.includes(tool)) return false
   const s = providerStatus(tool)
   return s.installed && s.logged
 })
@@ -985,6 +993,7 @@ const routes: [string, RegExp, Handler][] = [
         tool,
         text: String(body.text ?? ''),
         machineId: body.machineId ? String(body.machineId) : undefined,
+        ...(typeof body.title === 'string' && body.title.trim() ? { title: body.title } : {}),
         from: trustedFrom(req, body, sourceAuthor),
         sourceThreadId: trustedSource(req,body,sourceAuthor),
       }),
@@ -1252,7 +1261,45 @@ const routes: [string, RegExp, Handler][] = [
     w.pinRepo(String(body.repo ?? ''), !!body.pinned)
     json(res, 200, { ok: true })
   }],
+  // Your factory (server/your-factory.ts): machines, intelligence, projects, in weevils next's side bar. Main machine only.
+  ...(ORCHESTRATOR ? factoryRoutes(factoryDeps(), json, readBody) : []),
 ]
+
+/** What Your factory reads and changes, all of it weevils' own (server/your-factory.ts). */
+function factoryDeps(): FactoryDeps {
+  const farFacts = new Map<string, { at: number; v: MachineFacts | null }>()
+  return {
+    state: () => w.factory,
+    change: (fn) => w.setFactory(fn),
+    machines: () => w.snapshot().machines,
+    hereId: MACHINE.id,
+    briefs: async () => {
+      const here = brief()
+      const far = await Promise.all(w.remotes.filter((r) => r.online).map((r) =>
+        r.call<{ machines: MachineBrief[] }>('GET', '/api/infra/brief?local=1').then((d) => ({ ...d.machines[0], id: r.snap?.machines[0]?.id ?? r.id })).catch(() => null)))
+      return [here, ...far.filter((b): b is MachineBrief => !!b)]
+    },
+    facts: async (id) => {
+      if (id === MACHINE.id) return facts()
+      const hit = farFacts.get(id)
+      if (hit && Date.now() - hit.at < 3600_000) return hit.v
+      const remote = w.remoteById(id)
+      const v = remote ? await remote.call<MachineFacts>('GET', '/api/infra/facts').catch(() => null) : null
+      farFacts.set(id, { at: Date.now(), v })
+      return v
+    },
+    sessions: () => w.snapshot().sessions,
+    stop: (id) => w.key(id, 'esc'),
+    quotas: async () => ({ ...(await quotas()), claude: await claudeAccounts.quota() }),
+    accounts: () => (accountsOn() ? claudeAccounts.view() : undefined),
+    codex: codexReady,
+    configFile: CONFIG_FILE,
+    pin: (repo, pinned) => w.pinRepo(repo, pinned),
+    pinned: () => w.pinnedRepos,
+    startTalk: (machineId, name, kind, provider, text) =>
+      w.create({ projectId: '', machineId, tool: w.factory.intelOff.includes('codex') ? 'claude' : preferredTool(), text: `${text.trim()}\n\n${talkContext(name, kind, provider)}`, title: name }),
+  }
+}
 
 /** Comment les autres machines joignent celle-ci : leurs alias SSH qui pointent vers son IP, son reverse DNS ou son nom. */
 async function reachOf(f: MachineFacts, id: string): Promise<Reach[]> {

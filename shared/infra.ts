@@ -15,6 +15,8 @@ export interface MachineBrief {
   level: Level
   /** weevboss (l'orchestrateur) tourne ici. */
   weevboss: boolean
+  /** Disk used, in % (absent: an older weevilsd). */
+  disk?: number
 }
 
 /** Une minute de l'historique du jour. */

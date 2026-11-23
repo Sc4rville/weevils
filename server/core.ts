@@ -37,6 +37,7 @@ import type { CatalogEntry } from './classify.ts'
 import { MISC, familyOf, place, projectLabel } from './projects.ts'
 import { locale } from '../shared/i18n.ts'
 import M from './i18n/core.ts'
+import type { FactoryState } from './your-factory.ts'
 import MuxM from './i18n/mux.ts'
 import P from './i18n/push.ts'
 import { setCartesiaVoice } from './fast.ts'
@@ -153,7 +154,13 @@ interface Persisted {
   announced?: (string | [string, number])[]
   archived?: string[]
   closedByUs?: [string, number][]
+  /** Your factory (docs/next-interaction.md): machine names given in the app, machines and intelligence turned off,
+   *  projects taken out of the side bar, each machine's own conversation. */
+  factory?: FactoryState
 }
+
+/** Your factory's settings, on the main machine (state.json; server/your-factory.ts). */
+const freshFactory = (): FactoryState => ({ names: {}, machinesOff: [], intelOff: [], hidden: [], talks: {} })
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
 /** TEMPORARY: the new interface's address, for the shortcut in the settings (src/ui/next-shortcut.tsx). https only. */
@@ -411,6 +418,7 @@ export class Weevils {
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
   pinnedRepos: string[] = []
+  factory: FactoryState = freshFactory()
   /** Accueil et branchements (server/setup.ts), posé par index.ts : ses messages se mêlent au fil de weevboss. */
   setup: Setup | null = null
   /** Clé des pages statiques des repos (index.ts, dérivée du code d'accès). */
@@ -514,6 +522,19 @@ export class Weevils {
     this.bump()
   }
 
+  /** Your factory: change its settings (a name given, a machine or an intelligence turned off, a project taken out of
+   *  the side bar, a machine's conversation), kept in state.json and shown at once. */
+  setFactory(change: (f: FactoryState) => void) {
+    change(this.factory)
+    this.persist()
+    this.snap = null
+    this.bump()
+  }
+  /** The machine a session would start on is turned off in Your factory. */
+  machineOff(id: string | undefined) {
+    return this.factory.machinesOff.includes(id || MACHINE.id)
+  }
+
   async newRepo(name: string, description: string) {
     const r = await createRepo(name, description, PROJECTS_DIR)
     this.pinRepo(r.name, true)
@@ -614,6 +635,7 @@ export class Weevils {
       this.titles = new Map((p.titles ?? []).filter(([, v]: [string, Titled]) => realTitle(v?.title)))
       this.orchestratorId = p.orchestratorId ?? null
       this.pinnedRepos = p.pinnedRepos ?? []
+      this.factory = { ...freshFactory(), ...(p.factory ?? {}) }
       this.voiceId = p.voiceId
       this.cuts = new Map(p.cuts ?? [])
       this.cleared = new Map(p.cleared ?? [])
@@ -747,6 +769,7 @@ export class Weevils {
         announced: [...this.announced].filter(([, at]) => recent(at)),
         archived: [...this.archived],
         closedByUs: [...this.closedByUs].filter(([, at]) => recent(at)),
+        factory: this.factory,
       }
       fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
     } catch {
@@ -1421,7 +1444,7 @@ export class Weevils {
         { ...MACHINE, online: true },
         // Une machine distante : seulement ce qui se calcule (nom, en ligne), jamais sa description.
         ...this.remotes.filter((r) => r.snap?.machines[0]?.id !== MACHINE.id).map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online })),
-      ].map((m) => [m.id, m])).values()],
+      ].map((m) => [m.id, { ...m, name: this.factory.names[m.id] || m.name, ...(this.factory.machinesOff.includes(m.id) ? { off: true } : {}) }])).values()],
       projects: this.withConversationProjects(this.projects(sessions, remote.flatMap((r) => r.snap!.projects)), now),
       sessions,
       h24: [...this.h24, ...remote.flatMap((r) => r.snap!.h24)],
@@ -1437,6 +1460,7 @@ export class Weevils {
       devil: { enabled: !!devilConfig(), working: devilWorking() },
       setup: this.setup?.flags(),
       pinnedRepos: this.pinnedRepos,
+      hiddenProjects: this.factory.hidden,
       memoryCount: this.memory?.count,
       asksOpen: this.ledger?.openCount,
       optimizers: this.optimizers?.list() ?? [],
@@ -2002,13 +2026,16 @@ export class Weevils {
     return capture(pane.name)
   }
 
-  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string; sourceThreadId?:string }): Promise<{ id: string }> {
+  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string; sourceThreadId?:string; title?: string }): Promise<{ id: string }> {
     const author = normalizeFrom(input.from)
     if (author && input.text) input = { ...input, text: signAs(author, input.text, input.sourceThreadId) }
     const project = this.snapshot().projects.find((p) => p.id === input.projectId)
     if(project?.kind==='installation')throw new OutboxError(403,tr(M).installationReadOnly)
     const repoGuess = input.repo ?? project?.repos[0]
     const machineId = input.machineId ?? (repoGuess ? project?.where[repoGuess] : undefined)
+    // Your factory: nothing new starts on a machine you turned off, nor with an intelligence you turned off.
+    if (this.machineOff(machineId)) throw new OutboxError(409, tr(M).machineOff(this.snapshot().machines.find((m) => m.id === (machineId || MACHINE.id))?.name ?? machineId ?? MACHINE.name))
+    if (this.factory.intelOff.includes(input.tool)) throw new OutboxError(409, tr(M).intelOff(input.tool === 'codex' ? 'Codex' : 'Claude'))
     const remote = this.remoteById(machineId)
     if (remote) return remote.call('POST', '/api/sessions', { ...input, from: undefined, repo: repoGuess, machineId: remote.snap?.machines[0]?.id })
     const repo = repoGuess ?? (this.repoRoot(input.projectId) ? input.projectId : undefined)
@@ -2016,7 +2043,7 @@ export class Weevils {
     if (!fs.existsSync(cwd)) throw new Error(tr(M).dirNotFound(cwd))
     this.assertSourceExecution(cwd)
     let text = input.text.trim()
-    const title = text ? (parseSigned(text)?.text ?? text).replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
+    const title = input.title?.trim().slice(0, 60) || (text ? (parseSigned(text)?.text ?? text).replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession)
     text = withAppLocale(text, true)
     if (input.tool === 'claude') {
       if (structuredOn()) {

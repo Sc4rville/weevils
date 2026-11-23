@@ -74,7 +74,7 @@ export function PageView({ page }: { page: Page }) {
     case 'project':
       return <ProjectPage projectId={page.projectId} />
     case 'machine':
-      return <InfraPage projectId={page.projectId || undefined} />
+      return <InfraPage projectId={page.projectId || undefined} machine={page.machine} />
     case 'fs':
       return <FsPage machine={page.machine} path={page.path} />
     case 'fsfile':

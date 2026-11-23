@@ -30,12 +30,14 @@ import { call, useAuth, useSnapshot } from './data.ts'
 import { Sky } from './sky.tsx'
 import { Chat } from './chat.tsx'
 import { slide } from './moves.ts'
+import { foldPrefs, saveFold } from './fold.ts'
 import { registerWorker, useWorker } from './worker.ts'
 import { pageLink } from '../../shared/pages.ts'
 import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
+import { FactorySection, NextMachinePage, inSideBar } from './factory.tsx'
 import { AutoIcon } from '../../src/ui/factory.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
@@ -128,13 +130,6 @@ const alone = (snap: Snapshot, s: Session) => s.status === 'working' && !!autoOf
 /** Reserved project ids (server/projects.ts): automations' own folder, and Misc. */
 const AUTO_DIR = 'auto'
 const MISC = 'divers'
-const FOLDED = 'weevils-collapsed'
-function foldPrefs(): Record<string, boolean> {
-  try { return JSON.parse(localStorage.getItem(FOLDED) ?? '{}') as Record<string, boolean> } catch { return {} }
-}
-function saveFold(id: string, v: boolean) {
-  try { localStorage.setItem(FOLDED, JSON.stringify({ ...foldPrefs(), [id]: v })) } catch { /* no storage */ }
-}
 
 function ProjectGroup({ snap, project, color, current, open, page, boss }: { snap: Snapshot; project: Project; color: string; current: string | null; open: (id: string | null) => void; page: (p: Page) => void; boss?: boolean }) {
   const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === project.id)
@@ -220,8 +215,10 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
   const busy = (p: Project) => snap.sessions.some((s) => s.projectId === p.id && !s.archived && live(s))
   // « auto » is where automations without a repo run: backend, never a project of yours (an automation shows on its
   // own row below). « Misc » shows only when one of its conversations needs you.
+  // Your factory decides which projects are here (factory.tsx inSideBar): pinned ones always, the others while they
+  // have conversations, unless taken out (then only while one of them works or needs you).
   const projects = snap.projects
-    .filter((p) => p.id !== AUTO_DIR && snap.sessions.some((s) => s.projectId === p.id && !s.archived))
+    .filter((p) => p.id !== AUTO_DIR && (p.id === MISC ? snap.sessions.some((s) => s.projectId === p.id && !s.archived) : inSideBar(snap, p)))
     .filter((p) => p.id !== MISC || snap.sessions.some((s) => s.projectId === p.id && !s.archived && (s.status === 'needs_user' || s.status === 'interrupted')))
     .sort((a, b) => mainProjectRank(a, busy(a) ? 0 : 1) - mainProjectRank(b, busy(b) ? 0 : 1) || last(b) - last(a))
   const self = snap.projects.find((p) => selfProject(p))
@@ -294,9 +291,11 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
               </Collapse>
             </section>
           )}
-          {/* Settings: the app's own band (bands.tsx FootBand), every line of it, so whatever the app adds there shows here
-              too; its last line goes to the classic app. */}
-          <div className="nx-settings"><FootBand switchTo="classic" /></div>
+          {/* Your factory: machines, intelligence, projects and the global Tempo (factory.tsx). */}
+          <FactorySection snap={snap} colors={colors} page={page} toBoss={close} />
+          {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
+              shows here too; machines, subscriptions and Tempo live in Your factory; its last line goes to the classic app. */}
+          <div className="nx-settings"><FootBand switchTo="classic" factory /></div>
         </div>
       </motion.nav>
     </>
@@ -613,7 +612,7 @@ function App() {
         <AnimatePresence>
           {pages.map(({ p }, i) => {
             const key = `${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'file' ? p.path : p.kind === 'project' ? p.projectId : p.kind === 'session' || p.kind === 'auto' ? p.id : ''}`
-            return p.kind === 'project' ? <NextProjectPage key={key} projectId={p.projectId} /> : p.kind === 'auto' ? <NextAutoPage key={key} id={p.id} /> : <PageView key={key} page={p} />
+            return p.kind === 'project' ? <NextProjectPage key={key} projectId={p.projectId} /> : p.kind === 'auto' ? <NextAutoPage key={key} id={p.id} /> : p.kind === 'machine' && p.machine ? <NextMachinePage key={key} id={p.machine} /> : <PageView key={key} page={p} />
           })}
         </AnimatePresence>
       </div>

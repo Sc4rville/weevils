@@ -669,13 +669,14 @@ function machinesMeta(machines: { online?: boolean }[]) {
   return t.onlineOf(on, machines.length)
 }
 
-/** switchTo: the other interface its last line opens (weevils next from here; next shows this band with « classic »). */
+/** switchTo: the other interface its last line opens (weevils next from here; next shows this band with « classic »).
+ *  factory: machines, subscriptions and Tempo live in Your factory instead (weevils next's side bar). */
 const SETTINGS_FOLD = 'weevils-settings-open'
 /** Settings stay folded to their one band unless this device last left them open. */
 export const settingsFolded = () => { try { return localStorage.getItem(SETTINGS_FOLD) !== '1' } catch { return true } }
 const saveSettingsFolded = (folded: boolean) => { try { if (folded) localStorage.removeItem(SETTINGS_FOLD); else localStorage.setItem(SETTINGS_FOLD, '1') } catch { /* private mode: this visit only */ } }
 
-export function FootBand({ switchTo = 'next' }: { switchTo?: 'next' | 'classic' } = {}) {
+export function FootBand({ switchTo = 'next', factory = false }: { switchTo?: 'next' | 'classic'; factory?: boolean } = {}) {
   const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   // The relay writes « until 6 pm » in this device's time zone (the Codex relay row moved to the subscriptions page).
@@ -702,13 +703,13 @@ export function FootBand({ switchTo = 'next' }: { switchTo?: 'next' | 'classic' 
         <span className="chars meta strong">{offline ? t.reconnecting : ''}</span>
       </div>
       <Collapse open={!folded}>
-      {snap.machines.length > 0 && (
+      {!factory && snap.machines.length > 0 && (
         <Line ch="@" value={snap.machines.length === 1 ? (snap.machines[0].online === false ? `${snap.machines[0].name} · ${t.offline}` : snap.machines[0].name) : machinesMeta(snap.machines)} onClick={() => push({ kind: 'machine', projectId: '' })}>
           {t.machines}
         </Line>
       )}
-      <UsageLine />
-      <TempoLine />
+      {!factory && <UsageLine />}
+      {!factory && <TempoLine />}
       <Line ch="~" go={null} value={t.themeName(theme)} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>
         {t.themeLabel}
       </Line>

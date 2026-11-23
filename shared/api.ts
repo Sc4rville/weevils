@@ -273,6 +273,8 @@ export interface Machine {
   id: string
   name: string
   online?: boolean
+  /** Turned off in Your factory: nothing new starts there. */
+  off?: boolean
 }
 
 export interface H24Activity {
@@ -577,6 +579,9 @@ export interface Snapshot {
   setup?: { provider?: Tool; ready?: boolean; codex?: boolean; providers?: { claude: boolean; codex: boolean }; claude: boolean; voice: boolean; dictation: boolean; github: boolean; welcomed: boolean }
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
+  /** Projects taken out of the side bar in Your factory (they come back while one of their conversations works or
+   *  needs you). */
+  hiddenProjects?: string[]
   /** Nombre de souvenirs (server/memory.ts) ; la liste se lit avec GET /api/memory. Absent hors machine principale (pas de mémoire). */
   memoryCount?: number
   /** Open requests in weevboss's ledger (server/boss-ledger.ts), main machine only. */

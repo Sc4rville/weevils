@@ -18,7 +18,7 @@ export type Page =
   | { kind: 'archived' }
   | { kind: 'files'; projectId: string; repo?: string; dir?: string }
   | { kind: 'file'; projectId: string; repo: string; path: string; line?: number }
-  | { kind: 'machine'; projectId: string }
+  | { kind: 'machine'; projectId: string; machine?: string }
   /** A project's own page: what runs now, its to-do, its sessions (src/ui/project-screen.tsx). */
   | { kind: 'project'; projectId: string }
   | { kind: 'new'; projectId: string }

@@ -328,7 +328,8 @@ export function startInfra() {
 
 export function brief() {
   const c = current ?? measure()
-  return { id: MACHINE.id, name: MACHINE.name, online: true, cpu: c.cpu, mem: c.mem, level: levelOf(c.cpu, c.mem), weevboss: ORCHESTRATOR }
+  const dk = disk()
+  return { id: MACHINE.id, name: MACHINE.name, online: true, cpu: c.cpu, mem: c.mem, level: levelOf(c.cpu, c.mem), weevboss: ORCHESTRATOR, ...(dk.total ? { disk: Math.round((dk.used / dk.total) * 100) } : {}) }
 }
 
 /** Les minutes saturées, regroupées en épisodes (deux minutes d'accalmie au plus entre deux). */

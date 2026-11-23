@@ -158,8 +158,8 @@ export function TempoLine() {
   )
 }
 
-/** The slim band that slides in from the side after a change. */
-function TempoBand({ v, mode, repo, onOpen }: { v: TempoView; mode: TempoMode | null; repo: string | null; onOpen: () => void }) {
+/** The slim band that slides in from the side after a change (also after a move of next's Tempo cells). */
+export function TempoBand({ v, mode, repo, onOpen }: { v: TempoView; mode: TempoMode | null; repo: string | null; onOpen: () => void }) {
   const t = useT(M)
   const m = mode ? v.modes.find((x) => x.id === mode) : undefined
   const { line, sure } = m ? bandLine(t, m) : { line: '', sure: '' }

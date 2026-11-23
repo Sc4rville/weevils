@@ -1,0 +1,133 @@
+// Your factory (server/your-factory.ts): what it reads is weevils' own, and its switches really switch.
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import type { Session } from '../shared/api.ts'
+import type { QuotaInfo } from '../shared/infra.ts'
+import { applyKeys, factoryRoutes, factoryView, health, leftOf, machineKind, panelUrl, type FactoryDeps, type FactoryState } from './your-factory.ts'
+
+const q = (windows: QuotaInfo['windows'], plan?: string): QuotaInfo => ({ ok: true, windows, source: 'test', at: 1, ...(plan ? { plan } : {}) })
+const sess = (id: string, status: Session['status'], machineId?: string) => ({ id, status, machineId, archived: false }) as unknown as Session
+
+function deps(over: Partial<FactoryDeps> = {}): FactoryDeps & { st: FactoryState } {
+  const st: FactoryState = { names: {}, machinesOff: [], intelOff: [], hidden: [], talks: {} }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'yf-'))
+  const d = {
+    st,
+    state: () => st,
+    change: (fn: (f: FactoryState) => void) => fn(st),
+    machines: () => [{ id: 'box', name: 'box', online: true }, { id: 'laptop', name: 'laptop', online: true }],
+    hereId: 'box',
+    briefs: async () => [{ id: 'box', name: 'box', online: true, cpu: 20, mem: 40, disk: 88, level: 'ok' as const, weevboss: true }],
+    facts: async (id: string) => (id === 'box' ? { virt: 'kvm', provider: 'Hostinger', publicIp: true } : { laptop: true, publicIp: false }) as never,
+    sessions: () => [sess('a', 'working'), sess('b', 'working', 'laptop'), sess('c', 'idle')],
+    stop: vi.fn(async () => {}),
+    quotas: async () => ({ claude: q([{ kind: 'session', percent: 30, resetsAt: 5 }, { kind: 'week', percent: 62, resetsAt: 9 }], 'max'), codex: q([]) }),
+    accounts: () => undefined,
+    codex: () => true,
+    configFile: path.join(dir, 'env'),
+    env: {} as NodeJS.ProcessEnv,
+    pin: vi.fn(),
+    pinned: () => [] as string[],
+    startTalk: vi.fn(async () => ({ id: 'talk-1' })),
+    ...over,
+  }
+  return d
+}
+
+function route(d: FactoryDeps, method: string, url: string, body: unknown = {}) {
+  const r = factoryRoutes(d, (_res, status, out) => void (result = { status, out }), async () => body)
+  let result: { status: number; out: any } = { status: 0, out: null }
+  const hit = r.find(([m, re]) => m === method && re.test(url))!
+  return Promise.resolve(hit[2]({} as never, {} as never, new URL(`http://x${url}`), [])).then(() => result)
+}
+
+describe('what the factory reads', () => {
+  it('tells a server at a host from a computer of yours, never guessing', () => {
+    expect(machineKind({ virt: 'kvm', publicIp: true })).toBe('server')
+    expect(machineKind({ laptop: true })).toBe('pc')
+    expect(machineKind({ virt: 'wsl' })).toBe('pc')
+    expect(machineKind(null)).toBeNull()
+    expect(panelUrl('Hostinger International')).toMatch(/^https:\/\/hpanel\.hostinger\.com/)
+    expect(panelUrl('Some Unknown Host')).toBeUndefined()
+  })
+  it('folds processor, memory and disk into one health figure', () => {
+    expect(health({ cpu: 10, mem: 30, disk: 88 })).toEqual({ load: 88, level: 'warn' })
+    expect(health({ cpu: 95, mem: 30 })).toEqual({ load: 95, level: 'crit' })
+    expect(health({ cpu: 10, mem: 20, disk: 40 }).level).toBe('ok')
+  })
+  it('says what is left of the fullest window', () => {
+    expect(leftOf(q([{ kind: 'session', percent: 30, resetsAt: 5 }, { kind: 'week', percent: 62, resetsAt: 9 }]))).toEqual({ left: 38, resetsAt: 9 })
+    expect(leftOf(q([]))).toBeNull()
+  })
+  it('lists the machines with their health, kind and host, and the intelligence with what is left', async () => {
+    const d = deps()
+    fs.writeFileSync(d.configFile, 'OPENAI_API_KEY=sk-test\n')
+    const v = await factoryView(d)
+    expect(v.machines[0]).toMatchObject({ id: 'box', kind: 'server', here: true, load: 88, level: 'warn', provider: 'Hostinger' })
+    expect(v.machines[0].panel).toMatch(/hostinger/)
+    expect(v.machines[1]).toMatchObject({ id: 'laptop', kind: 'pc', load: null })
+    expect(v.machines[1].panel).toBeUndefined()
+    expect(v.intelligence.map((x) => x.id)).toEqual(['claude', 'codex', 'key:OPENAI_API_KEY'])
+    expect(v.intelligence[0]).toMatchObject({ left: 38, toggle: false, plan: 'max' })
+    expect(v.intelligence[1]).toMatchObject({ left: null, toggle: true })
+  })
+})
+
+describe('what the factory switches', () => {
+  it('turns a machine off, stopping only what works on it, and back on', async () => {
+    const d = deps()
+    const r = await route(d, 'POST', '/api/factory/machine', { id: 'laptop', off: true })
+    expect(r.out).toEqual({ ok: true, stopped: 1 })
+    expect(d.stop).toHaveBeenCalledWith('b')
+    expect(d.st.machinesOff).toEqual(['laptop'])
+    await route(d, 'POST', '/api/factory/machine', { id: 'laptop', off: false })
+    expect(d.st.machinesOff).toEqual([])
+  })
+  it('renames a machine in place, and an empty name gives its own back', async () => {
+    const d = deps()
+    await route(d, 'POST', '/api/factory/machine', { id: 'box', name: '  My   server ' })
+    expect(d.st.names).toEqual({ box: 'My server' })
+    await route(d, 'POST', '/api/factory/machine', { id: 'box', name: '' })
+    expect(d.st.names).toEqual({})
+    expect((await route(d, 'POST', '/api/factory/machine', { id: 'nope', name: 'x' })).status).toBe(400)
+  })
+  it('takes a key out of the environment without deleting it, and puts it back', async () => {
+    const d = deps()
+    fs.writeFileSync(d.configFile, 'OPENAI_API_KEY=sk-test\n')
+    const env: NodeJS.ProcessEnv = { OPENAI_API_KEY: 'sk-test' }
+    applyKeys(['key:OPENAI_API_KEY'], d.configFile, env)
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    applyKeys([], d.configFile, env)
+    expect(env.OPENAI_API_KEY).toBe('sk-test')
+    expect(fs.readFileSync(d.configFile, 'utf8')).toContain('OPENAI_API_KEY=sk-test')
+  })
+  it('never switches Claude off (it carries weevboss), Codex yes', async () => {
+    const d = deps()
+    expect((await route(d, 'POST', '/api/factory/intelligence', { id: 'claude', off: true })).status).toBe(400)
+    await route(d, 'POST', '/api/factory/intelligence', { id: 'codex', off: true })
+    expect(d.st.intelOff).toEqual(['codex'])
+  })
+  it('pins a project into the side bar with the app’s own pin, and takes it out', async () => {
+    const pinned: string[] = []
+    const d = deps({ pinned: () => pinned, pin: vi.fn((r: string, on: boolean) => void (on ? pinned.push(r) : pinned.splice(pinned.indexOf(r), 1))) })
+    await route(d, 'POST', '/api/factory/project', { id: 'shop', repos: ['shop-app', 'shop-api'], shown: true })
+    expect(pinned).toEqual(['shop-app'])
+    expect(d.st.hidden).toEqual([])
+    await route(d, 'POST', '/api/factory/project', { id: 'shop', repos: ['shop-app', 'shop-api'], shown: false })
+    expect(pinned).toEqual([])
+    expect(d.st.hidden).toEqual(['shop'])
+  })
+  it('starts a machine’s own conversation once, then finds it again', async () => {
+    let sessions = [sess('a', 'working')]
+    const d = deps({ sessions: () => sessions })
+    const r = await route(d, 'POST', '/api/factory/talk', { machine: 'laptop', text: 'how is the disk?' })
+    expect(r.out).toEqual({ id: 'talk-1' })
+    expect(d.startTalk).toHaveBeenCalledWith('laptop', 'laptop', 'pc', undefined, 'how is the disk?')
+    expect(d.st.talks).toEqual({ laptop: 'talk-1' })
+    sessions = [...sessions, sess('talk-1', 'idle')]
+    await route(d, 'POST', '/api/factory/talk', { machine: 'laptop', text: 'again' })
+    expect(d.startTalk).toHaveBeenCalledTimes(1)
+  })
+})

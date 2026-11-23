@@ -34,6 +34,30 @@ once, and the code follows. Behaviour is never flipped back and forth.
   (`src/ui/factory-page.tsx`): the same small flip goes to its conversation and back. An automation that earned it
   shows one quiet line under its overview's facts, « Ready to become a factory »: a tap unfolds what the unlock does
   and its two answers. Nothing else in next says « factory »: no badge, no counter.
+- **Your factory** (2026-11-23): one band right under Autonomous, the same height, the same staircase, folded until
+  opened (and remembered). Open, it holds four bands, each one tone step below the last: **Machines**, **Intelligence**,
+  **Projects**, and the global **Tempo**. A level's name unfolds its own bands the same way (one per thing, a step
+  further in), its last band a « + ». No section titles, no boxes, no buttons beyond the switches.
+  - **Machines**: one band per machine: a computer or a server icon (what the machine found out about itself), its
+    name (hold it to rename it in place), a thin health bar under the name (the fullest of processor, memory and disk;
+    ink, then orange, then red; no figures there), and on the right a plain rectangular switch. Off: nothing new starts
+    there (sessions, automations); with agents at work, one short line asks first and they stop. While agents work on
+    it, its icon slowly moves through the colours. A tap opens the machine's own conversation: its health in figures
+    and, for a server whose host is known, a link to the host's dashboard, on top; then the field, and once written to,
+    the app's own session page (run on that machine). « + » brings weevboss's screen with its « add a machine » setup.
+  - **Intelligence**: one band per subscription or API key, its provider's logo in monochrome (the app's own), its plan,
+    a power bar under its name (what is left of its fullest window, from the provider's own meter: the working green,
+    then orange, then red) and a switch where turning it off is possible (Codex: never handed work; a key: taken out of
+    weevils' environment, never deleted). Claude has no switch: it carries weevboss. A tap on a subscription opens the
+    app's subscriptions page. « + » unfolds what can be added (another Claude account, Codex, the API keys missing); a
+    tap brings weevboss's screen: a sign-in through weevboss, a key only ever in the masked field.
+  - **Projects**: one band per project and per repo of this machine, its own colour, and a switch: on, it is pinned (the
+    app's own pin) and stays in the side bar even with no conversation; off, it leaves the side bar, and comes back by
+    itself while one of its conversations works or needs you. A project never touched shows while it has conversations.
+  - **Tempo**: the global Tempo as six cells (Standby to Swarm), filled up to the mode in use; you drag a finger across
+    to change it (a tap does nothing); past the left edge is Pause. Locked modes stay out of reach and, while the finger
+    is on one, say what opens it. After a change the app's own slim Tempo band slides in with what it will use.
+  Machines, subscriptions and Tempo then leave next's settings (the classic app keeps them there).
 - **A project's « > » is its requests, one column** (2026-11-21). One band per request, the Automations
   staircase (one colour, one small tone step per band, no lines, no gaps, no shadows). A band is a short title, a
   small star before it while its session works (the star's place is always kept, so titles never move), and a small
@@ -111,8 +135,8 @@ once, and the code follows. Behaviour is never flipped back and forth.
 
 next takes the classic app's light features as they are, never as copies, so they follow by themselves
 (scripts/next-parity.test.ts keeps them):
-- **Settings**: the app's settings band whole (machines, subscriptions, Tempo, theme, language, requests, log out); its
-  last line goes to the classic app.
+- **Settings**: the app's settings band (theme, language, requests, log out; machines, subscriptions and Tempo are in
+  Your factory); its last line goes to the classic app.
 - **Notifications**: the app's service worker and push subscription; a tap opens its session, or weevboss.
 - **Page links** (/p/…) opened outside the app: the page, once signed in.
 

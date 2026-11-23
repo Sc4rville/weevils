@@ -190,7 +190,7 @@ run_systemd() {
   check "secondary: weevilsd and tunnel active, no weevboss, no app build" as_2 'systemctl --user is-active weevilsd weevils-tunnel && grep -qx WEEVILS_ORCHESTRATOR=0 ~/.config/weevils/env && grep -qx WEEVILS_MACHINE=laptop ~/.config/weevils/env && test ! -e weevils/dist/index.html'
   check "main: WEEVILS_REMOTES registered by the secondary" as_test 'grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
   check "main: the second machine is online in its snapshot" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"laptop\" and .online==true)" && exit 0; sleep 1; done; exit 1'
-  check "secondary: units name the main host given, nothing hardcoded" as_2 'grep -qx "ExecStart=%h/.local/bin/weevils-service tunnel" ~/.config/systemd/user/weevils-tunnel.service && grep -qx WEEVILS_MAIN_HOST=mainbox ~/.config/weevils/service.conf && pgrep -u test -f "ssh -NT .*-R 127.0.0.1:4192:127.0.0.1:4179 mainbox" >/dev/null && ! grep -rqiE "\bvps\b|scarville|scarville" ~/.config/systemd/user/ ~/.config/weevils/'
+  check "secondary: units name the main host given, nothing hardcoded" as_2 'grep -qx "ExecStart=%h/.local/bin/weevils-service tunnel" ~/.config/systemd/user/weevils-tunnel.service && grep -qx WEEVILS_MAIN_HOST=mainbox ~/.config/weevils/service.conf && pgrep -u test -f "ssh -T .*-R 127.0.0.1:4192:127.0.0.1:4179 mainbox" >/dev/null && ! grep -rqiE "\bvps\b|scarville|scarville" ~/.config/systemd/user/ ~/.config/weevils/'
   check "secondary re-run is idempotent (same tunnel port)" as_2 'cd weevils && ./install.sh --yes --secondary mainbox >/dev/null && grep -q "WEEVILS_TUNNEL_PORT=4192" ~/.config/weevils/service.conf'
   check "main: still a single remote entry" as_test '[ "$(grep -c "^WEEVILS_REMOTES=" ~/.config/weevils/env)" = 1 ] && grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
 
@@ -247,7 +247,7 @@ run_systemd() {
     say "systemd: the third machine's connection dies without a word (sleep, another network): it comes back by itself"
     # Its network goes, the tunnel's ssh is killed meanwhile: the main machine never hears of it and keeps the port.
     local tpid
-    tpid=$(docker exec "$c3" bash -c 'pgrep -u test -f "ssh -NT .*-R 127.0.0.1:4193"' | head -1)
+    tpid=$(docker exec "$c3" bash -c 'pgrep -u test -f "ssh -T .*-R 127.0.0.1:4193"' | head -1)
     docker network disconnect "$net" "$c3"
     docker exec "$c3" kill -9 "$tpid"
     check "main: the dead connection still holds desk's port" as_test 'grep -q "0100007F:1061 00000000:0000 0A" /proc/net/tcp'

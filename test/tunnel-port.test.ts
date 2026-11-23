@@ -82,3 +82,17 @@ it('switched off in the app: the machine waits there, and goes within a second o
   expect(end - on).toBeLessThan(1500)
   expect(on - t0).toBeGreaterThanOrEqual(1400)
 })
+
+it('the tunnel’s session stays while the machine is on, and ends within a second of « off »', async () => {
+  const h = home(4998)
+  const remotes = path.join(h, '.config', 'weevils', 'remotes')
+  const child = spawn('bash', [service, 'remote-shell', 'desk', '4998'], { env: { ...env(h), SSH_ORIGINAL_COMMAND: 'weevils-service tunnel-session' } })
+  const done = new Promise<number>((r) => child.once('exit', () => r(Date.now())))
+  await new Promise((r) => setTimeout(r, 1500))
+  expect(child.exitCode).toBeNull()
+  // Which process serves that connection is noted, for hold and drop to end it.
+  expect(fs.readFileSync(path.join(remotes, 'desk.session'), 'utf8').trim()).toMatch(/^\d+$/)
+  const off = Date.now()
+  fs.writeFileSync(path.join(remotes, 'desk.off'), '')
+  expect((await done) - off).toBeLessThan(1500)
+})

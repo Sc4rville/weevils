@@ -1,6 +1,6 @@
 # Installing weevils
 
-One command on a Linux machine or VPS (Ubuntu/Debian tested; dnf and pacman supported for packages), or on a Mac
+One command on a Linux machine or VPS (Ubuntu/Debian tested; dnf, pacman, zypper and apk supported for packages), or on a Mac
 (Apple Silicon or Intel: see [macOS](#macos) for what differs). On Windows, use WSL2 (see below).
 
 ```sh
@@ -20,7 +20,14 @@ Or ask your AI agent: paste `install https://github.com/Sc4rville/weevils` into 
    Node.js >= 22.18 (NodeSource), plus `dbus-user-session` on systemd machines and `qrencode` for the QR code.
    An older Node (18, 20) is upgraded; if an old one in `/usr/local/bin` still comes first in your PATH, weevils
    uses the new one in `/usr/bin` and tells you. Without a terminal and without `--yes`, every "install?" question
-   is answered no. On a Mac, everything comes from Homebrew, without sudo.
+   is answered no. On a Mac, everything comes from Homebrew, without sudo. Only the missing packages are installed,
+   never a system upgrade (`pacman -S --needed`, `apt-get install`, `dnf install`, `zypper install`, `apk add`,
+   `brew install`); on Arch and its derivatives the package database is refreshed once, for those packages only,
+   when it is too old for the mirrors. When a package cannot be installed (a package you held back, a conflict),
+   the installer ends on one sentence naming it and the one command that installs it by hand; the package
+   manager's output is in `~/.cache/weevils/packages.log`. Any other step that fails ends the same way: what
+   stopped, and the command to run again. A machine joining from weevboss's line tells weevboss, whose thread
+   says why that machine did not install instead of waiting for it.
 2. Claude Code is required (weevboss runs on it): if it is missing, it offers to install it with the official
    installer (`curl -fsSL https://claude.ai/install.sh | bash`, into `~/.local/bin`). Codex is optional: it only
    prints the command (`npm i -g @openai/codex`, with `sudo` when npm's global folder is not yours). If Claude Code
@@ -42,7 +49,7 @@ Or ask your AI agent: paste `install https://github.com/Sc4rville/weevils` into 
    end the first session; weevils notes that it wrote it (`~/.local/share/weevils/claude-skip-prompt`) and takes it
    back when you turn the prompts on again or uninstall. Nothing else there: weevils sessions get their quiet
    variables (no auto-update, no tips) per session.
-8. With `--domain` (Linux only): Caddy (official apt repo, or the distribution's package on dnf and pacman) and a
+8. With `--domain` (Linux only): Caddy (official apt repo, or the distribution's package on dnf, pacman, zypper and apk) and a
    site in `/etc/caddy/weevils.caddy`, imported from your Caddyfile (an existing Caddyfile keeps its sites; the
    original is kept in `Caddyfile.bak-weevils`). If Caddy rejects the result (say the domain is already a site
    there), both files go back exactly as they were. When ufw is active, it offers to open ports 80 and 443. Then it

@@ -10,7 +10,7 @@ export default defineMessages({
     yesterday: (time: string) => `hier ${time}`,
     copy: (name: string) => `Copier la ligne à coller sur ${name}`,
     copying: 'une ligne neuve…',
-    copied: (name: string) => `Copiée. Colle-la dans un terminal sur ${name} : il revient en une minute.`,
+    copied: (name: string) => `Copiée. Colle-la dans un terminal sur ${name} : il se reconnecte tout seul à la fin.`,
     shown: (name: string) => `Colle cette ligne dans un terminal sur ${name} :`,
   },
   en: {
@@ -21,7 +21,7 @@ export default defineMessages({
     yesterday: (time: string) => `yesterday ${time}`,
     copy: (name: string) => `Copy the line to paste on ${name}`,
     copying: 'a fresh line…',
-    copied: (name: string) => `Copied. Paste it in a terminal on ${name}: it’s back within a minute.`,
+    copied: (name: string) => `Copied. Paste it in a terminal on ${name}: it reconnects by itself when it’s done.`,
     shown: (name: string) => `Paste this line in a terminal on ${name}:`,
   },
 })

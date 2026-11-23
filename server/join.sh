@@ -91,10 +91,28 @@ main() {
   fi
 
   say "Clé acceptée. J’installe weevils ici comme machine « $id », quelques minutes…" "Key accepted. Installing weevils here as machine \"$id\", a few minutes…" # i18n-ignore
-  # The installer itself, piped as everywhere else (WEEVILS_INSTALL_SH: a local copy, for tests).
+  # The installer itself, piped as everywhere else (WEEVILS_INSTALL_SH: a local copy, for tests). When it stops, it
+  # writes why in $fail (line 1: the sentence, line 2: the command that fixes it), and your weevils hears it: weevboss
+  # says in its thread that this computer did not install, and why, instead of waiting for it.
+  local fail rc=0
+  fail=$(mktemp)
   {
     if [ -n "${WEEVILS_INSTALL_SH:-}" ]; then cat "$WEEVILS_INSTALL_SH"
     else curl -fsSL https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh; fi
-  } | WEEVILS_TUNNEL_PORT=$port bash -s -- --yes --lang "$lang" --secondary "$alias" --machine "$id"
+  } | WEEVILS_TUNNEL_PORT=$port WEEVILS_FAIL_FILE=$fail bash -s -- --yes --lang "$lang" --secondary "$alias" --machine "$id" || rc=$?
+  if [ "$rc" != 0 ]; then
+    local why fix
+    why=$(sed -n 1p "$fail" 2>/dev/null); fix=$(sed -n 2p "$fail" 2>/dev/null)
+    [ -n "$why" ] || why="the installer stopped before the end (exit code $rc)"
+    curl -fsS -m 15 --data-urlencode "id=$id" --data-urlencode "why=$why" --data-urlencode "fix=$fix" "$base/api/join/$code/failed" >/dev/null 2>&1 </dev/null || true
+    rm -f "$fail"
+    if [ -n "$fix" ]; then
+      say "weevboss est prévenu. Une fois la commande ci-dessus lancée, demande-lui une nouvelle ligne et colle-la ici." "weevboss has been told. Once you have run the command above, ask it for a new line and paste it here." # i18n-ignore
+    else
+      say "weevboss est prévenu. Demande-lui une nouvelle ligne et colle-la ici pour réessayer." "weevboss has been told. Ask it for a new line and paste it here to try again." # i18n-ignore
+    fi
+    exit "$rc"
+  fi
+  rm -f "$fail"
 }
 main "$@"

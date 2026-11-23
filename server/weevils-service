@@ -84,18 +84,30 @@ launchd_gone() {
   local n=0
   while launchd_loaded "$1" "$2" && [ "$n" -lt 30 ]; do sleep 0.5; n=$((n + 1)); done
 }
-# launchd_load <domain> <unit> — (re)loads the agent from its file, so a file changed by a new install is taken.
+# The copy of each agent's file as launchd was last given it (launchd_load), to tell whether the file changed since.
+LAUNCHD_SEEN=$RUN_DIR/launchd
+launchd_seen() { echo "$LAUNCHD_SEEN/$(label "$1").plist"; }
+# launchd_load <domain> <unit> — restarts the agent, and (re)loads it from its file only when launchd does not have
+# it or the file changed since it was loaded (a new install). For macOS, each load of an agent is a background item
+# added, announced in a notification ("Background Items Added") every time: a restart with the same file (every
+# update, every restart asked for) restarts the job in place instead (kickstart -k), and macOS says nothing.
 launchd_load() {
   local dom=$1 u=$2 plist n=0
   plist=$LAUNCH_DIR/$(label "$u").plist
   [ -f "$plist" ] || return 0
+  if launchd_loaded "$dom" "$u" && cmp -s "$plist" "$(launchd_seen "$u")" &&
+    launchctl kickstart -k "$dom/$(label "$u")" >/dev/null 2>&1; then return 0; fi
   launchctl enable "$dom/$(label "$u")" >/dev/null 2>&1 || true
   if launchd_loaded "$dom" "$u"; then
     launchctl bootout "$dom/$(label "$u")" >/dev/null 2>&1 || true
     launchd_gone "$dom" "$u"
   fi
+  rm -f "$(launchd_seen "$u")"
   while [ "$n" -lt 6 ]; do
-    launchctl bootstrap "$dom" "$plist" >/dev/null 2>&1 && return 0
+    if launchctl bootstrap "$dom" "$plist" >/dev/null 2>&1; then
+      mkdir -p "$LAUNCHD_SEEN" && cp -f "$plist" "$(launchd_seen "$u")" || true
+      return 0
+    fi
     # Still there after all (a slow stop): restart it in place.
     if launchd_loaded "$dom" "$u"; then launchctl kickstart -k "$dom/$(label "$u")" >/dev/null 2>&1 || true; return 0; fi
     sleep 1; n=$((n + 1))
@@ -104,6 +116,7 @@ launchd_load() {
   return 1
 }
 launchd_unload() {
+  rm -f "$(launchd_seen "$2")"
   launchd_loaded "$1" "$2" || return 0
   launchctl bootout "$1/$(label "$2")" >/dev/null 2>&1 || true
   launchd_gone "$1" "$2"
@@ -211,10 +224,38 @@ add_remote() {
 # remote_shell <id> <port> — the forced command of a key server/join.ts authorized (a computer plugged in from one line,
 # docs/install.md). The ssh command it asked for (SSH_ORIGINAL_COMMAND) may only check the connection or register that
 # same machine on that same tunnel port, as install.sh --secondary and weevils-update do. Never a shell, never anything else.
+# reclaim_port <port> — stops the sshd process of this user that listens on 127.0.0.1:<port> (a reverse tunnel's
+# end on this machine). Nothing else: another program on that port, or another user's, is left alone. Linux: the
+# socket's inode in /proc/net/tcp, then the process holding it; elsewhere (a Mac): lsof.
+reclaim_port() {
+  local port=$1 pids='' inode fd pid comm
+  if [ -r /proc/net/tcp ]; then
+    for inode in $(awk -v a="$(printf '0100007F:%04X' "$port")" '$2 == a && $4 == "0A" { print $10 }' /proc/net/tcp); do
+      for fd in /proc/[0-9]*/fd/*; do
+        [ "$(readlink "$fd" 2>/dev/null)" = "socket:[$inode]" ] || continue
+        pid=${fd#/proc/}; pids="$pids ${pid%%/*}"
+      done
+    done
+  elif command -v lsof >/dev/null; then
+    pids=$(lsof -nP -t -iTCP@127.0.0.1:"$port" -sTCP:LISTEN 2>/dev/null || true)
+  fi
+  for pid in $(printf '%s\n' $pids | sort -u); do
+    comm=$(ps -o comm= -p "$pid" 2>/dev/null || true)
+    case "${comm##*/}" in sshd | sshd-session | sshd:*) ;; *) continue ;; esac
+    [ "$(ps -o uid= -p "$pid" 2>/dev/null | tr -d ' ')" = "$(id -u)" ] || continue
+    kill "$pid" 2>/dev/null || true
+  done
+}
+
 remote_shell() {
   local id=${1:?id} port=${2:?port} cmd=${SSH_ORIGINAL_COMMAND:-}
   [[ "$id" =~ ^[a-z0-9][a-z0-9-]{0,19}$ && "$port" =~ ^[0-9]{2,5}$ ]] || exit 1
-  case "$cmd" in true | '') exit 0 ;; esac
+  case "$cmd" in
+    true | '') exit 0 ;;
+    # The tunnel about to connect: a connection of this machine that still holds its port is dead (the tunnel only
+    # starts again when the last one ended); sshd there would notice only hours later. It goes: that port only.
+    'weevils-service reclaim') reclaim_port "$port"; exit 0 ;;
+  esac
   local re='^WEEVILS_TOKEN_STDIN=1 [^ ]*weevils-service add-remote '"$id"'( http://127\.0\.0\.1:'"$port"')?$'
   if [[ "$cmd" =~ $re ]]; then
     load_service_conf

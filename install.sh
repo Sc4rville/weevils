@@ -70,8 +70,14 @@ EN_agent_next="for the agent: now read AGENTS.md in this folder, steps 6 and 7, 
 FR_agent_next="pour l'agent : lis maintenant AGENTS.md dans ce dossier, étapes 6 et 7, et termine par le court message qu'il décrit, dans la langue de l'utilisateur (pas de commandes, pas de notes techniques) :"
 EN_agent_mode="run by an agent: no questions, no colours, a summary at the end"
 FR_agent_mode="lancé par un agent : pas de questions, pas de couleurs, un résumé à la fin"
-EN_no_pm="no supported package manager (apt, dnf, pacman). Install these by hand, then run me again:"
-FR_no_pm="pas de gestionnaire de paquets connu (apt, dnf, pacman). Installe-les à la main, puis relance-moi :"
+EN_no_pm="no supported package manager (apt, dnf, pacman, zypper, apk). Install these by hand, then run me again:"
+FR_no_pm="pas de gestionnaire de paquets connu (apt, dnf, pacman, zypper, apk). Installe-les à la main, puis relance-moi :"
+EN_pm_failed="weevils could not install a package it needs on this computer:"
+FR_pm_failed="weevils n'a pas pu installer un paquet dont il a besoin sur cet ordinateur :"
+EN_step_failed="the installation stopped at this step:"
+FR_step_failed="l'installation s'est arrêtée à cette étape :"
+EN_fix_it="To fix it, run:"
+FR_fix_it="Pour corriger, lance :"
 EN_missing="missing:"
 FR_missing="manquant :"
 EN_ask_pkgs="install them now?"
@@ -309,6 +315,20 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# A re-run on a machine that joined another one (by hand, or weevils-update after each new version) keeps it what it
+# is: a secondary machine, its main machine, and its tunnel port there (the only one its key may open). Without this, a
+# re-run made it a main machine of its own and took its tunnel down: it never showed up on the main machine again.
+if [ -z "$SECONDARY" ] && [ "$UNINSTALL" = 0 ] && [ -f "$HOME/.config/weevils/service.conf" ]; then
+  # shellcheck disable=SC1091
+  _svc=$( . "$HOME/.config/weevils/service.conf" 2>/dev/null; printf '%s\n%s\n%s' "${WEEVILS_ROLE:-}" "${WEEVILS_MAIN_HOST:-}" "${WEEVILS_TUNNEL_PORT:-}") || _svc=''
+  if [ "$(printf '%s\n' "$_svc" | sed -n 1p)" = secondary ] && [ -n "$(printf '%s\n' "$_svc" | sed -n 2p)" ]; then
+    SECONDARY=$(printf '%s\n' "$_svc" | sed -n 2p)
+    _tp=$(printf '%s\n' "$_svc" | sed -n 3p)
+    [ -n "${WEEVILS_TUNNEL_PORT:-}" ] || ! [[ "$_tp" =~ ^[0-9]+$ ]] || export WEEVILS_TUNNEL_PORT=$_tp
+  fi
+  unset _svc _tp
+fi
+
 # Values checked before anything runs. A domain may come as a URL: only the host is kept.
 DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
 BAD_VAL=''
@@ -351,11 +371,25 @@ t() { local k=EN_$1; [ "$L" != fr ] || k=FR_$1; printf '%s' "${!k}"; }
 
 if [ -t 1 ] && [ "$AGENT" = 0 ]; then B=$'\e[1m' D=$'\e[2m' R=$'\e[0m' Y=$'\e[30;43m' G=$'\e[32m' O=$'\e[33m' E=$'\e[31m' M=$'\e[35m'
 else B='' D='' R='' Y='' G='' O='' E='' M=''; fi
-step() { printf '\n%s %s %s\n' "$Y$B" "$1" "$R"; }
+CUR_STEP=''
+step() { CUR_STEP=$1; printf '\n%s %s %s\n' "$Y$B" "$1" "$R"; }
 ok() { printf '  %s✓%s %s\n' "$G" "$R" "$*"; }
 info() { printf '  %s·%s %s\n' "$D" "$R" "$*"; }
 warn() { printf '  %s!%s %s\n' "$O$B" "$R" "$*"; }
-die() { printf '  %s✗ %s%s\n' "$E$B" "$*" "$R" >&2; summary failed "$*"; exit 1; }
+# A failure is said once, plainly: one sentence on what failed (FAIL_WHY), the one command that fixes it (FAIL_FIX) on
+# a line of its own, never a package manager's raw output. It also goes to the file join.sh gave (WEEVILS_FAIL_FILE:
+# line 1 the sentence, line 2 the command), which tells the main weevils, and to an agent's summary.
+FAIL_WHY='' FAIL_FIX='' FAIL_AT='' FAIL_DONE=0
+fail_report() {
+  [ "$FAIL_DONE" = 0 ] || return 0
+  FAIL_DONE=1
+  printf '\n  %s✗ %s%s\n' "$E$B" "$FAIL_WHY" "$R" >&2
+  [ -z "$FAIL_FIX" ] || printf '\n  %s\n\n      %s%s%s\n' "$(t fix_it)" "$B" "$FAIL_FIX" "$R" >&2
+  printf '\n' >&2
+  [ -z "${WEEVILS_FAIL_FILE:-}" ] || printf '%s\n%s\n' "$FAIL_WHY" "$FAIL_FIX" >"$WEEVILS_FAIL_FILE" 2>/dev/null || true
+  summary failed "$FAIL_WHY${FAIL_FIX:+ $(t fix_it) $FAIL_FIX}"
+}
+die() { FAIL_WHY="$*" FAIL_FIX=''; fail_report; exit 1; }
 star() { printf '  %s★ %s%s\n' "$M$B" "$*" "$R"; }
 # tn key n — a message with its {n} replaced by a number.
 tn() { local m; m=$(t "$1"); printf '%s' "${m//\{n\}/$2}"; }
@@ -398,10 +432,17 @@ IS_WSL=0
 APT_UPDATED=0
 # An existing config file (a Caddyfile already there…) is always kept, never asked about.
 APT_KEEP='-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold'
-# quiet cmd… — runs a noisy command, shows its output only when it fails.
+# quiet cmd… — runs a noisy command out of sight. When it fails its output goes to ~/.cache/weevils/step.log and the
+# command is noted (QUIET_CMD), for the plain sentence the installer ends on if that stops it.
+QUIET_CMD=''
 quiet() {
   local log; log=$(mktemp)
-  if "$@" >"$log" 2>&1; then rm -f "$log"; else local rc=$?; tail -n 30 "$log" >&2; rm -f "$log"; return "$rc"; fi
+  if "$@" >"$log" 2>&1; then rm -f "$log"; else
+    local rc=$?
+    QUIET_CMD="$*"
+    mkdir -p "$HOME/.cache/weevils" && mv -f "$log" "$HOME/.cache/weevils/step.log" 2>/dev/null || rm -f "$log"
+    return "$rc"
+  fi
 }
 # Small stand-ins for GNU tools macOS does not have.
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
@@ -444,17 +485,67 @@ install_brew() {
   rm -f "$hb"
   [ "$rc" = 0 ] && brew_bin >/dev/null || die "$(t brew_failed) $(t brew_hint) $(retry_cmd)"
 }
+# Only the packages asked for, never an upgrade of the whole system: a package the person holds back, a build from
+# another repository or a pinned kernel would stop it, and upgrading someone's system is not the installer's call.
+# apt-get install, dnf install, zypper install and apk add bring only those packages and what they depend on; Homebrew
+# leaves the person's other formulae as they are (no dependents' upgrade, no cleanup). A failure sets FAIL_WHY
+# and FAIL_FIX (the packages still missing, the command that installs them) and returns 1; the output stays in
+# ~/.cache/weevils/packages.log.
 pkg_install() { # pkg_install pkg… (names for the detected package manager)
   info "$(t installing) $*"
+  local log rc=0 sp=''
+  [ -z "$SUDO" ] || [ "$(id -u)" = 0 ] || sp='sudo '
+  log=$(mktemp)
   case "$PM" in
     # Never as root, never a question, no cleanup of the person's other formulas.
-    brew) quiet env NONINTERACTIVE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_ENV_HINTS=1 brew install "$@" ;;
+    brew) env NONINTERACTIVE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 HOMEBREW_NO_ENV_HINTS=1 \
+      brew install "$@" >"$log" 2>&1 || rc=$? ;;
     apt)
-      if [ "$APT_UPDATED" = 0 ]; then quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq; APT_UPDATED=1; fi
-      quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $APT_KEEP --no-install-recommends "$@" ;;
-    dnf) quiet $SUDO dnf install -y -q "$@" ;;
-    # No -y: refreshing the database without upgrading is a partial upgrade, which Arch warns against.
-    pacman) quiet $SUDO pacman -Syu --noconfirm --needed "$@" ;;
+      # One broken third-party source makes apt-get update fail while the distribution's own still answer.
+      if [ "$APT_UPDATED" = 0 ]; then $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq >"$log" 2>&1 || true; APT_UPDATED=1; fi
+      $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $APT_KEEP --no-install-recommends "$@" >"$log" 2>&1 || rc=$? ;;
+    dnf) $SUDO dnf install -y -q "$@" >"$log" 2>&1 || rc=$? ;;
+    zypper) $SUDO zypper --non-interactive --quiet install --no-recommends "$@" >"$log" 2>&1 || rc=$? ;;
+    apk)
+      # A container's apk has no index until 'apk update' (which only reads the index, upgrades nothing).
+      $SUDO apk add --quiet "$@" >"$log" 2>&1 || rc=$?
+      if [ "$rc" != 0 ] && grep -qiE 'unable to select packages|no such package|temporary error' "$log"; then
+        rc=0; { $SUDO apk update --quiet && $SUDO apk add --quiet "$@"; } >"$log" 2>&1 || rc=$?
+      fi ;;
+    pacman)
+      # -S alone, never -Syu. Only when the local database is too old for the mirrors (a 404, a package it does not
+      # know) is it refreshed, once, for these packages only.
+      $SUDO pacman -S --noconfirm --needed "$@" >"$log" 2>&1 || rc=$?
+      if [ "$rc" != 0 ] && grep -qiE 'failed retrieving file|404|target not found|failed to synchronize' "$log"; then
+        rc=0; $SUDO pacman -Sy --noconfirm --needed "$@" >"$log" 2>&1 || rc=$?
+      fi ;;
+  esac
+  if [ "$rc" = 0 ]; then rm -f "$log"; return 0; fi
+  mkdir -p "$HOME/.cache/weevils" && mv -f "$log" "$HOME/.cache/weevils/packages.log" 2>/dev/null || rm -f "$log"
+  local p miss=()
+  for p in "$@"; do pkg_has "$p" || miss+=("$p"); done
+  [ ${#miss[@]} -gt 0 ] || miss=("$@")
+  FAIL_WHY="$(t pm_failed) ${miss[*]}."
+  case "$PM" in
+    brew) FAIL_FIX="brew install ${miss[*]}" ;;
+    apt) FAIL_FIX="${sp}apt-get install -y ${miss[*]}" ;;
+    dnf) FAIL_FIX="${sp}dnf install -y ${miss[*]}" ;;
+    pacman) FAIL_FIX="${sp}pacman -S --needed ${miss[*]}" ;;
+    zypper) FAIL_FIX="${sp}zypper install ${miss[*]}" ;;
+    apk) FAIL_FIX="${sp}apk add ${miss[*]}" ;;
+  esac
+  return 1
+}
+# pkg_has pkg — that package (or one that provides it) is installed.
+pkg_has() {
+  case "$PM" in
+    brew) brew list --versions "$1" >/dev/null 2>&1 ;;
+    apt) [ "$(dpkg-query -W -f='${Status}' "$1" 2>/dev/null)" = 'install ok installed' ] ;;
+    dnf) rpm -q --whatprovides "$1" >/dev/null 2>&1 ;;
+    pacman) pacman -T "$1" >/dev/null 2>&1 ;;
+    zypper) rpm -q --whatprovides "$1" >/dev/null 2>&1 ;;
+    apk) apk info -e "$1" >/dev/null 2>&1 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -552,29 +643,33 @@ check_system() {
     fi
   elif command -v apt-get >/dev/null; then PM=apt
   elif command -v dnf >/dev/null; then PM=dnf
-  elif command -v pacman >/dev/null; then PM=pacman; fi
+  elif command -v pacman >/dev/null; then PM=pacman
+  elif command -v zypper >/dev/null; then PM=zypper
+  elif command -v apk >/dev/null; then PM=apk; fi
 
   # Commands weevils needs, then the package that brings each one.
   local c need=(git curl tmux jq python3) missing=() pkgs=()
   [ -n "$SECONDARY" ] && need+=(ssh)
   for c in "${need[@]}"; do have "$c" || missing+=("$c"); done
-  # systemd --user needs the user bus (apt); the QR code on the end screen needs qrencode (optional, same name on
-  # apt, dnf and pacman). Without a terminal nor --yes, nothing optional is installed.
-  local extra=()
+  # systemd --user needs the user bus (apt); the QR code on the end screen needs qrencode (optional, installed on its
+  # own: a failure there stops nothing). Without a terminal nor --yes, nothing optional is installed.
+  local extra=() qr=()
   if [ "$PM" = apt ]; then
     [ -d /run/systemd/system ] && ! dpkg -s dbus-user-session >/dev/null 2>&1 && extra+=(dbus-user-session)
     dpkg -s ca-certificates >/dev/null 2>&1 || extra+=(ca-certificates)
   fi
-  [ -z "$PM" ] || command -v qrencode >/dev/null || extra+=(qrencode)
-  [ "$TTY" = 1 ] || [ "$YES" = 1 ] || extra=()
+  if [ -n "$PM" ] && ! command -v qrencode >/dev/null; then
+    if [ "$PM" = apk ]; then qr=(libqrencode-tools); else qr=(qrencode); fi
+  fi
+  [ "$TTY" = 1 ] || [ "$YES" = 1 ] || extra=() qr=()
   for c in ${missing[@]+"${missing[@]}"}; do
     case "$c:$PM" in
-      ssh:pacman | ssh:dnf) pkgs+=(openssh-clients) ;;
+      ssh:pacman) pkgs+=(openssh) ;;
+      ssh:dnf | ssh:zypper) pkgs+=(openssh-clients) ;;
       ssh:*) pkgs+=(openssh-client) ;;
       *) pkgs+=("$c") ;;
     esac
   done
-  [ "$PM" != pacman ] || [ ${#pkgs[@]} -eq 0 ] || pkgs=("${pkgs[@]/openssh-clients/openssh}")
   # Homebrew installs as the person: no root needed for packages on a Mac.
   local root=$SUDO
   [ "$PM" != brew ] || root=brew
@@ -589,6 +684,7 @@ check_system() {
     [ "$root" = none ] || pkg_install ${pkgs[@]+"${pkgs[@]}"} ${extra[@]+"${extra[@]}"}
     hash -r
   fi
+  if [ ${#qr[@]} -gt 0 ] && [ "$root" != none ]; then pkg_install "${qr[@]}" || FAIL_WHY='' FAIL_FIX=''; fi
   for c in "${need[@]}"; do have "$c" || die "$(t missing) $c"; done
   # weevilsd and wv start sessions with 'tmux new-session -e', which came with tmux 3.2.
   local tv; tv=$(tmux -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1 || true)
@@ -609,11 +705,11 @@ check_system() {
         PATH=$HOMEBREW_PREFIX/bin:$PATH; export PATH; hash -r
       fi
       node_ok || die "$(t node_hint)"
-    elif [ "$OS" = Linux ] && [ "$(id -u)" != 0 ]; then
-      # As the person, no root: Node's official build, checked against nodejs.org's SHA-256 list, in ~/.local.
+    elif [ "$OS" = Linux ] && [ "$(id -u)" != 0 ] && [ "$PM" != apk ]; then
+      # As the person, no root (not on Alpine: nodejs.org's Linux builds need glibc): Node's official build, checked against nodejs.org's SHA-256 list, in ~/.local.
       confirm "$(t ask_node)" || die "$(t node_hint)"
       node_user || die "$(t node_hint)"
-    elif [ "$PM" = apt ] || [ "$PM" = dnf ] || [ "$PM" = pacman ]; then
+    elif [ -n "$PM" ]; then
       [ "$SUDO" != none ] || no_root "node 22"
       confirm "$(t ask_node)" || die "$(t node_hint)"
       # The setup script goes through a private temp file (a fixed name in /tmp could be planted by another user).
@@ -621,11 +717,12 @@ check_system() {
       case "$PM" in
         apt) curl -fsSL https://deb.nodesource.com/setup_22.x -o "$ns"
           quiet $SUDO bash "$ns"
-          quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $APT_KEEP nodejs ;;
+          pkg_install nodejs ;;
         dnf) curl -fsSL https://rpm.nodesource.com/setup_22.x -o "$ns"
           quiet $SUDO bash "$ns"
-          quiet $SUDO dnf install -y -q nodejs ;;
-        pacman) pkg_install nodejs npm ;;
+          pkg_install nodejs ;;
+        pacman | apk) pkg_install nodejs npm ;;
+        zypper) pkg_install nodejs22 npm22 ;;
       esac
       rm -f "$ns"
       hash -r
@@ -909,7 +1006,7 @@ https() {
   if ! command -v caddy >/dev/null; then
     case "$PM" in
       apt) caddy_apt || true ;;
-      dnf | pacman) pkg_install caddy || true ;;
+      dnf | pacman | zypper | apk) pkg_install caddy || true ;;
     esac
     command -v caddy >/dev/null || {
       "$DIR/server/weevils-service" config set WEEVILS_PUBLIC_URL "$PREV_PUBLIC_URL"
@@ -1294,7 +1391,7 @@ uninstall() {
   if { [ -e "$HOME/.local/bin/tmux.bak-weevils" ] || [ -L "$HOME/.local/bin/tmux.bak-weevils" ]; } && [ ! -e "$HOME/.local/bin/tmux" ] && [ ! -L "$HOME/.local/bin/tmux" ]; then
     mv "$HOME/.local/bin/tmux.bak-weevils" "$HOME/.local/bin/tmux"
   fi
-  rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update"
+  rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update" "$HOME/.local/bin/weevilsd"
   ok "$(t un_bin)"
 
   # (Not on a Mac: the install never writes a crontab there, and reading it asks for a privacy permission.)
@@ -1351,8 +1448,13 @@ main() {
   [ -z "${BAD:-}" ] || { echo "$(t usage)" >&2; summary failed "$(t usage)"; exit 2; }
   printf '%s weevils %s %s\n' "$Y$B" "$R" "$(t title)"
   if [ "$UNINSTALL" = 1 ]; then uninstall; exit 0; fi
-  # An agent always gets its summary, even when a command fails on the way (set -e).
-  trap 'rc=$?; [ "$rc" = 0 ] || summary failed "stopped (exit code $rc): see the lines above"' EXIT
+  # Any step that fails on the way (set -e) is said like die says it: what stopped, and the command to run again.
+  # ERR only notes the failing command (errtrace: inside functions too); it changes nothing to what stops the script.
+  set -o errtrace
+  # A command run through quiet is named as it ran; a function's own 'return' leaves the word to its caller.
+  trap 'case $BASH_COMMAND in "quiet "*) FAIL_AT="$QUIET_CMD (~/.cache/weevils/step.log)" ;; "return "*) ;; *) FAIL_AT=$BASH_COMMAND ;; esac' ERR
+  # Run by join.sh (WEEVILS_FAIL_FILE), the way to try again is a new line from weevboss, which join.sh says.
+  trap 'rc=$?; [ "$rc" = 0 ] || { [ -n "$FAIL_WHY" ] || FAIL_WHY="$(t step_failed) ${CUR_STEP:+$CUR_STEP — }${FAIL_AT:-exit code $rc}"; [ -n "$FAIL_FIX" ] || [ -n "${WEEVILS_FAIL_FILE:-}" ] || FAIL_FIX=$(retry_cmd); fail_report; }' EXIT
   check_system
   get_source
   configure

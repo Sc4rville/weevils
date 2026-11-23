@@ -8,12 +8,25 @@
 # main machine listens on for this secondary one (otherwise the main machine picks a free one).
 set -euo pipefail
 USER=${USER:-$(id -un)}
-role=${1:-main}
+role=${1:-}
 main_host=${2:-}
+# Run again without arguments on a secondary machine: it stays one (service.conf says so, written below on each run).
+if [ -z "$role" ]; then
+  # shellcheck disable=SC1090
+  role=$( [ -f ~/.config/weevils/service.conf ] && . ~/.config/weevils/service.conf; printf '%s' "${WEEVILS_ROLE:-main}")
+  # shellcheck disable=SC1090
+  [ "$role" != secondary ] || main_host=$( . ~/.config/weevils/service.conf; printf '%s' "${WEEVILS_MAIN_HOST:-}")
+  [ -n "$main_host" ] || role=main
+fi
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(dirname "$here")
 svc=$here/weevils-service
 cfg() { "$svc" config "$@"; }
+# put_file <file> — <file>.new takes the place of <file> only when it differs (true when it did). For macOS, a launchd
+# agent's file rewritten (or the program it runs) and loaded again is a background item added, announced in a
+# notification every time: an update that changes nothing in them leaves them as they are (weevils-service then
+# restarts weevilsd in place).
+put_file() { if cmp -s "$1.new" "$1"; then rm -f "$1.new"; return 1; fi; mv -f "$1.new" "$1"; }
 
 case "$role" in
   main) ;;
@@ -38,7 +51,8 @@ install -m 755 "$here/weevils-service" ~/.local/bin/weevils-service
 sed "s/WEEVILS_HOOK_PORT:-4180/WEEVILS_HOOK_PORT:-$hook_port/" "$here/hook.sh" >~/.local/bin/weevils-hook && chmod 755 ~/.local/bin/weevils-hook
 sed "s/WEEVILS_PORT:-4179/WEEVILS_PORT:-$port/" "$here/weevils-cli" >~/.local/bin/weevils && chmod 755 ~/.local/bin/weevils
 # Updates by itself (weevils-update, timer below): on unless WEEVILS_AUTO_UPDATE=0.
-install -m 755 "$here/weevils-update" ~/.local/bin/weevils-update
+install -m 755 "$here/weevils-update" ~/.local/bin/weevils-update.new
+put_file ~/.local/bin/weevils-update || true
 # tmux guard: ~/.local/bin/tmux, ahead of the real one, refuses to close the live weevils sessions without the
 # server's token (a test script once closed them all through « tmux -L weevils kill-server »). A tmux of the person's
 # own already there (a build, a wrapper, a link) is kept aside, once, as tmux.bak-weevils: the guard runs it, and
@@ -130,6 +144,12 @@ chmod 600 "$local_token"
 # tunnel carry it. An older main machine ignores the variable (federation then waits for it to update: weevils-update
 # hands the token over again on every run).
 tunnel_port=${WEEVILS_TUNNEL_PORT:-}
+# A re-run keeps the port the main machine gave at the join: this machine's key may only listen there.
+if [ -z "$tunnel_port" ] && [ "$role" = secondary ] && [ -f ~/.config/weevils/service.conf ]; then
+  # shellcheck disable=SC1090
+  tunnel_port=$( . ~/.config/weevils/service.conf; [ "${WEEVILS_ROLE:-}" = secondary ] && [ "${WEEVILS_MAIN_HOST:-}" = "$main_host" ] && printf '%s' "${WEEVILS_TUNNEL_PORT:-}")
+  [[ "$tunnel_port" =~ ^[0-9]+$ ]] || tunnel_port=''
+fi
 if [ "$role" = secondary ]; then
   id=$(cfg get WEEVILS_MACHINE); id=${id:-$(hostname -s | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-\n' '-' | cut -c1-20)}
   ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
@@ -219,9 +239,15 @@ EOF
 [Unit]
 Description=weevils — reverse SSH tunnel: $main_host reads this weevilsd (127.0.0.1:$tunnel_port there → 127.0.0.1:$port here)
 After=network-online.target weevilsd.service
+# Never gives up: a computer off the network for hours connects again as soon as it is back.
+StartLimitIntervalSec=0
 
 [Service]
-ExecStart=$(command -v ssh) -NT -o BatchMode=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R 127.0.0.1:$tunnel_port:127.0.0.1:$port $main_host
+# Before each connection: the main machine lets go of this machine's port when a connection it still believes alive
+# holds it (the computer slept, changed network: sshd there only notices hours later, and until then every new tunnel
+# is refused). Best effort ('-'): an older main machine says no, and the tunnel tries as before.
+ExecStartPre=-$(command -v ssh) -o BatchMode=yes -o ConnectTimeout=10 $main_host weevils-service reclaim
+ExecStart=$(command -v ssh) -NT -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R 127.0.0.1:$tunnel_port:127.0.0.1:$port $main_host
 Restart=always
 RestartSec=10
 
@@ -273,7 +299,12 @@ xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/
 if [ "$("$svc" mode)" = launchd ]; then
   data=~/.local/share/weevils
   mkdir -p "$agents" "$data"
-  cat >"$agents/$prefix.weevilsd.plist" <<EOF
+  # The agent runs ~/.local/bin/weevilsd (server/weevilsd), which starts node: macOS names the background item after
+  # it ("weevilsd", not "node"), and node's path and the PATH live in service.conf, so this file stays the same when
+  # node moves.
+  install -m 755 "$here/weevilsd" ~/.local/bin/weevilsd.new
+  put_file ~/.local/bin/weevilsd || true
+  cat >"$agents/$prefix.weevilsd.plist.new" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- weevilsd, the weevils server ($role): Claude Code / Codex sessions, app API. Written by server/install.sh. -->
@@ -282,14 +313,11 @@ if [ "$("$svc" mode)" = launchd ]; then
   <key>Label</key><string>$prefix.weevilsd</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$(xml "$node_bin")</string>
-    <string>server/index.ts</string>
+    <string>$(xml "$HOME/.local/bin/weevilsd")</string>
   </array>
   <key>WorkingDirectory</key><string>$(xml "$repo")</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>$(xml "$svc_path")</string>
-    <key>NODE_ENV</key><string>production</string>
     <!-- launchd sets no locale: without a UTF-8 one, tmux and the agents in its panes mangle accents. -->
     <key>LANG</key><string>en_US.UTF-8</string>
   </dict>
@@ -306,8 +334,9 @@ if [ "$("$svc" mode)" = launchd ]; then
 </dict>
 </plist>
 EOF
+  put_file "$agents/$prefix.weevilsd.plist" || true
   if [ "$role" = secondary ]; then
-    cat >"$agents/$prefix.weevils-tunnel.plist" <<EOF
+    cat >"$agents/$prefix.weevils-tunnel.plist.new" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- weevils, reverse SSH tunnel: the main machine reads this weevilsd (127.0.0.1:$tunnel_port there, 127.0.0.1:$port here). -->
@@ -333,7 +362,8 @@ EOF
 </dict>
 </plist>
 EOF
-  else
+    put_file "$agents/$prefix.weevils-tunnel.plist" || true
+  elif [ -f "$agents/$prefix.weevils-tunnel.plist" ]; then
     launchctl bootout "gui/$(id -u)/$prefix.weevils-tunnel" >/dev/null 2>&1 || true
     rm -f "$agents/$prefix.weevils-tunnel.plist"
   fi
@@ -368,7 +398,7 @@ EOF
 </plist>
 EOF
   upd_changed=0
-  if cmp -s "$upd.new" "$upd"; then rm -f "$upd.new"; else mv -f "$upd.new" "$upd"; upd_changed=1; fi
+  if put_file "$upd"; then upd_changed=1; fi
   if [ "${WEEVILS_UPDATING:-0}" != 1 ]; then
     dom=gui/$(id -u)
     if ! launchctl print "$dom/$prefix.weevils-update" >/dev/null 2>&1; then
@@ -381,7 +411,7 @@ EOF
     fi
   fi
 elif [ "$(uname -s)" = Darwin ]; then
-  rm -f "$agents/$prefix.weevilsd.plist" "$agents/$prefix.weevils-tunnel.plist"
+  rm -f "$agents/$prefix.weevilsd.plist" "$agents/$prefix.weevils-tunnel.plist" ~/.local/bin/weevilsd
 fi
 "$svc" restart
 "$svc" status

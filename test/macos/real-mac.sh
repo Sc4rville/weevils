@@ -74,6 +74,8 @@ check "mode is launchd" [ "$mode" = launchd ]
 check "the plist exists" [ -f "$plist" ]
 check "plutil -lint" plutil -lint "$plist"
 plutil -p "$plist" 2>&1 | sed 's/^/  | /'
+# macOS names the background item after the program the agent runs: weevilsd, never node.
+check "the agent runs ~/.local/bin/weevilsd, not node" sh -c "[ \"\$(plutil -extract ProgramArguments.0 raw '$plist')\" = '$HOME/.local/bin/weevilsd' ]"
 check "launchd runs it" sh -c "launchctl print gui/$uid/$label | grep -q 'state = running'"
 check "weevilsd answers on 127.0.0.1:$port" wait_up
 check "weevils-service status says running" sh -c "'$svc' status | grep -q 'weevilsd: running'"
@@ -158,10 +160,13 @@ note "pid $pid → $(daemon_pid)"
 
 say "a second run changes nothing"
 code_before=$(cat "$HOME/.config/weevils/secret")
+plist_before=$(stat -f %m "$plist")
 /bin/bash ./install.sh --agent --lang en >"$log" 2>&1; rc=$?
 check "exit code 0" [ "$rc" = 0 ]
 check "status=ok" [ "$(sum status)" = ok ]
 check "same access code" [ "$(cat "$HOME/.config/weevils/secret")" = "$code_before" ]
+# A rewritten agent file is a new background item for macOS, announced again ("Background Items Added").
+check "the agent's file was left as it was" [ "$(stat -f %m "$plist")" = "$plist_before" ]
 check "it answers" wait_up
 [ "$keychain" = 0 ] || check "claude_logged=yes (from the Keychain)" [ "$(sum claude_logged)" = yes ]
 [ "$keychain" = 0 ] || check "ready=yes" [ "$(sum ready)" = yes ]

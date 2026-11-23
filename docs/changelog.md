@@ -4,6 +4,29 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-23
 
+### Installer
+- Never a system upgrade: only the missing packages (`pacman -S --needed`, the database refreshed once for those
+  packages only when the mirrors 404; `apt-get install`, `dnf install`, `zypper install`, `apk add`, `brew install`
+  without upgrading other formulae). On CachyOS, `pacman -Syu` failed on a held-back package and stopped the install.
+  zypper (openSUSE) and apk (Alpine) are new.
+- A failure ends on one plain sentence and the one command that fixes it, never a package manager's raw output (kept
+  in `~/.cache/weevils/`). A computer joining from weevboss's line reports it: weevboss's thread says why it did not
+  install, with the command, instead of waiting for it.
+
+### Machines
+- A joined computer dropped off at its first update: weevils-update re-ran the installer without `--secondary`, which
+  made it a main machine of its own and removed its tunnel. A re-run now keeps the role, the main machine and the
+  tunnel port (from `service.conf`).
+- The tunnel never gives up, and before each connection the main machine lets go of the port a dead connection still
+  holds (a computer that slept or changed network). weevboss says when a connected computer has not answered for
+  10 minutes, with the one command to run on it, and when it is back.
+
+### macOS
+- No more "Background Items Added: node" notifications all day: every update and every restart took the launchd
+  agent out of launchd and loaded it again, which macOS announces each time, named after the agent's program, node.
+  The agent now runs `~/.local/bin/weevilsd` (it starts node, whose path and PATH come from `service.conf`), its file
+  is only rewritten when it changes, and a restart with the same file is a `launchctl kickstart -k`.
+
 ### Themes
 - Two new themes in the theme selector: **coastal** (littoral), a light seaside day (surf-blue top, sand 24/7, sea-spray
   calm band, navy ink, projects in blues from sea foam through turquoise and azure to lavender, a buoy-red star);

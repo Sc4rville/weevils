@@ -139,6 +139,10 @@ export default defineMessages({
       `Sur ton autre ordinateur, ouvre un terminal et colle cette ligne :\n\n\`${line}\`\n\nElle marche une fois, pendant une heure. Je te dis ici quand il est branché.`,
     joinKey: (id: string): string => `${id} se branche : weevils s’installe dessus, quelques minutes.`,
     joinOnline: (name: string): string => `${name} est branché : je peux y lancer des agents.`,
+    linkDown: (name: string): string => `${name} ne répond plus depuis 10 minutes. S’il est allumé, lance \`weevils-service restart\` dessus.`,
+    linkBack: (name: string): string => `${name} est de nouveau connecté.`,
+    joinFailed: (id: string, why: string, fix: string): string =>
+      `${id} n’a pas pu s’installer : ${why}${fix ? `\n\nSur ${id}, lance \`${fix}\`, puis demande-moi une nouvelle ligne.` : '\n\nDemande-moi une nouvelle ligne pour réessayer.'}`,
     connectorNeedsHttps: (url: string): string =>
       `ChatGPT et Claude.ai ne me joignent qu’à une adresse publique en https, et pour l’instant je suis à ${url}. Demande-moi de me rendre joignable de partout : on le branche juste après.`,
     connectorHow: (url: string, tunnel: boolean): string =>
@@ -384,6 +388,10 @@ export default defineMessages({
       `On your other computer, open a terminal and paste this line:\n\n\`${line}\`\n\nIt works once, for an hour. I’ll tell you here when that computer is plugged in.`,
     joinKey: (id: string): string => `${id} is plugging in: weevils is installing there, a few minutes.`,
     joinOnline: (name: string): string => `${name} is plugged in: I can run agents there now.`,
+    linkDown: (name: string): string => `${name} has not answered for 10 minutes. If it is on, run \`weevils-service restart\` on it.`,
+    linkBack: (name: string): string => `${name} is connected again.`,
+    joinFailed: (id: string, why: string, fix: string): string =>
+      `${id} failed to install: ${why}${fix ? `\n\nOn ${id}, run \`${fix}\`, then ask me for a new line.` : '\n\nAsk me for a new line to try again.'}`,
     connectorNeedsHttps: (url: string): string =>
       `ChatGPT and Claude.ai only reach me at a public https address, and right now I’m at ${url}. Ask me to make me reachable from anywhere: we’ll plug it in right after.`,
     connectorHow: (url: string, tunnel: boolean): string =>

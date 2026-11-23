@@ -12,6 +12,7 @@ import { useFollow } from './follow'
 import M from '../i18n/calm'
 import { useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
+import { mergePending, type Pending } from './pending'
 import { Preview, freshSite, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings } from './settings'
 import { SidePane, usePageChrome, useSplit } from './shell'
@@ -99,7 +100,18 @@ export function CalmConv({ id }: { id: string }) {
     if (s) markSeen(s.id, s.lastActivityAt)
   }, [s, s?.id, s?.lastActivityAt])
   const raw: Message[] = main ? snap.main : (detail?.messages ?? [])
-  const messages = useMemo(() => raw.filter((m) => m.role !== 'event'), [raw])
+  // What you send shows at once in the thread, before the agent writes it in its transcript; gone when it is there.
+  const [pending, setPending] = useState<Pending[]>([])
+  useEffect(() => setPending([]), [id, main])
+  useEffect(() => {
+    setPending((p) => {
+      if (!p.length) return p
+      const left = new Set(mergePending(raw, p).map((m) => m.id))
+      const next = p.filter((x) => left.has(x.id) && Date.now() - x.at < (x.accepted ? 24 * 3600_000 : 15 * 60_000))
+      return next.length === p.length ? p : next
+    })
+  }, [raw])
+  const messages = useMemo(() => mergePending(raw.filter((m) => m.role !== 'event'), pending), [raw, pending])
   const working = main ? snap.mainWorking : s?.status === 'working'
   const author = main ? 'weevboss' : (s?.tool ?? 'claude')
   const title = main ? 'weevboss' : (s?.title ?? '')
@@ -115,6 +127,9 @@ export function CalmConv({ id }: { id: string }) {
     if(interceptModelControl(main?'__main':id,text,files.length))return
     if (sourceIssue) throw new Error(sourceIssue)
     setErr(null)
+    const users = raw.filter((m) => m.role === 'user' || m.role === 'orchestrator')
+    const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text, at: Date.now(), typed: text, after: raw.at(-1)?.id, known: users.map((m) => m.id) }
+    if (text.trim()) setPending((p) => [...p, tmp])
     follow.toEnd()
     try {
       if (main) {
@@ -125,7 +140,9 @@ export function CalmConv({ id }: { id: string }) {
         if (s.status === 'needs_user' || s.status === 'interrupted') dismissNotice(sessionNoticeKey(s))
         if (r.id !== id) replace({ kind: 'calmconv', id: r.id })
       }
+      setPending((p) => p.map((x) => (x.id === tmp.id ? { ...x, accepted: true } : x)))
     } catch (e) {
+      setPending((p) => p.filter((x) => x.id !== tmp.id))
       setErr((e as Error).message)
       throw e
     }

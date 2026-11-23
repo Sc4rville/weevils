@@ -9,6 +9,7 @@ import { DiagramView } from './diagram-view'
 import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { api } from '../api'
 import { useCaptureSuggestion } from './capture-suggestion'
 import { pasteFiles, useDropTarget } from './file-drop'
@@ -466,7 +467,6 @@ export function Composer({
     field.current.setSelectionRange(at, at)
   }, [roomy, text])
   const [busy, setBusy] = useState(false)
-  const submitting = useRef(false)
   const [files, setFiles] = useState<Attachment[]>([])
   const [rec, setRec] = useState<'off' | 'on' | 'wait'>('off')
   const [err, setErr] = useState<string | null>(null)
@@ -486,44 +486,55 @@ export function Composer({
     else if (draft?.text) setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${draft.text}` : draft.text))
   }, [draft?.n])
 
-  const submit = async (e: FormEvent) => {
+  // Messages leave in the order they were sent, even when one waits on an upload; the box is free meanwhile.
+  const queue = useRef<Promise<unknown>>(Promise.resolve())
+  const inFlight = useRef(0)
+  const [sending, setSending] = useState(0)
+  const alive = useRef(true)
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+  const submit = (e: FormEvent) => {
     e.preventDefault()
-    const form = e.currentTarget
-    // Use the live value: mobile IME may commit its final characters on blur.
-    if (submitting.current || busy || disabled) return
+    const form = e.currentTarget as HTMLFormElement
+    if (busy || disabled) return
     // On a phone the keyboard closes; on a computer the box keeps the focus, to write the next message at once.
     if (!keyboardSends()) (document.activeElement as HTMLElement | null)?.blur?.()
+    // Use the live value: mobile IME may commit its final characters on blur.
     const original = field.current?.value ?? text
     const typed = original.trim()
-    if (!typed && !files.length && !held) return
-    submitting.current = true // synchronous: two submit events can precede a React render
     const sent = files
+    const sentHeld = held
     const sentKey = key
-    setText(original)
-    setBusy(true)
-    setErr(null)
-    try {
-      // A held capture goes first to the library, then with this message (its path, or the picture itself).
-      const out = held && captureTo ? await withHeld(held, typed, captureTo, sent) : { text: typed, files: sent }
-      if (out.files.length && onAttach) await onAttach(out.text, out.files)
-      else await onSend(out.text)
-      if (held && heldNow() === held) hold(null)
-      // Keep the draft (including sessionStorage) until the server acknowledges it.
-      // A new dictation arriving while we await the server must also survive.
-      if (keyRef.current === sentKey) setText((current) => current === original ? '' : current)
-      else {
-        try {
-          if (sessionStorage.getItem(sentKey) === original) sessionStorage.removeItem(sentKey)
-        } catch { /* stockage indisponible */ }
+    if (!typed && !sent.length && !sentHeld) return
+    // The box empties now, in this very event: never after the server's answer, a later render or an upload. The
+    // thread shows the message at once (its pending bubble); the outbox keeps it across a reload. A second submit
+    // event from the same tap finds the box already empty.
+    flushSync(() => { setText(''); setFiles([]); setErr(null); setSending((n) => n + 1) })
+    if (sentHeld) hold(null)
+    const go = async () => {
+      try {
+        // A held capture goes first to the library, then with this message (its path, or the picture itself).
+        const out = sentHeld && captureTo ? await withHeld(sentHeld, typed, captureTo, sent) : { text: typed, files: sent }
+        if (out.files.length && onAttach) await onAttach(out.text, out.files)
+        else await onSend(out.text)
+      } catch (e) {
+        // Truly not sent: everything comes back in the box, before whatever was typed since, with a quiet error.
+        const back = (cur: string) => (cur.trim() ? `${original.replace(/\s+$/, '')} ${cur}` : original)
+        if (alive.current && keyRef.current === sentKey) setText(back)
+        else {
+          try { sessionStorage.setItem(sentKey, back(sessionStorage.getItem(sentKey) ?? '')) } catch { /* stockage indisponible */ }
+        }
+        if (alive.current) setFiles((cur) => [...sent, ...cur].slice(0, 6))
+        if (sentHeld && !heldNow()) hold(sentHeld)
+        if (sayErrors && alive.current) setErr((e as Error).message || tr(M).sendFailed)
+        flash(form)
+      } finally {
+        if (alive.current) setSending((n) => n - 1)
       }
-      setFiles((current) => current === sent ? [] : current)
-    } catch (e) {
-      if (sayErrors) setErr((e as Error).message || tr(M).sendFailed)
-      flash(form)
-    } finally {
-      submitting.current = false
-      setBusy(false)
     }
+    // Nothing ahead: it leaves now, inside the gesture (a preview's capture needs it); otherwise after the one ahead.
+    const run = inFlight.current ? queue.current.then(go) : go()
+    inFlight.current++
+    queue.current = run.catch(() => undefined).finally(() => { inFlight.current-- })
   }
 
   const pick = async (list: FileList | readonly File[] | null) => {
@@ -607,7 +618,7 @@ export function Composer({
   }
 
   return (
-    <form ref={(node) => { formEl.current = node; if (formRef) formRef.current = node }} className={`composer band ${className}`} aria-busy={busy} data-draft={!!text || !!files.length || !!held} onSubmit={submit}>
+    <form ref={(node) => { formEl.current = node; if (formRef) formRef.current = node }} className={`composer band ${className}`} aria-busy={busy || sending > 0} data-draft={!!text || !!files.length || !!held} onSubmit={submit}>
       {(files.length > 0 || err) && (
         <div className="in meta attach-line">
           {files.length > 0 && (
@@ -628,7 +639,7 @@ export function Composer({
       )}
       <div className="in">
         {/* No « > » before the field: its width goes to the text. Only the sending star takes that spot. */}
-        {busy && <span className="prompt" aria-hidden><span className="spin"><Icon name="star" /></span></span>}
+        {(busy || sending > 0) && <span className="prompt" aria-hidden><span className="spin"><Icon name="star" /></span></span>}
         {held && (
           <span className="held-capture">
             <img src={held.url} alt={tc.shot} />

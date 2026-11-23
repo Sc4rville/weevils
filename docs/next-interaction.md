@@ -136,6 +136,10 @@ once, and the code follows. Behaviour is never flipped back and forth.
   chat, a new page, the first run), a physical keyboard sends with Enter and adds a line with Shift+Enter; never while
   an input method is still composing a word. On a phone, the on-screen Return adds a line and the send button sends.
   After sending from a computer, the box keeps the focus.
+- **Sent means gone from the box** (2026-11-23): the box empties in the very tap or Enter that sends, never after the
+  server's answer, a render or an upload; the message shows in the thread at once, waiting for its transcript. Only a
+  real failure gives the text (and its files) back in the box, before anything typed since, with a quiet error.
+  Messages sent quickly one after another leave in their order.
 - **A conversation wears its repo's colour**, the one of its band in the side bar (weevils' own repo: its gradient).
   Tapping it is one motion in from the right, weevboss's strip travelling with it.
 - **A session's screen gives the thread the room** (2026-11-22): its head is one compact row (the back chevron, the

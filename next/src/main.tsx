@@ -287,7 +287,7 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
                     while anything here runs, that icon itself lights up and turns (the app's AutoMark); else it rests. */}
                 <button className="nx-row nx-project-head nx-repo-row" onClick={foldAutos} aria-expanded={!autosFolded}>
                   <span className="nx-repo-mark nx-autos-mark" aria-hidden>{autos.some((o) => o.state === 'running') ? <AutoMark /> : <Icon name="cycle" />}</span>
-                  <span className="nx-row-title nx-project-name">Autonomous</span>
+                  <span className="nx-row-title nx-project-name">autonomous</span>
                 </button>
                 <div className="chars">
                   <button className="ch" aria-label="New automation" disabled={creating} onClick={create}>
@@ -310,7 +310,7 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
           <FactorySection snap={snap} colors={colors} page={page} toBoss={close} />
           {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
               shows here too; machines, subscriptions and Tempo live in Your factory; its last line goes to the classic app. */}
-          <div className="nx-settings"><FootBand switchTo="classic" factory /></div>
+          <div className="nx-settings"><FootBand switchTo="classic" factory mark={<span className="nx-repo-mark" aria-hidden><Icon name="settings" /></span>} /></div>
         </div>
       </motion.nav>
     </>

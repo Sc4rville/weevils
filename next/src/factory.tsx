@@ -428,7 +428,7 @@ export function FactorySection({ snap, colors, page, toBoss }: {
         <button className="nx-row nx-project-head nx-repo-row" onClick={fold} aria-expanded={open}>
           {/* Its icon in the weevils logo's column, its name under the « w », like every band of the side bar. */}
           <span className="nx-repo-mark" aria-hidden><Icon name="factory" /></span>
-          <span className="nx-row-title nx-project-name">Your factory</span>
+          <span className="nx-row-title nx-project-name">your factory</span>
         </button>
       </div>
       <Collapse open={open}>
@@ -541,7 +541,7 @@ export function NextMachinePage({ id }: { id: string }) {
   }
   return (
     <div ref={box} className="nx-machine">
-      <Shell slot="calm" kicker="Your factory" title={name}
+      <Shell slot="calm" kicker="your factory" title={name}
         foot={talk ? undefined : <Composer placeholder={`Talk to ${name}…`} label={`Message to ${name}`} onSend={send} sayErrors />}>
         <MachineStrip m={m} />
         {err && <p className="in meta" role="alert">{err}</p>}

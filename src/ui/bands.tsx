@@ -676,7 +676,7 @@ const SETTINGS_FOLD = 'weevils-settings-open'
 export const settingsFolded = () => { try { return localStorage.getItem(SETTINGS_FOLD) !== '1' } catch { return true } }
 const saveSettingsFolded = (folded: boolean) => { try { if (folded) localStorage.removeItem(SETTINGS_FOLD); else localStorage.setItem(SETTINGS_FOLD, '1') } catch { /* private mode: this visit only */ } }
 
-export function FootBand({ switchTo = 'next', factory = false }: { switchTo?: 'next' | 'classic'; factory?: boolean } = {}) {
+export function FootBand({ switchTo = 'next', factory = false, mark }: { switchTo?: 'next' | 'classic'; factory?: boolean; mark?: ReactNode } = {}) {
   const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   // The relay writes « until 6 pm » in this device's time zone (the Codex relay row moved to the subscriptions page).
@@ -697,6 +697,7 @@ export function FootBand({ switchTo = 'next', factory = false }: { switchTo?: 'n
     <section className="band demo settings-band" style={color(colors.__foot ?? 'p3')} aria-label={t.settings}>
       {/* A tap on its name folds it to this one band or unfolds it; folded unless this device last left it open. */}
       <div className="in head">
+        {mark}
         <h2 className="h2" style={{ margin: 0 }}>
           <button className="settings-fold" onClick={fold} aria-expanded={!folded}>{t.settings}</button>
         </h2>

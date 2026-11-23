@@ -145,7 +145,8 @@ body { overflow: hidden; }
 .nx-project-head { min-height: var(--band-h); padding-top: 0; padding-bottom: 0; gap: 8px; }
 /* Every folded band is one height (--band-h): weevils, each repo, Autonomous, settings — a regular staircase. */
 .nx-settings .settings-band { padding-bottom: 0; }
-.nx-settings .settings-band > .in.head { min-height: var(--band-h); padding-top: 0; padding-bottom: 0; display: flex; align-items: center; box-sizing: border-box; }
+.nx-settings .settings-band > .in.head { min-height: var(--band-h); padding-top: 0; padding-bottom: 0; display: flex; align-items: center; box-sizing: border-box; gap: var(--mark-gap); }
+.nx-settings .settings-band > .in.head > .h2 { flex: 1; min-width: 0; }
 .nx-project-name { font-size: 20px; letter-spacing: -0.01em; }
 /* The working star of a project sits in one column, just left of its « / », whatever the name's length: the name
    takes the room, the star ends the row's tap area (2026-11-23). */
@@ -198,7 +199,7 @@ body { overflow: hidden; }
 .nx-stage .user-photo img { width: auto; height: auto; max-width: min(208px, 100%); max-height: 168px; min-height: 84px; object-fit: cover; border-radius: 12px; }
 
 /* weevils' own block at the top: weevboss's logo and « weevils » head it (main.tsx ProjectGroup boss). */
-.nx-project-head.nx-boss-row { gap: 12px; min-height: var(--band-h); }
+.nx-project-head.nx-boss-row { gap: var(--mark-gap); min-height: var(--band-h); }
 .nx-project-head.nx-boss-row .nx-project-name { font-weight: 800; }
 .nx-row.nx-more { min-height: 38px; }
 
@@ -228,11 +229,13 @@ body { overflow: hidden; }
 /* weevils' block head: its logo opens weevboss, its name folds its sessions (main.tsx ProjectGroup). */
 .nx-boss-row .nx-boss-logo, .nx-boss-row .nx-fold { background: none; border: 0; padding: 0; color: inherit; font: inherit; display: flex; align-items: center; gap: 10px; }
 .nx-boss-row .nx-fold { flex: 1; min-width: 0; min-height: 44px; text-align: left; }
-.nx-boss-row .nx-boss-logo { min-width: 44px; min-height: 44px; }
-/* Every repo row: a thin square repo mark in the weevils logo's column (same box, same size), its name starting
-   exactly under the « w » of weevils. */
-.nx-repo-row { gap: 12px; }
-.nx-repo-mark { flex: none; width: 44px; display: flex; align-items: center; }
+/* The logo is as wide as every band's icon; its tap target reaches into the gap after it, so the name stays close. */
+.nx-boss-row .nx-boss-logo { min-width: var(--mark-w); min-height: 44px; padding-right: var(--mark-gap); margin-right: calc(-1 * var(--mark-gap)); }
+/* Every band's head (weevils, a repo, autonomous, your factory, settings): its icon in one column, the weevils logo's,
+   and its name close after it, one small gap on every band, so every name starts under the « w » of weevils. */
+:root { --mark-w: 26px; --mark-gap: 12px; }
+.nx-repo-row { gap: var(--mark-gap); }
+.nx-repo-mark { flex: none; width: var(--mark-w); display: flex; align-items: center; }
 .nx-repo-mark .ic { width: 26px; height: 26px; }
 .nx-repo-mark .ic:not(.auto-mark) path { stroke-width: 1.5; }
 /* Autonomous at rest: its loop, still and in ink like the other marks; running, the app's AutoMark (colour, travelling). */

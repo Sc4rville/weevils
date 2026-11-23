@@ -26,6 +26,11 @@ once, and the code follows. Behaviour is never flipped back and forth.
   **Autonomous** and **Your factory** are laid out the same way (2026-11-23): their icon in that column (the loop; the
   factory), their name under the « w ». A project shows that it works by its star, on the right, in one column just
   left of its « / »; Autonomous by its own icon alone, which lights up and turns while anything in it runs.
+  Their names are lowercase wherever they are drawn, « autonomous » and « your factory », as « weevils », a repo's
+  name and « settings » are: the side bar's bands and the kicker of the pages they open (2026-11-23).
+  **Settings** wear their own icon in that column too (three thin rails with square knobs, 2026-11-23). Every band's
+  name sits close to its icon, one small gap the same on every band (the column is the icon's width), so the names
+  still share one left edge, under the « w ».
   Every folded band (weevils, each repo, Autonomous, settings) has one and the same height. The side bar ends with
   its last band: under it, what is behind shows through, never a filler band (2026-11-23).
 - **An automation row always opens the automation** (2026-11-21). Once accepted, it opens on its overview: its

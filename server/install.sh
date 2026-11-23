@@ -22,6 +22,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo=$(dirname "$here")
 svc=$here/weevils-service
 cfg() { "$svc" config "$@"; }
+# put_file <file> — <file>.new takes the place of <file> only when it differs (true when it did). For macOS, a launchd
+# agent's file rewritten (or the program it runs) and loaded again is a background item added, announced in a
+# notification every time: an update that changes nothing in them leaves them as they are (weevils-service then
+# restarts weevilsd in place).
+put_file() { if cmp -s "$1.new" "$1"; then rm -f "$1.new"; return 1; fi; mv -f "$1.new" "$1"; }
 
 case "$role" in
   main) ;;
@@ -46,7 +51,8 @@ install -m 755 "$here/weevils-service" ~/.local/bin/weevils-service
 sed "s/WEEVILS_HOOK_PORT:-4180/WEEVILS_HOOK_PORT:-$hook_port/" "$here/hook.sh" >~/.local/bin/weevils-hook && chmod 755 ~/.local/bin/weevils-hook
 sed "s/WEEVILS_PORT:-4179/WEEVILS_PORT:-$port/" "$here/weevils-cli" >~/.local/bin/weevils && chmod 755 ~/.local/bin/weevils
 # Updates by itself (weevils-update, timer below): on unless WEEVILS_AUTO_UPDATE=0.
-install -m 755 "$here/weevils-update" ~/.local/bin/weevils-update
+install -m 755 "$here/weevils-update" ~/.local/bin/weevils-update.new
+put_file ~/.local/bin/weevils-update || true
 # tmux guard: ~/.local/bin/tmux, ahead of the real one, refuses to close the live weevils sessions without the
 # server's token (a test script once closed them all through « tmux -L weevils kill-server »). A tmux of the person's
 # own already there (a build, a wrapper, a link) is kept aside, once, as tmux.bak-weevils: the guard runs it, and
@@ -293,7 +299,12 @@ xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/
 if [ "$("$svc" mode)" = launchd ]; then
   data=~/.local/share/weevils
   mkdir -p "$agents" "$data"
-  cat >"$agents/$prefix.weevilsd.plist" <<EOF
+  # The agent runs ~/.local/bin/weevilsd (server/weevilsd), which starts node: macOS names the background item after
+  # it ("weevilsd", not "node"), and node's path and the PATH live in service.conf, so this file stays the same when
+  # node moves.
+  install -m 755 "$here/weevilsd" ~/.local/bin/weevilsd.new
+  put_file ~/.local/bin/weevilsd || true
+  cat >"$agents/$prefix.weevilsd.plist.new" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- weevilsd, the weevils server ($role): Claude Code / Codex sessions, app API. Written by server/install.sh. -->
@@ -302,14 +313,11 @@ if [ "$("$svc" mode)" = launchd ]; then
   <key>Label</key><string>$prefix.weevilsd</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$(xml "$node_bin")</string>
-    <string>server/index.ts</string>
+    <string>$(xml "$HOME/.local/bin/weevilsd")</string>
   </array>
   <key>WorkingDirectory</key><string>$(xml "$repo")</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>$(xml "$svc_path")</string>
-    <key>NODE_ENV</key><string>production</string>
     <!-- launchd sets no locale: without a UTF-8 one, tmux and the agents in its panes mangle accents. -->
     <key>LANG</key><string>en_US.UTF-8</string>
   </dict>
@@ -326,8 +334,9 @@ if [ "$("$svc" mode)" = launchd ]; then
 </dict>
 </plist>
 EOF
+  put_file "$agents/$prefix.weevilsd.plist" || true
   if [ "$role" = secondary ]; then
-    cat >"$agents/$prefix.weevils-tunnel.plist" <<EOF
+    cat >"$agents/$prefix.weevils-tunnel.plist.new" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- weevils, reverse SSH tunnel: the main machine reads this weevilsd (127.0.0.1:$tunnel_port there, 127.0.0.1:$port here). -->
@@ -353,7 +362,8 @@ EOF
 </dict>
 </plist>
 EOF
-  else
+    put_file "$agents/$prefix.weevils-tunnel.plist" || true
+  elif [ -f "$agents/$prefix.weevils-tunnel.plist" ]; then
     launchctl bootout "gui/$(id -u)/$prefix.weevils-tunnel" >/dev/null 2>&1 || true
     rm -f "$agents/$prefix.weevils-tunnel.plist"
   fi
@@ -388,7 +398,7 @@ EOF
 </plist>
 EOF
   upd_changed=0
-  if cmp -s "$upd.new" "$upd"; then rm -f "$upd.new"; else mv -f "$upd.new" "$upd"; upd_changed=1; fi
+  if put_file "$upd"; then upd_changed=1; fi
   if [ "${WEEVILS_UPDATING:-0}" != 1 ]; then
     dom=gui/$(id -u)
     if ! launchctl print "$dom/$prefix.weevils-update" >/dev/null 2>&1; then
@@ -401,7 +411,7 @@ EOF
     fi
   fi
 elif [ "$(uname -s)" = Darwin ]; then
-  rm -f "$agents/$prefix.weevilsd.plist" "$agents/$prefix.weevils-tunnel.plist"
+  rm -f "$agents/$prefix.weevilsd.plist" "$agents/$prefix.weevils-tunnel.plist" ~/.local/bin/weevilsd
 fi
 "$svc" restart
 "$svc" status

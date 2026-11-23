@@ -1,0 +1,24 @@
+#!/bin/bash
+# weevilsd — starts the weevils server (node server/index.ts) for launchd, on a Mac. Installed in ~/.local/bin by
+# server/install.sh. Runs under macOS's bash 3.2.
+#
+# The launchd agent (~/Library/LaunchAgents/com.github.sc4rville.weevilsd.plist) runs this script, not node itself:
+# - macOS names a background item after the program its agent runs, so the person sees "weevilsd" in Login Items and
+#   in its notifications, not "node";
+# - the agent's file then never changes when node does (a Homebrew upgrade, another node folder): which node, which
+#   folder and which PATH come from ~/.config/weevils/service.conf (written by server/install.sh), read at each start.
+#   An agent's file rewritten and loaded again is a new background item for macOS, announced again every time.
+set -eu
+WEEVILS_DIR='' WEEVILS_NODE='' WEEVILS_PATH=''
+conf=$HOME/.config/weevils/service.conf
+# shellcheck disable=SC1090
+[ ! -f "$conf" ] || . "$conf"
+# 78 (EX_CONFIG), what launchd itself reports for a job it can't start; it tries again ThrottleInterval later.
+[ -n "$WEEVILS_DIR" ] && [ -d "$WEEVILS_DIR" ] || { echo "weevilsd: no weevils folder in $conf, run install.sh again" >&2; exit 78; }
+[ -z "$WEEVILS_PATH" ] || export PATH="$WEEVILS_PATH"
+if [ -z "$WEEVILS_NODE" ] || [ ! -x "$WEEVILS_NODE" ]; then
+  WEEVILS_NODE=$(command -v node) || { echo "weevilsd: node not found (PATH=$PATH), run install.sh again" >&2; exit 78; }
+fi
+cd "$WEEVILS_DIR"
+export NODE_ENV=production
+exec "$WEEVILS_NODE" server/index.ts

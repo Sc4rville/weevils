@@ -148,8 +148,10 @@ The same command works on a Mac, Apple Silicon or Intel. What differs from Linux
 - **Service.** A launchd agent of your session, `~/Library/LaunchAgents/com.github.sc4rville.weevilsd.plist`: it
   starts when you log in and is restarted if it stops. It runs in your session because that is where the Keychain,
   which holds Claude Code's login on a Mac, can be reached. `weevils-service start|stop|restart|status|logs` controls
-  it; the logs are in `~/.local/share/weevils/weevilsd.log`. No crontab line on a Mac. Automatic updates are a second
-  agent, `com.github.sc4rville.weevils-update`, which runs `weevils-update` every 25 minutes (as the systemd timer
+  it; the logs are in `~/.local/share/weevils/weevilsd.log`. The agent runs `~/.local/bin/weevilsd`, which starts
+  node: Login Items lists it as weevilsd. An update or a restart leaves the agent's file as it is and restarts
+  weevilsd in place, so macOS does not announce a new background item each time. No crontab line on a Mac.
+  Automatic updates are a second agent, `com.github.sc4rville.weevils-update`, which runs `weevils-update` every 25 minutes (as the systemd timer
   does on Linux; `WEEVILS_AUTO_UPDATE=0` turns it off).
 - **Over SSH.** With no session open on the Mac's screen there is nowhere to load a launchd agent: weevilsd runs as
   a background process until the next restart of the Mac, and the installer says so. Log in on the Mac's screen and
@@ -244,7 +246,7 @@ terminal). `phoneLink`: the end screen printed a link a phone can open (`mode` p
 ```
 
 Stops the service and removes its units (on a Mac: its launchd agents), the commands in `~/.local/bin` (`wv`,
-`weevils`, `weevils-service`, `weevils-hook`), the weevils hooks in `~/.claude/settings.json`, the `@reboot` crontab
+`weevils`, `weevils-service`, `weevils-hook`, `weevils-update`, `weevilsd`), the weevils hooks in `~/.claude/settings.json`, the `@reboot` crontab
 line, and the Caddy site (`/etc/caddy/weevils.caddy` and its import line, with sudo; the public URL that came with
 it is cleared). It keeps `~/.config/weevils` (settings, access code) and `~/.local/share/weevils` (data) unless
 `--purge`, the clone, the agent sessions still open in tmux, and linger. The keys of computers plugged in from

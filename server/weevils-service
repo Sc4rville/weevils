@@ -84,18 +84,30 @@ launchd_gone() {
   local n=0
   while launchd_loaded "$1" "$2" && [ "$n" -lt 30 ]; do sleep 0.5; n=$((n + 1)); done
 }
-# launchd_load <domain> <unit> — (re)loads the agent from its file, so a file changed by a new install is taken.
+# The copy of each agent's file as launchd was last given it (launchd_load), to tell whether the file changed since.
+LAUNCHD_SEEN=$RUN_DIR/launchd
+launchd_seen() { echo "$LAUNCHD_SEEN/$(label "$1").plist"; }
+# launchd_load <domain> <unit> — restarts the agent, and (re)loads it from its file only when launchd does not have
+# it or the file changed since it was loaded (a new install). For macOS, each load of an agent is a background item
+# added, announced in a notification ("Background Items Added") every time: a restart with the same file (every
+# update, every restart asked for) restarts the job in place instead (kickstart -k), and macOS says nothing.
 launchd_load() {
   local dom=$1 u=$2 plist n=0
   plist=$LAUNCH_DIR/$(label "$u").plist
   [ -f "$plist" ] || return 0
+  if launchd_loaded "$dom" "$u" && cmp -s "$plist" "$(launchd_seen "$u")" &&
+    launchctl kickstart -k "$dom/$(label "$u")" >/dev/null 2>&1; then return 0; fi
   launchctl enable "$dom/$(label "$u")" >/dev/null 2>&1 || true
   if launchd_loaded "$dom" "$u"; then
     launchctl bootout "$dom/$(label "$u")" >/dev/null 2>&1 || true
     launchd_gone "$dom" "$u"
   fi
+  rm -f "$(launchd_seen "$u")"
   while [ "$n" -lt 6 ]; do
-    launchctl bootstrap "$dom" "$plist" >/dev/null 2>&1 && return 0
+    if launchctl bootstrap "$dom" "$plist" >/dev/null 2>&1; then
+      mkdir -p "$LAUNCHD_SEEN" && cp -f "$plist" "$(launchd_seen "$u")" || true
+      return 0
+    fi
     # Still there after all (a slow stop): restart it in place.
     if launchd_loaded "$dom" "$u"; then launchctl kickstart -k "$dom/$(label "$u")" >/dev/null 2>&1 || true; return 0; fi
     sleep 1; n=$((n + 1))
@@ -104,6 +116,7 @@ launchd_load() {
   return 1
 }
 launchd_unload() {
+  rm -f "$(launchd_seen "$2")"
   launchd_loaded "$1" "$2" || return 0
   launchctl bootout "$1/$(label "$2")" >/dev/null 2>&1 || true
   launchd_gone "$1" "$2"

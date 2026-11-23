@@ -19,6 +19,11 @@ const kindFr = (m: MachineInfo) =>
     desktop: m.mac ? 'sur ton Mac' : 'sur ton PC fixe',
     wsl: 'sur WSL, sous Windows',
   })[m.kind]
+/** The machine weevils runs on, as the newcomer knows it (« ton VPS », « ton Mac »): never its raw host name. */
+const mineFr = (m: Pick<MachineInfo, 'kind' | 'mac'>) =>
+  ({ vps: 'ton VPS', server: 'ton serveur', container: 'ton serveur', vm: 'ta machine virtuelle', laptop: m.mac ? 'ton Mac' : 'ton PC portable', desktop: m.mac ? 'ton Mac' : 'ton PC', wsl: 'ton PC' })[m.kind]
+const mineEn = (m: Pick<MachineInfo, 'kind' | 'mac'>) =>
+  ({ vps: 'your VPS', server: 'your server', container: 'your server', vm: 'your virtual machine', laptop: m.mac ? 'your Mac' : 'your laptop', desktop: m.mac ? 'your Mac' : 'your PC', wsl: 'your PC' })[m.kind]
 const kindEn = (m: MachineInfo) =>
   ({
     vps: m.provider ? `on a ${m.provider} VPS` : 'on a VPS',
@@ -56,7 +61,7 @@ export default defineMessages({
         ? s.https
           ? `Je suis joignable de partout, en https : ${s.url}. Rien à faire de ce côté.`
           : `Je suis joignable de partout (${s.url}), mais en http : le code d’accès circule en clair et le micro du téléphone refuse de marcher. ${s.machine.mac ? `Pour passer en https, le plus simple : ${tailscaleMacFr}` : 'Pour passer en https, il me faut un nom de domaine qui pointe sur cette machine.'}`
-        : `${s.reach === 'lan' ? `Je ne suis joignable que sur ton réseau local (${s.url})` : `Je n’écoute que sur ${s.machine.mac ? 'ce Mac' : s.machine.host}`} : ton téléphone ne peut pas me joindre de dehors. ${s.machine.mac ? `Le plus simple : ${tailscaleMacFr}` : 'Deux chemins : un nom de domaine qui pointe sur la machine (https automatique), ou Tailscale (gratuit : une app sur ton téléphone, rien à acheter).'}`,
+        : `${s.reach === 'lan' ? `Je ne suis joignable que sur ton réseau local (${s.url})` : `Je n’écoute que sur ${mineFr(s.machine)}`} : ton téléphone ne peut pas me joindre de dehors. ${s.machine.mac ? `Le plus simple : ${tailscaleMacFr}` : 'Deux chemins : un nom de domaine qui pointe sur la machine (https automatique), ou Tailscale (gratuit : une app sur ton téléphone, rien à acheter).'}`,
     reachPrompt: (http: boolean): string => (http ? 'Donne-moi ton domaine en bas, je m’occupe du reste.' : 'Tape ton domaine en bas, ou laisse vide et je pars sur Tailscale. Je m’occupe du reste.'),
     reachDns: (domain: string, ip: string, seen: string): string =>
       `« ${domain} » ne pointe pas encore sur cette machine (${seen ? `il pointe sur ${seen}` : 'il ne pointe nulle part'}). Chez ton fournisseur de domaine, ajoute un enregistrement A « ${domain} » vers ${ip}, attends quelques minutes, puis réessaie :`,
@@ -97,7 +102,7 @@ export default defineMessages({
     machineDo: (target: string, provider: string): string => `Branche ${target}${provider ? ` (${provider})` : ''} sur weevils.`,
     machineLater: 'Connecte Claude Code et je finis le branchement tout seul :',
     // ---- Claude Code
-    claudeInstalling: (host: string): string => `J’installe Claude Code sur ${host}, une minute…`,
+    claudeInstalling: (m: MachineInfo): string => `J’installe Claude Code sur ${mineFr(m)}, l’ordinateur où tes agents travaillent, une minute…`,
     // La connexion se fait en parlant : le lien ici, le code collé dans le fil. Un terminal seulement si rien ne marche d'ici.
     claudeLink: (url: string): string => `Ouvre [la page de connexion de Claude](${url}), accepte, puis colle ici le code qu’elle affiche.`,
     claudeTerminal: (why: string, line: string): string => `Je n’arrive pas à lancer la connexion de Claude d’ici (${why}). Dans un terminal sur cette machine, tape \`${line}\` et connecte-toi : je le verrai tout seul.`,
@@ -118,7 +123,7 @@ export default defineMessages({
     welcomeChatgpt: 'ChatGPT ? [Connecte-le](/#do=codex).',
     welcomeNoClaude: 'Pas encore d’abonnement ? [Choisis une offre Claude](https://claude.com/pricing), puis reviens ici.',
     welcomeClaudeLink: 'Pour commencer, connecte ton compte Claude, une seule fois : le lien arrive juste en dessous.',
-    welcomeClaudeInstall: (host: string): string => `Pour commencer, j’installe Claude Code sur ${host}, puis tu connectes ton compte Claude : le lien suit dans une minute.`,
+    welcomeClaudeInstall: (m: MachineInfo): string => `Pour commencer, j’installe Claude Code sur ${mineFr(m)}, l’ordinateur où tes agents travaillent, puis tu connectes ton compte Claude : le lien suit dans une minute.`,
     welcomeCodex: 'Pour commencer, connecte ton compte ChatGPT, par Codex : le code arrive juste en dessous.',
     welcomeGuest: 'Une question en attendant ? Pose-la-moi.',
     claudeReadyJob: 'Claude est connecté : je lance ce que tu m’as demandé.',
@@ -130,7 +135,7 @@ export default defineMessages({
     providerLater: (name: string) => `Pour le reste, il me faut d’abord ${name} connecté.`,
     codexPrimaryReady: 'Codex est connecté : je suis prêt. Dis-moi ce que tu veux faire.',
     codexReady: 'Codex est prêt : dis « avec codex » et j’ouvre la session dedans.',
-    codexInstalling: (host: string): string => `J’installe Codex sur ${host}…`,
+    codexInstalling: (m: MachineInfo): string => `J’installe Codex sur ${mineFr(m)}, l’ordinateur où tes agents travaillent…`,
     codexTerminal: (why: string, line: string): string => `Je n’arrive pas à connecter Codex d’ici (${why}). Dans un terminal sur cette machine, tape \`${line}\` : je le verrai tout seul.`,
     codexCode: (url: string, code: string): string =>
       `Pour connecter Codex à ton compte ChatGPT : ouvre [cette page](${url}), connecte-toi et tape le code ${code} (valable 15 minutes). Je te fais signe dès que c’est bon.`,
@@ -314,7 +319,7 @@ export default defineMessages({
         ? s.https
           ? `I’m reachable from anywhere, over https: ${s.url}. Nothing to do here.`
           : `I’m reachable from anywhere (${s.url}), but over http: the access code travels in clear text and the phone’s microphone won’t work. ${s.machine.mac ? `To switch to https, the simple way: ${tailscaleMacEn}` : 'To switch to https I need a domain name pointing at this machine.'}`
-        : `${s.reach === 'lan' ? `I’m only reachable on your local network (${s.url})` : `I only listen on ${s.machine.mac ? 'this Mac' : s.machine.host}`}: your phone can’t reach me from outside. ${s.machine.mac ? `The simple way: ${tailscaleMacEn}` : 'Two ways: a domain name pointing at the machine (automatic https), or Tailscale (free: an app on your phone, nothing to buy).'}`,
+        : `${s.reach === 'lan' ? `I’m only reachable on your local network (${s.url})` : `I only listen on ${mineEn(s.machine)}`}: your phone can’t reach me from outside. ${s.machine.mac ? `The simple way: ${tailscaleMacEn}` : 'Two ways: a domain name pointing at the machine (automatic https), or Tailscale (free: an app on your phone, nothing to buy).'}`,
     reachPrompt: (http: boolean): string => (http ? 'Give me your domain below, I’ll take care of the rest.' : 'Type your domain below, or leave it empty and I’ll go with Tailscale. I’ll take care of the rest.'),
     reachDns: (domain: string, ip: string, seen: string): string =>
       `“${domain}” doesn’t point at this machine yet (${seen ? `it points at ${seen}` : 'it points nowhere'}). At your domain provider, add an A record “${domain}” to ${ip}, wait a few minutes, then try again:`,
@@ -351,7 +356,7 @@ export default defineMessages({
     machineNoSsh: 'This machine has no SSH to reach the new one.',
     machineDo: (target: string, provider: string): string => `Plug ${target}${provider ? ` (${provider})` : ''} into weevils.`,
     machineLater: 'Sign Claude Code in and I’ll finish plugging it in on my own:',
-    claudeInstalling: (host: string): string => `Installing Claude Code on ${host}, one minute…`,
+    claudeInstalling: (m: MachineInfo): string => `Installing Claude Code on ${mineEn(m)}, the computer where your agents work, one minute…`,
     claudeLink: (url: string): string => `Open [Claude’s sign-in page](${url}), accept, then paste the code it shows here.`,
     claudeTerminal: (why: string, line: string): string => `I can’t start Claude’s sign-in from here (${why}). In a terminal on this machine, type \`${line}\` and sign in: I’ll notice on my own.`,
     claudeFail: (why: string): string => `Claude doesn’t accept this code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplete, expired or already used' : why}). Here’s a new link:`,
@@ -370,7 +375,7 @@ export default defineMessages({
     welcomeChatgpt: 'ChatGPT? [Connect it](/#do=codex).',
     welcomeNoClaude: 'No subscription yet? [Pick a Claude plan](https://claude.com/pricing), then come back here.',
     welcomeClaudeLink: 'To start, connect your Claude account, just once: the link comes right below.',
-    welcomeClaudeInstall: (host: string): string => `To start, I’m installing Claude Code on ${host}, then you connect your Claude account: the link follows in a minute.`,
+    welcomeClaudeInstall: (m: MachineInfo): string => `To start, I’m installing Claude Code on ${mineEn(m)}, the computer where your agents work, then you connect your Claude account: the link follows in a minute.`,
     welcomeCodex: 'To start, connect your ChatGPT account, through Codex: the code comes right below.',
     welcomeGuest: 'Any question meanwhile? Just ask.',
     claudeReadyJob: 'Claude is signed in: I’m starting what you asked.',
@@ -381,7 +386,7 @@ export default defineMessages({
     providerLater: (name: string) => `For the rest, I need ${name} signed in first.`,
     codexPrimaryReady: 'Codex is connected: I’m ready. Tell me what you want to do.',
     codexReady: 'Codex is ready: say “with codex” and I’ll open the session in it.',
-    codexInstalling: (host: string): string => `Installing Codex on ${host}…`,
+    codexInstalling: (m: MachineInfo): string => `Installing Codex on ${mineEn(m)}, the computer where your agents work…`,
     codexTerminal: (why: string, line: string): string => `I can’t sign Codex in from here (${why}). In a terminal on this machine, type \`${line}\`: I’ll notice on my own.`,
     codexCode: (url: string, code: string): string =>
       `To sign Codex in to your ChatGPT account: open [this page](${url}), sign in and type the code ${code} (valid 15 minutes). I’ll let you know as soon as it’s done.`,

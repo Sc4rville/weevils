@@ -1374,7 +1374,7 @@ export class Setup {
     const t = tr(M)
     if (s.claude.logged && !again) return this.say(t.claudeOk), false
     if (!s.claude.installed) {
-      if (!quiet) this.say(t.claudeInstalling(s.machine.host))
+      if (!quiet) this.say(t.claudeInstalling(s.machine))
       const r = await this.install('claude', s)
       // It will not install from here: the exact line for a terminal there; watch() notices the sign-in.
       if (!r.ok) return this.say(t.claudeTerminal(r.why, `${installCommand('claude', s)} && claude`)), false
@@ -1412,7 +1412,7 @@ export class Setup {
     const t = tr(M)
     if (s.codex.installed && s.codex.logged && !again) return this.codexReady()
     if (!s.codex.installed) {
-      this.say(t.codexInstalling(s.machine.host))
+      this.say(t.codexInstalling(s.machine))
       const r = await this.install('codex', s)
       if (!r.ok) return this.say(t.codexTerminal(r.why, `${installCommand('codex', s)} && codex login`))
     }
@@ -1942,7 +1942,7 @@ export function greeting(s: SetupState, providers: { claude: boolean; codex: boo
       ? t.welcomeCodex
       : link
         ? `${t.welcomeClaude(providers.codex)} ${t.claudeLink(link)}${providers.codex ? ` ${t.welcomeChatgpt}` : ''} ${t.welcomeNoClaude}${ask}`
-        : `${s.claude.installed ? t.welcomeClaudeLink : t.welcomeClaudeInstall(s.machine.host)}${ask}`
+        : `${s.claude.installed ? t.welcomeClaudeLink : t.welcomeClaudeInstall(s.machine)}${ask}`
   return [t.welcomeHello(USER_NAME), [seen, next].filter(Boolean).join(' ')]
 }
 

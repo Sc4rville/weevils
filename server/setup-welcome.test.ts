@@ -91,7 +91,7 @@ describe('the hello', () => {
     // A lent sign-in (server/guest-brain.ts): questions are welcome meanwhile.
     expect(greeting(state(), both, 'https://claude.ai/x', true)[1]).toMatch(/\[Pick a Claude plan\]\(https:\/\/claude\.com\/pricing\), then come back here\. Any question meanwhile\? Just ask\.$/)
     expect(greeting(state({ claude: { installed: true, logged: false } }), both)[1]).toContain('the link comes right below')
-    expect(greeting(state({ claude: { installed: false, logged: false } }), both)[1]).toContain('I’m installing Claude Code on box')
+    expect(greeting(state({ claude: { installed: false, logged: false } }), both)[1]).toContain('I’m installing Claude Code on your VPS, the computer where your agents work')
     auth.tool = 'codex'
     expect(greeting(state(), both)[1]).toContain('your ChatGPT account, through Codex')
     expect(greeting(state(), both)[0]).toContain('Your own AI subscription')

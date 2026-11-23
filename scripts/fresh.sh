@@ -2,7 +2,7 @@
 # fresh.sh — weevils as a newcomer sees it: a blank install in its own Docker container, next to your real one and
 # never touching it (its own disk, network and loopback; no key, no repo, no mail, no data of yours).
 #
-#   scripts/fresh.sh up [--port 4177] [--url https://fresh.example.com] [--host myserver]
+#   scripts/fresh.sh up [--port 4177] [--url https://fresh.example.com] [--host srv-482917]
 #                             builds the image from the HEAD commit if needed, starts the container, prints the link
 #   scripts/fresh.sh reset    back to a just-installed state (same image, same login link): the app forgets the old
 #                             one on every device as soon as it reloads
@@ -29,7 +29,7 @@ conf=$conf_dir/env
 image=$name
 
 mkdir -p "$conf_dir"
-[ -f "$conf" ] || printf 'FRESH_PORT=4177\nFRESH_URL=\nFRESH_HOST=myserver\nFRESH_CLAUDE=\nFRESH_GUEST=\nFRESH_LAB=\nFRESH_LAB_DIR=\n' >"$conf"
+[ -f "$conf" ] || printf 'FRESH_PORT=4177\nFRESH_URL=\nFRESH_HOST=srv-482917\nFRESH_CLAUDE=\nFRESH_GUEST=\nFRESH_LAB=\nFRESH_LAB_DIR=\n' >"$conf"
 # shellcheck disable=SC1090
 . "$conf"
 [ -s "$conf_dir/secret" ] || (umask 077 && head -c 9 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n' >"$conf_dir/secret")

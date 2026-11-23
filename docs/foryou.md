@@ -167,9 +167,12 @@ the cwd when present, so the item knows its project. Files cited in the closing 
 same way (same checks, at most 4, dot-directories refused).
 
 **Mockups** (`shared/mockup.ts`, `src/ui/foryou-mockup.tsx`). In a post, every picture or clip sits in a mockup drawn
-in CSS, sized to the post, on the post's own colour (no box around it): `phone` (an app on a phone, slightly turned,
-with a stepped edge for its thickness), `browser` (a desktop window), `tablet`, `print` (a still or a render, a
-lifted print), `cinema` (a clip on a screen), `board` (a diagram or a before/after, flat on a staircase shadow). The
+in CSS, sized to the post, on the post's own colour (no box around it). Every mockup is a solid block in the language
+of the weevils logo: sharp corners, a front in the logo's violet, and its thickness drawn as two flat faces (the side
+that faces the eye and the bottom), each one shade of the logo, joined at the corner on one clean edge; never stacked
+offset copies. `phone` (an app on a phone, slightly turned), `browser` (a desktop window, three squares in its bar),
+`tablet`, `print` (a still or a render on a thin block), `cinema` (a clip on a screen, a green light in its chin),
+`board` (a diagram or a before/after on a thick block, flat in view). The
 shelf reads a still's pixel size from its header, so the mockup is sized before the bytes arrive; a clip's size comes
 with its metadata. `pickMockup` decides: `.diagram.` / `.compare.` files → board; 2:1 or taller → phone (a longer
 capture shows its top); wide and named like a screen (screenshot, capture, desktop, page…) → browser; 4:3 named like
@@ -196,8 +199,8 @@ a heading with the weevils mark on top. `weevils diagram <flow.mmd> [out.diagram
 two side by side under the BEFORE / AFTER tags. The picture: the compare ground with a black frame (it stands apart
 from every theme), always top to bottom (a phone is taller than wide), white tiles with a black edge and a hard
 shadow, each with its icon from the weevils set on the kind's signature colour, right-angled flows coloured by the
-part they leave (shades at ≥ 4.5:1 on the ground), labels in chips; what changed gets a NEW tag, a stepped
-black-green-black "staircase" shadow and a green glow, a new flow is thick fluo green. At most 8 parts, labels of 28
+part they leave (shades at ≥ 4.5:1 on the ground), labels in chips; every tile is a solid block (a side face and a
+bottom face in the logo's shades); what changed gets a NEW tag, a deeper block with green faces and a green glow, a new flow is thick fluo green. At most 8 parts, labels of 28
 characters, no ids: the renderer refuses the rest with a plain sentence. A visible UI change stays a screenshot or a
 clip.
 

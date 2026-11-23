@@ -234,6 +234,27 @@ describe('for you: figures, the line, media mockups', () => {
     expect([...mock.querySelectorAll('[aria-hidden="true"]')].map((f) => f.className)).toEqual(['fy-mock-side', 'fy-mock-base'])
   })
 
+  it('a post that shows a site links to it: a coloured link under the title, and a tap on the mockup opens it', async () => {
+    const shot = { id: 'p2', type: 'image' as const, url: '/api/foryou/media/p2', name: 'chat.compare.png', bytes: 1, w: 1376, h: 1484 }
+    const item = { ...ITEMS.find((i) => i.id === 'me')!, media: [shot], link: { url: 'https://new-site.example.com/' } }
+    await open([item])
+    const link = band('me').querySelector<HTMLAnchorElement>('.fy-post-link a.living')!
+    expect(link.textContent).toBe('new-site.example.com')
+    expect(link.getAttribute('href')).toBe('https://new-site.example.com/')
+    expect(link.target).toBe('_blank')
+    expect(link.closest('button')).toBeNull()
+    const opened: unknown[][] = []
+    const was = window.open
+    window.open = ((...a: unknown[]) => { opened.push(a); return null }) as typeof window.open
+    try {
+      await click(band('me').querySelector('.fy-media-hit')!)
+    } finally {
+      window.open = was
+    }
+    expect(opened).toEqual([['https://new-site.example.com/', '_blank', 'noopener,noreferrer']])
+    expect(pushed.some((p) => (p as { kind?: string }).kind === 'media')).toBe(false)
+  })
+
   it('a clip plays inside its mockup; a forced mockup wins over the pick', async () => {
     const clip = { id: 'v1', type: 'video' as const, url: '/api/foryou/media/v1', name: 'run.mp4', bytes: 2 }
     const still = { id: 'r1', type: 'image' as const, url: '/api/foryou/media/r1', name: 'render.png', bytes: 1, w: 1600, h: 900, mockup: 'tablet' as const }
@@ -242,6 +263,22 @@ describe('for you: figures, the line, media mockups', () => {
     expect(mocks.map((m) => m.dataset.mockup)).toEqual(['cinema', 'tablet'])
     const video = mocks[0].querySelector('.fy-mock-screen video')! as HTMLVideoElement
     expect(video.muted && video.loop && video.hasAttribute('playsinline')).toBe(true)
+    // iPhone plays it by itself only muted as an attribute, inline; never turned in 3D; the play mark stays until it plays.
+    expect(video.hasAttribute('muted') && video.hasAttribute('webkit-playsinline')).toBe(true)
+    expect(video.getAttribute('src')).toBe('/api/foryou/media/v1#t=0.001')
+    const tile = video.closest('.fy-media')!
+    expect(tile.classList.contains('fy-clip')).toBe(true)
+    expect(tile.classList.contains('fy-playing')).toBe(false)
+    await act(async () => void video.dispatchEvent(new Event('playing')))
+    expect(tile.classList.contains('fy-playing')).toBe(true)
+  })
+
+  it('a clip shows its poster frame while it loads, never a black box', async () => {
+    const clip = { id: 'v2', type: 'video' as const, url: '/api/foryou/media/v2', name: 'pages-band.mp4', bytes: 2, w: 390, h: 844, poster: '/api/foryou/media/v2/poster' }
+    await open([{ ...ITEMS.find((i) => i.id === 'me')!, media: [clip] }])
+    const video = band('me').querySelector<HTMLVideoElement>('.fy-mock video')!
+    expect(video.getAttribute('poster')).toBe('/api/foryou/media/v2/poster')
+    expect(video.closest<HTMLElement>('.fy-mock')!.dataset.mockup).toBe('phone')
   })
 })
 

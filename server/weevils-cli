@@ -15,6 +15,8 @@
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   un post dans « pour toi » (titre en gras en haut)
 #   weevils show <fichier> ["légende"] [--mockup phone|browser|tablet|print|cinema|board]   une image ou une vidéo dans « pour toi », dans sa maquette
+#     post et show : --link <https://…> [--link-label "libellé"] quand ce qu'ils montrent vit à une adresse (site, aperçu, page) ;
+#     weevils link <id du post> <https://…> ["libellé"] l'ajoute après coup. Jamais localhost ni une adresse privée.
 #   weevils capture <sortie.png|.mp4> [--open "#s=<id>"] [--theme t] [--seconds N] [--frame]   l'app vue d'un téléphone, sans lire le code d'accès
 #   weevils compare <avant> <après> <sortie.compare.png|.mp4> [--crop x,y,w,h]   un avant/après lisible d'un coup d'œil (avant de weevils show)
 #   weevils diagram <schéma.mmd> [sortie.diagram.png]   un travail backend dessiné (flowchart mermaid → image weevils) ; weevils show <schéma.mmd> le fait seul
@@ -81,6 +83,7 @@ weevils setup [install | github | ask <brique> [--since <date> | --match <mots>]
 weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
 weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."] [--mockup phone|browser|tablet|print|cinema|board]' # i18n-ignore
+  usage+=$'\n''  post et show : --link <https://…> [--link-label "libellé"] quand le résultat vit à une adresse (site, aperçu, page), jamais localhost   weevils link <id du post> <https://…>' # i18n-ignore
   usage+=$'\n''weevils diagram <schéma.mmd> [sortie.diagram.png]   weevils compare <avant> <après> <sortie.compare.png>' # i18n-ignore
   usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
   usage+=$'\n''weevils react <emoji> [<message>|last] [--session <id>]   une réaction sur un message de la personne' # i18n-ignore
@@ -109,6 +112,7 @@ weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   we
   m_post_empty='rien à poster : weevils post "texte" [--action "libellé::quoi faire"]' m_posted='posté dans « pour toi »' # i18n-ignore
   m_action_bad='une action s’écrit "libellé::quoi faire"' # i18n-ignore
   m_show_no_file='quel fichier ? weevils show <fichier> ["légende"]' m_show_compare='un avant/après se fait avec weevils compare <avant> <après> <sortie.compare.png> [--crop x,y,w,h], puis weevils show de ce fichier (deux schémas .mmd marchent aussi)' m_shown='affiché dans « pour toi »' # i18n-ignore
+  m_link_usage='weevils link <id du post> <https://adresse> ["libellé"]' m_linked='lien ajouté au post' # i18n-ignore
   m_page_usage='weevils page <dossier|fichier> "titre" --kind opportunities|library|preview|report|render
 weevils page list <items.json> "titre" [--kind opportunities] · weevils page library "titre" <dossier>…
 weevils pages · weevils page machine · weevils page rm <slug> · weevils page pin|unpin <slug> (bande « pages »)' # i18n-ignore
@@ -127,6 +131,7 @@ weevils recall <id>                  weevils boss
 weevils setup [install | github | ask <brick> [--since <date> | --match <words>] | mark <id>]   weevils config set <KEY> <value>
 weevils memory [add "memory" | rm <id>]
 weevils post "text" [--title "title"] [--action "label::what to do"]…      weevils show <file> ["Title sentence. Why it matters."] [--mockup phone|browser|tablet|print|cinema|board]
+  post and show: --link <https://…> [--link-label "label"] when the result lives at an address (a site, a preview, a page), never localhost   weevils link <post id> <https://…>
 weevils diagram <flow.mmd> [out.diagram.png]   weevils compare <before> <after> <out.compare.png>
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
 weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
@@ -156,6 +161,7 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   m_post_empty='nothing to post: weevils post "text" [--action "label::what to do"]' m_posted='posted in "for you"'
   m_action_bad='an action is written "label::what to do"'
   m_show_no_file='which file? weevils show <file> ["caption"]' m_show_compare='a before/after is made with weevils compare <before> <after> <out.compare.png> [--crop x,y,w,h], then weevils show that file (two .mmd diagrams work too)' m_shown='shown in "for you"'
+  m_link_usage='weevils link <post id> <https://address> ["label"]' m_linked='link added to the post'
   m_page_usage='weevils page <folder|file> "title" --kind opportunities|library|preview|report|render
 weevils page list <items.json> "title" [--kind opportunities] · weevils page library "title" <folder>…
 weevils pages · weevils page machine · weevils page rm <slug> · weevils page pin|unpin <slug> (the « pages » band)'
@@ -581,10 +587,12 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
     # A word in the « for you » stream, with optional buttons: each --action is "label::brief" (the brief comes back
     # to weevboss when the button is tapped).
     shift
-    text='' title='' actions=()
+    text='' title='' actions=() link='' link_label=''
     while [ $# -gt 0 ]; do
       case "$1" in
         --title) title=${2-}; shift; [ $# -gt 0 ] && shift ;;
+        --link) link=${2-}; shift; [ $# -gt 0 ] && shift ;;
+        --link-label) link_label=${2-}; shift; [ $# -gt 0 ] && shift ;;
         --action)
           a=${2-}
           # A label, « :: », something to do: anything else is one clean line.
@@ -596,20 +604,24 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
     done
     [ -n "${text//[[:space:]]/}" ] || { echo "$m_post_empty" >&2; exit 1; }
     for_you post "$m_posted" "$("$py" -c 'import json,sys
-acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[6:]]
+acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[8:]]
 d={"text":sys.argv[1],"actions":acts,"from":sys.argv[2]}
 e=json.loads(sys.argv[3])
 if e: d["evidence"]=e
 t=sys.argv[4].strip()
 if t: d["title"]=t
 if sys.argv[5]: d["session"]=sys.argv[5]
-print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" "$caller_session" ${actions[@]+"${actions[@]}"})" ;;
+if sys.argv[6]: d["link"]={"url":sys.argv[6],"label":sys.argv[7]}
+print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" "$caller_session" "$link" "$link_label" ${actions[@]+"${actions[@]}"})" ;;
   show)
     # An image or a video in the « for you » stream. The server checks the file (place, type, size) and says why not.
     shift
-    file='' caption='' mockup='' n=0
+    file='' caption='' mockup='' link='' link_label='' n=0
     while [ $# -gt 0 ]; do
       case "$1" in
+        # Where what it shows lives (a site, a preview, a page): the post links to it (shared/post-link.ts).
+        --link) link=${2-}; shift; [ $# -gt 0 ] && shift ;;
+        --link-label) link_label=${2-}; shift; [ $# -gt 0 ] && shift ;;
         --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
         # The device or support the media is shown in (shared/mockup.ts); without it, the app picks one.
         --mockup) mockup=${2-}; shift; [ $# -gt 0 ] && shift ;;
@@ -628,9 +640,14 @@ print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" "$caller_sessi
 d={"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}
 if sys.argv[6]: d["session"]=sys.argv[6]
 if sys.argv[7]: d["mockup"]=sys.argv[7]
+if sys.argv[8]: d["link"]={"url":sys.argv[8],"label":sys.argv[9]}
 e=json.loads(sys.argv[5])
 if e: d["evidence"]=e
-print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)" "$caller_session" "$mockup")" ;;
+print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)" "$caller_session" "$mockup" "$link" "$link_label")" ;;
+  link)
+    # A post already in « for you » gets its direct link, or another one: weevils link <post id> <url> ["label"].
+    [ -n "${2:-}" ] && [ -n "${3:-}" ] || { echo "$m_link_usage" >&2; exit 1; }
+    for_you "$(q "$2")/link" "$m_linked" "$("$py" -c 'import json,sys; print(json.dumps({"url":sys.argv[1],"label":sys.argv[2]}))' "$3" "${4:-}")" ;;
   pages)
     # The living-link pages of this machine (server/pages.ts): kind, title, link.
     ledger GET /api/pages | json 'print("\n".join(p["slug"]+"  ["+p["kind"]+"] "+p["title"] for p in d["pages"]))' ;;

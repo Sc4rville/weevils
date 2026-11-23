@@ -1,5 +1,6 @@
 import { pageLinks } from '../../shared/pages'
-import { LivingLink } from './living-link'
+import { LivingLink, livingLink } from './living-link'
+import { linkText, type PostLink } from '../../shared/post-link.ts'
 import { InlineMediaFormats } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { SaveMediaButton, useLongPressSave } from './save-media'
@@ -133,9 +134,10 @@ export function waveOf(id: string, n: number): number[] {
 // Media: each one in its mockup (src/ui/foryou-mockup.tsx), sized to the post; the video plays muted while it is under
 // the eyes, a tap opens it alone, with sound.
 
-function MediaTile({ m }: { m: ForYouMedia }) {
+function MediaTile({ m, link }: { m: ForYouMedia; link?: PostLink }) {
   const t = useT(M)
-  const { push } = useApp()
+  const app = useApp()
+  const { push } = app
   const tile = useRef<HTMLDivElement>(null)
   const video = useRef<HTMLVideoElement>(null)
   const inView = useInView(tile, 0.6)
@@ -148,23 +150,37 @@ function MediaTile({ m }: { m: ForYouMedia }) {
     if (w > 0 && h > 0 && (size?.w !== w || size?.h !== h)) setSize({ w, h })
   }
   const { kind, sr } = mockupOf(m, size?.w, size?.h)
-  // Muted, and only while it is under the eyes.
+  // Muted, inline, and only while it is under the eyes. iPhone plays a clip by itself only when it is muted as an
+  // attribute too (React sets the property alone) and inline; until it really plays, its poster and play mark show.
+  const [playing, setPlaying] = useState(false)
+  useEffect(() => {
+    const v = video.current
+    if (!v) return
+    v.muted = true
+    v.defaultMuted = true
+    v.setAttribute('muted', '')
+    v.setAttribute('playsinline', '')
+    v.setAttribute('webkit-playsinline', '')
+  }, [])
   useEffect(() => {
     const v = video.current
     if (!v) return
     try {
-      if (inView) void v.play()?.catch(() => undefined)
-      else v.pause()
+      if (inView) {
+        if (v.preload !== 'auto') v.preload = 'auto'
+        void v.play()?.catch(() => setPlaying(false))
+      } else v.pause()
     } catch {
       /* no player here */
     }
   }, [inView])
   return (
-    <div ref={tile} className={`fy-media fy-mocked save-media-host${inView ? ' fy-inview' : ''}${focus?.flat ? ' fy-flat' : ''}`}>
-    <button type="button" className="fy-media-hit" onClickCapture={notOpen} onClick={() => push({ kind: 'media', url: m.url, type: m.type, name: m.name })} aria-label={t.openMedia(m.name)}>
+    <div ref={tile} className={`fy-media fy-mocked save-media-host${m.type === 'video' ? ' fy-clip' : ''}${playing ? ' fy-playing' : ''}${inView ? ' fy-inview' : ''}${focus?.flat ? ' fy-flat' : ''}`}>
+    <button type="button" className="fy-media-hit" onClickCapture={notOpen} onClick={() => (link ? openPostLink(link, app) : push({ kind: 'media', url: m.url, type: m.type, name: m.name }))} aria-label={link ? t.openLink(linkText(link)) : t.openMedia(m.name)}>
       <MockupFrame kind={kind} sr={sr} side={sideOf(m.id)}>
         {m.type === 'video' ? (
-          <video ref={video} src={m.url} playsInline muted loop preload="metadata" onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
+          // #t: the first frame shows even where a poster is missing and nothing plays yet (iPhone).
+          <video ref={video} src={`${m.url}#t=0.001`} poster={m.poster} playsInline muted loop preload="metadata" onPlaying={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
         ) : (
           <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} style={focus && kind !== 'phone' ? { objectPosition: `50% ${focus.at}%` } : undefined} onLoad={(e) => { const el = e.currentTarget; sized(el.naturalWidth, el.naturalHeight); setFocus(busyOf(el)) }} />
         )}
@@ -180,7 +196,7 @@ function MediaTile({ m }: { m: ForYouMedia }) {
   )
 }
 
-function MediaStrip({ media }: { media: ForYouMedia[] }) {
+function MediaStrip({ media, link }: { media: ForYouMedia[]; link?: PostLink }) {
   const t = useT(M)
   const strip = useRef<HTMLDivElement>(null)
   const many = media.length > 1
@@ -188,9 +204,32 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
   return (
     <div ref={strip} className={many ? 'fy-media-strip many' : 'fy-media-strip'} role={many ? 'group' : undefined} aria-label={many ? t.mediaStrip(media.length) : undefined}>
       {media.map((m) => (
-        <MediaTile key={m.id} m={m} />
+        <MediaTile key={m.id} m={m} link={link} />
       ))}
     </div>
+  )
+}
+
+/** A post's direct link opens where it points: one of this weevils' pages in place, anything else in a new tab. */
+function openPostLink(link: PostLink, app: ReturnType<typeof useApp>) {
+  const page = livingLink(link.url)
+  if (page) app.push({ kind: 'webpage', path: page.path, title: linkText(link), pageKind: page.kind })
+  else window.open(link.url, '_blank', 'noopener,noreferrer')
+}
+
+/** Under a post's title: where what it shows lives, a coloured living link (a site, a preview, a page). */
+function PostLinkLine({ link }: { link: PostLink }) {
+  const text = linkText(link)
+  return (
+    <p className="in fy-post-link">
+      {livingLink(link.url) ? (
+        <LivingLink href={link.url} label={text} />
+      ) : (
+        <a className="living lk-preview" href={link.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+          {text}
+        </a>
+      )}
+    </p>
   )
 }
 
@@ -227,7 +266,7 @@ function PostMedia({ item }: { item: ForYouItem }) {
   const media = item.resultGroup?.final ? [item.resultGroup.final] : (item.media ?? [])
   if (item.composition && !item.resultGroup) return <div className="fy-post-media"><InlineMediaFormats item={item} /></div>
   if (!media.length) return null
-  return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} />)}</div> : <MediaStrip media={media} />}</div>
+  return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} link={item.link} />)}</div> : <MediaStrip media={media} link={item.link} />}</div>
 }
 
 /** Opens a post's sheet (ForYouPage provides it). */
@@ -251,6 +290,7 @@ function Post({ item, format }: CardProps & { format: ForYouFormat }) {
         {text && <span className={`fy-post-x${piece ? (unfolded ? ' piece open' : ' piece') : ''}`}>{text}</span>}
         {piece && !unfolded && <span className="fy-post-more">{t.readOn}</span>}
       </button>
+      {item.link && <PostLinkLine link={item.link} />}
       {format === 'visual' && <PostMedia item={item} />}
       {!!limits.length && <p className="in fy-post-limit">{t.notChecked(limits.join(' · '))}</p>}
       <div className="in fy-post-foot" />

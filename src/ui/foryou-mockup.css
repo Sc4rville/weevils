@@ -1,5 +1,5 @@
 /* ---------- The mockup bank (shared/mockup.ts, src/ui/foryou-mockup.tsx) ----------
-   A post's media sits in a device or a support drawn here, on the post's own colour: no box around it, no dead space.
+   A post's media sits on a support drawn here, on the post's own colour: no box around it, no dead space.
    Each mockup is sized from its screen's shape (--sr, height / width): as wide as it may be (--mw of the tile, at most
    --mx) without its screen growing taller than --cap. It leans a little (to the side --s) while the post is off-screen
    and settles almost flat under the eyes; only `transform` moves, so scrolling stays smooth. */
@@ -57,15 +57,6 @@
   transform: none;
   transition: none;
 }
-/* The glass: one soft diagonal light. */
-.fy-mock-screen::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(118deg, rgb(255 255 255 / 0.09) 0 24%, rgb(255 255 255 / 0) 24.4%);
-}
-
 /* The thickness, in the language of the weevils logo: a solid block, never stacked copies. Two flat faces, the side
    that faces the eye (--s, the way the mockup turns) and the bottom, each one shade of the logo, joined at the corner on
    one clean edge. Sharp corners everywhere, as on the logo's blocks. --d is the depth; the bottom shows a little less. */
@@ -102,59 +93,53 @@
   clip-path: polygon(0 0, calc(100% - var(--dx)) 0, 100% 100%, var(--dx) 100%);
 }
 
-/* phone: an app seen on a phone, a slab of the logo's violet. A taller capture shows its top, as on the phone itself. */
+/* An interface (phone, browser, tablet): never a drawn device. The capture itself is the front of the block, big
+   enough to read, flat under the eyes, with the two faces of the logo for its thickness; no frame, no glass, no
+   buttons, no bar. The three differ only by their shape and how wide they may grow. */
+.fy-mock-phone,
+.fy-mock-tablet,
+.fy-mock-browser {
+  --ry: 0deg;
+  --rx: 0deg;
+  --rz: 0deg;
+  --k: 0.97;
+  --d: 9px;
+}
+.fy-inview :is(.fy-mock-phone, .fy-mock-tablet, .fy-mock-browser) {
+  --ry: 0deg;
+  --rx: 0deg;
+  --rz: 0deg;
+  --k: 1;
+}
+/* phone: a phone's screen, as tall as the post allows; a longer capture shows its top, as on the phone itself. */
 .fy-mock-phone {
-  --mw: 60cqw;
-  --mx: 290px;
-  --d: 10px;
-  padding: 8px 8px 14px;
-  background: var(--face-top);
+  --mw: 92cqw;
+  --mx: 400px;
+  --cap: 76dvh;
 }
 .fy-mock-phone .fy-mock-screen > :is(img, video) {
   object-position: top;
 }
-/* The earpiece, a slot in the top edge; the button, a square in the bottom one. */
-.fy-mock-phone::before,
-.fy-mock-phone::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--face-dark);
-}
-.fy-mock-phone::before {
-  top: 3px;
-  width: 18%;
-  height: 2px;
-}
-.fy-mock-phone::after {
-  bottom: 4px;
-  width: 6px;
-  height: 6px;
-  background: var(--face-mid);
-}
-.fy-mock-phone .fy-mock-screen,
-.fy-mock-tablet .fy-mock-screen,
-.fy-mock-cinema .fy-mock-screen {
-  background: var(--face-dark);
-}
-
-/* tablet: a wider screen in a wider edge. */
 .fy-mock-tablet {
-  --mw: 82cqw;
-  --mx: 520px;
-  --cap: 50dvh;
-  --d: 12px;
-  padding: 12px;
-  background: var(--face-top);
+  --mw: 96cqw;
+  --mx: 640px;
+  --cap: 62dvh;
+}
+.fy-mock-browser {
+  --mw: calc(100cqw - 12px);
+  --mx: 760px;
+  --cap: 60dvh;
 }
 
-/* cinema: a clip on a screen, a chin with its green light. */
+/* cinema: a clip that is not an interface (a render, a film), on a screen of the logo's violet with its green light. */
 .fy-mock-cinema {
   --mw: 92cqw;
   --mx: 720px;
   padding: 6px 6px 15px;
   background: var(--face-top);
+}
+.fy-mock-cinema .fy-mock-screen {
+  background: var(--face-dark);
 }
 .fy-mock-cinema::before {
   content: '';
@@ -167,30 +152,12 @@
   background: #3ddc84;
 }
 
-/* browser: a desktop capture in a window, its bar with three squares and an empty address. */
-.fy-mock-browser {
-  --mw: 92cqw;
-  --mx: 720px;
-  --cap: 50dvh;
-  --ry: -11deg;
-  padding-top: 22px;
-  background:
-    linear-gradient(#ff6b5a 0 0) 8px 8px / 6px 6px no-repeat,
-    linear-gradient(#ffc53d 0 0) 18px 8px / 6px 6px no-repeat,
-    linear-gradient(#3ddc84 0 0) 28px 8px / 6px 6px no-repeat,
-    var(--face-top);
+/* A clip never turns in 3D: iPhone may leave a video blank inside a 3D-turned block. It only grows in, flat. */
+.fy-clip .fy-media-hit {
+  perspective: none;
 }
-.fy-mock-browser::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  left: 28%;
-  width: 44%;
-  height: 10px;
-  background: rgb(255 255 255 / 0.4);
-}
-.fy-inview .fy-mock-browser {
-  --ry: -4deg;
+.fy-clip .fy-mock {
+  transform: scale(var(--k));
 }
 
 /* print: a still or a render, mounted on a thin block that leans. */
@@ -220,9 +187,6 @@
 }
 .fy-mock-board .fy-mock-screen {
   background: #e9e6df;
-}
-.fy-mock-board .fy-mock-screen::after {
-  content: none;
 }
 .fy-inview .fy-mock-board {
   --ry: 0deg;

@@ -2,6 +2,7 @@
 // Contract between weevilsd (server/foryou.ts, main machine only) and the app (src/ui/foryou.tsx).
 // Named "for you" everywhere in the code: "feed" already means the home list of project bands.
 
+import type { PostLink } from './post-link.ts'
 import type { Tool, Win, WorkstreamIdentity } from './api.ts'
 import type { ForYouEvidence } from './evidence.ts'
 import type { Mockup } from './mockup.ts'
@@ -32,6 +33,9 @@ export interface ForYouMedia {
   h?: number
   /** The mockup asked for with `weevils show --mockup`; otherwise the app picks one (shared/mockup.ts pickMockup). */
   mockup?: Mockup
+  /** A clip's first frame (GET /api/foryou/media/<id>/poster), when this machine can draw it: never a black box while
+   *  the clip loads or when the phone does not play it by itself. */
+  poster?: string
   /** What the picture shows, when someone reviewed it for this feed. */
   caption?: { title: string; description: string }
 }
@@ -160,6 +164,9 @@ export interface ForYouItem {
   tool?: Tool
   /** Session title, mail subject, media caption: one short line above the text. */
   title?: string
+  /** Where what the post shows lives (a site, a preview, a page): a coloured link under the title, and a tap on the
+   *  media opens it (shared/post-link.ts). */
+  link?: PostLink
   /** The words of the item, short (a result, a thought, a summary). Plain text. */
   text: string
   /** A question card: its short title, in bold above the question (the question itself is the text). */

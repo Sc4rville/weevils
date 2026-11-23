@@ -121,6 +121,18 @@ describe('what the factory switches', () => {
     expect(pinned).toEqual([])
     expect(d.st.hidden).toEqual(['shop'])
   })
+  it('shares tests and builds between two machines or more, on until turned off', async () => {
+    const d = deps({ away: () => [{ name: 'laptop', n: 2 }] })
+    expect((await factoryView(d)).share).toEqual({ on: true, away: [{ name: 'laptop', n: 2 }] })
+    expect((await route(d, 'POST', '/api/factory/share', { on: false })).status).toBe(200)
+    expect(d.st.shareJobs).toBe(false)
+    expect((await factoryView(d)).share?.on).toBe(false)
+    await route(d, 'POST', '/api/factory/share', { on: true })
+    expect('shareJobs' in d.st).toBe(false)
+    expect((await route(d, 'POST', '/api/factory/share', { on: 'yes' })).status).toBe(400)
+    expect((await factoryView(deps({ machines: () => [{ id: 'box', name: 'box', online: true }] }))).share).toBeUndefined()
+  })
+
   it('starts a machine’s own conversation once, then finds it again', async () => {
     let sessions = [sess('a', 'working')]
     const d = deps({ sessions: () => sessions })

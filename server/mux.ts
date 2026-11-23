@@ -149,12 +149,23 @@ export const NO_TMUX = ['env', '-u', 'TMUX', '-u', 'TMUX_PANE', '-u', 'WEEVILS_T
  * session lancée sous un autre nom que celui retenu, introuvable ensuite (« no such session ») mais au travail. */
 export const wvName = (dir: string, short: string) => `wv-${dir.slice(0, 18).replace(/[.:]/g, '_')}-${short}`
 
+/** The heavy-job queue's stand-ins (server/heavy/shims.ts), first in every session's PATH once weevilsd wrote them. */
+let shims = ''
+export const setSessionShims = (dir: string) => void (shims = dir)
+/** The PATH a new session gets: the tmux server's own (it may come from a richer shell than weevilsd's), stand-ins first. */
+async function sessionPath(cwd: string): Promise<Record<string, string>> {
+  if (!shims) return {}
+  const global = await tmux(['show-environment', '-g', 'PATH'], cwd).then((s) => /^PATH=(.*)$/m.exec(s)?.[1], () => undefined)
+  const base = global || process.env.PATH || '/usr/bin:/bin'
+  return { PATH: [shims, ...base.split(':').filter((x) => x && x !== shims)].join(':') }
+}
+
 /** extra: more environment for the agent; null unsets the variable (the Claude account, server/claude-accounts.ts). */
 export async function spawnWv(name: string, cwd: string, tool: Tool, title: string, command: string[], sessionId?: string, mode?: 'structured', extra: Record<string, string | null> = {}) {
   // Plusieurs arguments : tmux lance la commande directement, sans shell (pas d'injection possible) ; env non plus.
   const set = Object.fromEntries(Object.entries(extra).filter((e): e is [string, string] => e[1] !== null))
   const unset = Object.entries(extra).filter(([, v]) => v === null).flatMap(([k]) => ['-u', k])
-  const env = Object.entries({...QUIET_ENV, WEEVILS_FROM:cwd===ORCH_DIR?'weevboss':tool, ...set}).flatMap(([k, v]) => ['-e', `${k}=${v}`])
+  const env = Object.entries({...QUIET_ENV, ...(await sessionPath(cwd)), WEEVILS_FROM:cwd===ORCH_DIR?'weevboss':tool, ...set}).flatMap(([k, v]) => ['-e', `${k}=${v}`])
   await tmux(['new-session', '-d', '-s', name, '-x', '120', '-y', '40', '-c', cwd, ...env, ...NO_TMUX, ...unset, ...command], cwd)
   if (mode) await setOpt(name, '@wv_mode', mode)
   await setOpt(name, '@wv_tool', tool)

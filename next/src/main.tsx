@@ -573,7 +573,6 @@ function App() {
         ...(proj ? { projectId: proj.id, project: proj.name } : {}),
         ...(page ? { page } : {}),
       },
-      ...(s ? { session: { id: s.id, title: s.title || 'Untitled', self: !!proj && selfProject(proj) } } : {}),
     }
   }
   const spot = useCallback(() => spotRef.current(), [])

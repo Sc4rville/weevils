@@ -22,3 +22,14 @@ export function place(clientY: number, h: number): number {
 /** The camera's own layers carry this attribute: they are never in the picture. */
 export const mark = { 'data-wv-camera': '' } as const
 export const isMark = (n: Node) => n instanceof Element && n.hasAttribute('data-wv-camera')
+
+/** How long a first tap waits for its second (a double tap) before it counts alone. */
+export const TAP_MS = 350
+
+/** A finger lifted without drawing, on the frozen screen: the second of a double tap (soon after the first, close to
+ *  it), a tap alone, or none (held too long to be a tap). */
+export function tapKind(last: { at: number; x: number; y: number }, now: { at: number; x: number; y: number }, pressMs: number): 'double' | 'single' | 'none' {
+  if (pressMs > 600) return 'none'
+  if (last.at && now.at - last.at < TAP_MS && Math.hypot(now.x - last.x, now.y - last.y) < 44) return 'double'
+  return 'single'
+}

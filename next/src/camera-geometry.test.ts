@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { place, region } from './camera-geometry.ts'
+import { place, region, tapKind, TAP_MS } from './camera-geometry.ts'
 
 describe('camera geometry', () => {
   it('draws the same box whichever way the finger goes', () => {
@@ -13,5 +13,13 @@ describe('camera geometry', () => {
     expect(place(0, 844)).toBe(0.14)
     expect(place(844, 844)).toBe(0.8)
     expect(place(422, 844)).toBe(0.5)
+  })
+  it('tells a double tap from a tap alone and from a finger held down', () => {
+    const first = { at: 1000, x: 200, y: 500 }
+    expect(tapKind({ at: 0, x: 0, y: 0 }, first, 80)).toBe('single')
+    expect(tapKind(first, { at: 1000 + 120, x: 206, y: 497 }, 70)).toBe('double')
+    expect(tapKind(first, { at: 1000 + TAP_MS + 30, x: 200, y: 500 }, 70)).toBe('single')
+    expect(tapKind(first, { at: 1100, x: 320, y: 500 }, 70)).toBe('single')
+    expect(tapKind({ at: 0, x: 0, y: 0 }, first, 900)).toBe('none')
   })
 })

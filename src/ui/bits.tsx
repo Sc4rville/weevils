@@ -22,6 +22,8 @@ import { flash, reveal } from './follow'
 import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
+import CM from '../i18n/camera'
+import { hold, heldNow, useHeld, withHeld, type CaptureTo } from './held-capture'
 import PM from '../i18n/plain-steps'
 import { actionTitle, clusters, clusterLine, groupLine } from './plain-steps'
 import D from '../i18n/devil'
@@ -379,6 +381,7 @@ export function Composer({
   multiline = composerLook.multiline,
   captureSuggestions = false,
   draftKey,
+  captureTo,
 }: {
   placeholder: string
   label: string
@@ -407,8 +410,14 @@ export function Composer({
   draftKey?: string
   /** Offer pasted/authorized clipboard images before attaching them. */
   captureSuggestions?: boolean
+  /** Where this box sends a capture from next's camera (held-capture.ts): with it, a held capture sits in the box as a
+   *  small square and goes with the next message. */
+  captureTo?: CaptureTo
 }) {
   const t = useT(M)
+  const tc = useT(CM)
+  const heldAny = useHeld()
+  const held = captureTo && !disabled ? heldAny : null
   // Le texte en cours survit à un rechargement (mise à jour automatique de l'app, public/sw.js) : gardé dans l'onglet,
   // par champ (son libellé), effacé à l'envoi.
   const key = `weevils-draft:${draftKey ?? label}`
@@ -476,7 +485,7 @@ export function Composer({
     ;(document.activeElement as HTMLElement | null)?.blur?.()
     const original = field.current?.value ?? text
     const typed = original.trim()
-    if (!typed && !files.length) return
+    if (!typed && !files.length && !held) return
     submitting.current = true // synchronous: two submit events can precede a React render
     const sent = files
     const sentKey = key
@@ -484,8 +493,11 @@ export function Composer({
     setBusy(true)
     setErr(null)
     try {
-      if (sent.length && onAttach) await onAttach(typed, sent)
-      else await onSend(typed)
+      // A held capture goes first to the library, then with this message (its path, or the picture itself).
+      const out = held && captureTo ? await withHeld(held, typed, captureTo, sent) : { text: typed, files: sent }
+      if (out.files.length && onAttach) await onAttach(out.text, out.files)
+      else await onSend(out.text)
+      if (held && heldNow() === held) hold(null)
       // Keep the draft (including sessionStorage) until the server acknowledges it.
       // A new dictation arriving while we await the server must also survive.
       if (keyRef.current === sentKey) setText((current) => current === original ? '' : current)
@@ -585,7 +597,7 @@ export function Composer({
   }
 
   return (
-    <form ref={(node) => { formEl.current = node; if (formRef) formRef.current = node }} className={`composer band ${className}`} aria-busy={busy} data-draft={!!text || !!files.length} onSubmit={submit}>
+    <form ref={(node) => { formEl.current = node; if (formRef) formRef.current = node }} className={`composer band ${className}`} aria-busy={busy} data-draft={!!text || !!files.length || !!held} onSubmit={submit}>
       {(files.length > 0 || err) && (
         <div className="in meta attach-line">
           {files.length > 0 && (
@@ -607,6 +619,12 @@ export function Composer({
       <div className="in">
         {/* No « > » before the field: its width goes to the text. Only the sending star takes that spot. */}
         {busy && <span className="prompt" aria-hidden><span className="spin"><Icon name="star" /></span></span>}
+        {held && (
+          <span className="held-capture">
+            <img src={held.url} alt={tc.shot} />
+            <button type="button" className="held-off" aria-label={tc.remove} onClick={() => hold(null)}><Icon name="close" /></button>
+          </span>
+        )}
         {horizontal && !roomy ? (
           <textarea
             ref={(node) => { field.current = node }}
@@ -684,7 +702,7 @@ export function Composer({
             {rec === 'wait' ? <span className="spin"><Icon name="star" /></span> : <Icon name="mic" />}
           </button>
         )}
-        <button className="send" type="submit" disabled={(!text.trim() && !files.length) || busy || disabled} aria-label={t.send}>
+        <button className="send" type="submit" disabled={(!text.trim() && !files.length && !held) || busy || disabled} aria-label={t.send}>
           <Icon name="arrow" />
         </button>
       </div>

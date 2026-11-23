@@ -42,6 +42,8 @@ const PATHS = {
   compact: 'M12 3v11M6 9l6 6 6-6M4 20h16',
   // The app's camera (next/src/camera.tsx): a body, its raised top, a square lens.
   camera: 'M3 7h4l2-3h6l2 3h4v13H3zM9 10.5h6v6H9z',
+  /** The camera's hint (next/src/camera.tsx): a finger raised to tap, the hand under it. */
+  tap: 'M9 14V3h3v7h3v1.5h3V13h2v5l-2 4h-8l-5-6.5 1.8-1.5L9 14z',
   /** Save to the device (camera roll, downloads). */
   save: 'M12 3v11M6 9l6 6 6-6M4 20h16',
   theme: 'M4 4h16v16H4zM12 4v16',

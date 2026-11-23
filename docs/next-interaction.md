@@ -160,18 +160,23 @@ once, and the code follows. Behaviour is never flipped back and forth.
 
 - **A small camera mark sits on the right edge of every screen**, in the ink of what is under it, faded, never a
   box. Drag it up or down the edge to move it (its place is kept); it steps aside while you type.
-- **A tap freezes the app**: a light veil and a thin frame, nothing written. From then on the screen shown is the
-  picture that will be sent. The mark becomes a cross: a tap lets go.
-- **A double tap takes the whole screen; a drag draws the part to take** (the rest darkens).
-- **Then one band at the top**: the picture small, a line to add if you want, and where it goes as coloured words:
-  weevboss, and the conversation that is open, when one is. A tap on a word sends; a touch outside the band goes back
-  to choosing.
+- **Three taps at most** (2026-11-23, from a real iPhone): the mark freezes the app (a light veil, a thin frame,
+  nothing written) and a finger shows the double tap, twice, very fast, then is gone; **a double tap takes the whole
+  screen, a drawn part takes that part** (the rest darkens); the capture is then **attached**. A single tap on the
+  frozen screen lets go, so does the mark (a cross while frozen). A picture slow to come shows a turning star; past
+  20 s the screen unfreezes and says « No capture. Try again. »: never a frozen screen with no way out.
+- **Attached, not sent**: no sheet. The capture waits as a small square in the box to write in, weevboss's and every
+  conversation's (a small cross removes it), follows you from screen to screen, and goes with the next message sent
+  from any of them, with its words. On a screen without a box (For you, the side bar, a page) the mark itself shows
+  the small square. Kept for the tab, an hour at most.
 - **weevils makes the picture itself**, from its own page, drawn again by the phone's browser (same fonts, theme and
-  scroll positions): never the phone's screenshot, so nothing lands in the camera roll.
+  scroll positions): never the phone's screenshot, so nothing lands in the camera roll. On Safari it took 19 s on a
+  real thread (the library drew the picture again once per image, each time later, and waited for photos far off
+  screen that Safari never loads): both are left out, about a second now.
 - **It is kept in one library**, `~/.local/share/weevils/captures/<project or screen>/`, each picture with what it
   shows (screen, conversation, page, theme, size, region, time); `weevils captures [words] [--ui]` searches it. The
   thread shows only its small thumbnail; the agent reads the picture and that context.
-- **About the interface**: what goes to weevboss, or to a session working on weevils itself, carries the tag « ui »
+- **About the interface**: what is sent to weevboss, or to a session working on weevils itself, carries the tag « ui »
   for the improvement loop (Night lens reads it).
 
 ## From the classic app

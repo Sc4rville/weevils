@@ -14,6 +14,7 @@ import { Composer as AppComposer, Messages, WorkingMark, spring, type Attachment
 import { useFollow } from '../../src/ui/follow.ts'
 import { Icon } from '../../src/ui/icons.tsx'
 import { visible } from './data.ts'
+import { userCaption, userPhotos } from '../../src/ui/format.ts'
 import { stillPending, type Pending } from './pending.ts'
 
 /** weevboss's setup buttons, as in the app's weevboss band (bands.tsx): on the last message that carries each one,
@@ -66,8 +67,11 @@ export function Chat({ id, messages: thread, working: busy, author, placeholder,
 
   const submit = async (text: string, files?: Attachment[]) => {
     const key = crypto.randomUUID()
-    const typed = text.trim()
-    const photos = (files ?? []).filter((f) => f.type.startsWith('image/')).map((f) => `data:${f.type};base64,${f.data}`)
+    // A capture comes as its path in the library and what it shows (held-capture.ts): the stand-in shows it as the thread
+    // will, its picture and your words only.
+    const typed = userCaption(text)
+    const photos = [...userPhotos(text).map((p) => `/api/attachments?path=${encodeURIComponent(p)}`),
+      ...(files ?? []).filter((f) => f.type.startsWith('image/')).map((f) => `data:${f.type};base64,${f.data}`)]
     const known = new Set((messages ?? []).filter((m) => m.role === 'user').map((m) => m.id))
     if (typed || photos.length) setPending((p) => [...p, { key, text: typed, photos, known }])
     navigator.vibrate?.(8)
@@ -109,6 +113,7 @@ export function Chat({ id, messages: thread, working: busy, author, placeholder,
       <div className="nx-composer">
         {flow && id === null ? <SetupComposer /> : (
         <AppComposer multiline voice anyFile={id === null} sayErrors draftKey={`session:${id ?? '__main'}`} placeholder={placeholder} label={label}
+          captureTo={{ to: id ?? 'weevboss', feedback: id === null }}
           onSend={(text) => submit(text).then(() => undefined)} onAttach={(text, files) => submit(text, files).then(() => undefined)} />
         )}
       </div>

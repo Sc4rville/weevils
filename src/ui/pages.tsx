@@ -288,6 +288,7 @@ function SessionPage({ id }: { id: string }) {
             label={t.composerLabel(s.title)}
             onSend={send}
             onAttach={send}
+            captureTo={{ to: s.id, feedback: !!project && selfProject(project) }}
             voice
             disabled={!s.controllable || !!sourceIssue}
           />

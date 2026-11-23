@@ -127,6 +127,9 @@ export const api = {
   key: (id: string, key: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/key`, { key }),
   create: (body: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string }) => call<{ id: string }>('POST', '/api/sessions', body),
   main: (text: string) => send<{ id: string }>('/api/main', { text }),
+  /** A capture from next's camera, kept in the library (server/captures.ts); back comes the message that carries it. */
+  capture: (body: { data: string; context: Record<string, unknown>; text: string; to: string; feedback: boolean }) =>
+    call<{ id: string; file: string; message: string; note: string; here: boolean }>('POST', '/api/captures', body),
   modelControls: (id: string) => call<ModelControls>('GET', id === '__main' ? '/api/main/model-controls' : `/api/sessions/${enc(id)}/model-controls`),
   setModelControls: (id: string, value: ModelSelection) => call<ModelControls>('POST', id === '__main' ? '/api/main/model-controls' : `/api/sessions/${enc(id)}/model-controls`, value),
   command: (id: string, command: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/command`, { command }),

@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { Message, SessionStatus } from '../shared/api.ts'
 import type { Ask } from '../shared/ledger.ts'
+import { askWin } from '../shared/wins.ts'
 
 /** The whole vocabulary: small and obvious. */
 export const REACTIONS = {
@@ -94,7 +95,9 @@ export function withBossReactions(msgs: Message[], o: { asks: Ask[]; sessionStat
     const r = explicit ?? messageReaction(asks, o.sessionStatus) ?? (seen ? REACTIONS.seen : undefined)
     // Waiting on the person: which session asks, so the thread can say it and open it in one tap.
     const waitingOn = r === REACTIONS.waiting ? asks.map((a) => a.dispatches.at(-1)?.session).find((id) => !!id && o.sessionStatus(id) === 'needs_user') : undefined
-    return r ? { ...m, reaction: r, ...(waitingOn ? { waitingOn } : {}) } : m
+    // Its request verified done (a landed commit as evidence): the ✅ arrives with a celebration, once.
+    const win = r === REACTIONS.done ? asks.map(askWin).filter((w) => !!w).sort((a, b) => b.at - a.at)[0] : undefined
+    return r ? { ...m, reaction: r, ...(waitingOn ? { waitingOn } : {}), ...(win ? { win } : {}) } : m
   })
 }
 

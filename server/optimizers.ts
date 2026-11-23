@@ -1938,7 +1938,7 @@ export class Optimizers {
         if (!m.themes.length && (m.kinds.includes('scope') || m.kinds.includes('cleanup'))) return
         const t = tr(O)
         const text = m.themes.length ? t.themesLive(m.themes) : t.mergedLive(title)
-        this.w.foryou?.add({ id: `auto-live:${id}:${m.commit.slice(0, 12)}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: text, text, open: { page: 'auto', id } })
+        this.w.foryou?.add({ id: `auto-live:${id}:${m.commit.slice(0, 12)}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: text, text, open: { page: 'auto', id }, win: { id: `land:${m.commit.slice(0, 12)}`, kind: 'land' } })
       })
       .then(() => this.sys.push(cwd, branch, baseCommit))
       .then((pushed) => {

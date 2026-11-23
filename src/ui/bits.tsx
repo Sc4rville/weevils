@@ -12,7 +12,8 @@ import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, 
 import { api } from '../api'
 import { useCaptureSuggestion } from './capture-suggestion'
 import { pasteFiles, useDropTarget } from './file-drop'
-import type { Author, Message, Session } from '../../shared/api.ts'
+import type { Author, Message, Session, Win } from '../../shared/api.ts'
+import { celebrateWin } from './celebrate'
 import { useApp } from './app-context'
 import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, status, step, userText, userPhotos, userCaption } from './format'
 import { blocks, spans, type ListItem } from './md'
@@ -879,10 +880,12 @@ export function Rich({ text, code = true }: { text: string; code?: boolean }) {
 }
 
 /** Une bulle : texte sélectionnable, appui long = tout le message copié (le nom devient « copié » un instant). */
-function Bubble({ className, style, who, copy, mid, children }: { className: string; style?: React.CSSProperties; who: string; copy: string; mid?: string; children: ReactNode }) {
+function Bubble({ className, style, who, copy, mid, win, children }: { className: string; style?: React.CSSProperties; who: string; copy: string; mid?: string; win?: Win; children: ReactNode }) {
   const t = useT(C)
   const [copied, setCopied] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // A real win announced here (server-set, shared/api.ts Win): its celebration, once (ui/celebrate.ts).
+  useEffect(() => void celebrateWin(win, ref.current), [win?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
   const press = useLongPress(async () => {
@@ -1183,6 +1186,7 @@ export function Messages({
               who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session && !threadLook.authorsInSessions ? '' : author}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.role === 'orchestrator' ? briefText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
+              win={g.m.win}
             >
               {g.m.role === 'user' ? (
                 <>

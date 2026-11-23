@@ -18,6 +18,8 @@ import { getLang, useT } from '../i18n'
 import M from '../i18n/requests'
 import { useApp } from './app-context'
 import { Collapse } from './bits'
+import { winRef } from './celebrate'
+import { askWin } from '../../shared/wins.ts'
 import { Icon } from './icons'
 import { Notice } from './notice'
 import { Shell } from './shell'
@@ -245,7 +247,7 @@ export function RequestColumn({ asks, onChanged, fill }: { asks: Row[]; onChange
   return (
     <div className={fill ? 'rc fill' : 'rc'} style={{ '--last': Math.min(Math.max(rows.length - 1, 0), STEPS) } as CSSProperties}>
       {rows.slice(0, shown).map(({ a, chip }, i) => (
-        <div key={a.id} className={`rc-row c-${chip}${open === a.id ? ' open' : ''}`} style={{ '--step': Math.min(i, STEPS) } as CSSProperties}>
+        <div key={a.id} ref={winRef(askWin(a))} className={`rc-row c-${chip}${open === a.id ? ' open' : ''}`} style={{ '--step': Math.min(i, STEPS) } as CSSProperties}>
           <button type="button" className="in rc-line" onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id} aria-label={`${askLabel(a)} · ${t.chip(chip)}`}>
             <span className="rc-star">{chip === 'running' && <span className="spin fluo"><Icon name="star" /></span>}</span>
             <span className="rc-title">{askLabel(a)}</span>
@@ -328,7 +330,7 @@ export function RequestGroups({ groups, onChanged, fill }: { groups: Group[]; on
       }
       const stage = stageOf(chip) ?? 3
       out.push(
-        <div key={a.id} className={`rc-row rc-sub c-${chip}${open === a.id ? ' open' : ''}`} style={{ '--step': Math.min(step++, STEPS) } as CSSProperties}>
+        <div key={a.id} ref={winRef(askWin(a))} className={`rc-row rc-sub c-${chip}${open === a.id ? ' open' : ''}`} style={{ '--step': Math.min(step++, STEPS) } as CSSProperties}>
           <button type="button" className="in rc-line" onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id} aria-label={`${askLabel(a)} · ${t.chip(chip)}`}>
             <span className="rc-star">{chip === 'running' && <span className="spin fluo"><Icon name="star" /></span>}</span>
             <span className="rc-title">{askLabel(a)}</span>

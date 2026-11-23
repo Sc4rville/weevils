@@ -47,6 +47,18 @@ export interface Message {
   reaction?: string
   /** weevboss's thread, a message whose reaction is ❓: the session that waits on the person (its question). */
   waitingOn?: string
+  /** This message announces a real win, proven by runtime state (never by its wording): the app celebrates it once. */
+  win?: Win
+}
+
+/** A real win: a conversation moved to another machine with its history, a machine joining for the first time, a
+ *  request verified done, work landed on main, the vault in sync. id is stable per event (it fires once); at is when
+ *  it happened. */
+export type WinKind = 'move' | 'machine' | 'done' | 'land' | 'vault'
+export interface Win {
+  id: string
+  kind: WinKind
+  at: number
 }
 
 /** Qui peut signer un message dans une session, à part l'utilisateur : weevboss et les agents externes (config du serveur). */

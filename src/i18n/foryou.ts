@@ -67,6 +67,7 @@ export default defineMessages({
     failed: 'ça n’a pas marché, réessaie',
 
     openMedia: (name: string) => `voir ${name} en grand`,
+    openLink: (where: string) => `ouvrir ${where}`,
     mediaStrip: (n: number) => `${n} médias`,
     openIdea: 'voir cette idée',
     readTranscript: 'Lire la transcription',
@@ -161,6 +162,7 @@ export default defineMessages({
     failed: 'that didn’t work, try again',
 
     openMedia: (name: string) => `view ${name} full screen`,
+    openLink: (where: string) => `open ${where}`,
     mediaStrip: (n: number) => `${n} media`,
     openIdea: 'view this idea',
     readTranscript: 'Read transcript',

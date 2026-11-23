@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { tr } from './i18n.ts'
 import M from './i18n/foryou-media.ts'
-import { MAX_ENTRIES, MediaRefused, MediaShelf, citedPaths, disposition, imageSize, mimeOf, parseRange, sniff, videoSize } from './foryou-media.ts'
+import { MAX_ENTRIES, MediaRefused, MediaShelf, canDrawPosters, citedPaths, disposition, imageSize, mimeOf, parseRange, sniff, videoSize } from './foryou-media.ts'
 
 // The media shelf of « for you » (server/foryou-media.ts): temp folders only, never the real projects or data.
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(40, 1)])
@@ -222,6 +222,28 @@ const clip = (w: number, h: number, turned = false) => {
   }
   return Buffer.concat([MP4.subarray(0, MP4.readUInt32BE(0)), box('moov', box('mvhd', Buffer.alloc(100)), box('trak', tkhd(0, 0)), box('trak', tkhd(w, h))), box('mdat', Buffer.alloc(64))])
 }
+
+describe('a clip\'s poster', () => {
+  it('is its first frame, drawn once by ffmpeg and served as a JPEG; a still has none', async () => {
+    if (!canDrawPosters()) return
+    const top = fs.mkdtempSync(path.join(os.tmpdir(), 'fy-poster-'))
+    try {
+      const clipFile = path.join(top, 'clip.mp4')
+      expect(spawnSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x3ddc84:s=64x128:d=0.5', '-pix_fmt', 'yuv420p', clipFile]).status).toBe(0)
+      fs.writeFileSync(path.join(top, 'shot.png'), PNG)
+      const shelf = new MediaShelf({ file: path.join(top, 'data', 'media.json'), roots: [top] })
+      const v = shelf.add(clipFile)
+      expect(shelf.view(v).poster).toBe(`/api/foryou/media/${v.id}/poster`)
+      expect(shelf.view(shelf.add(path.join(top, 'shot.png'))).poster).toBeUndefined()
+      const file = await shelf.poster(v.id)
+      expect(file && fs.readFileSync(file).subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]))
+      expect(await shelf.poster(v.id)).toBe(file)
+      expect(await shelf.poster('nope')).toBeNull()
+    } finally {
+      fs.rmSync(top, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('mockups: the size of a still and the mockup asked for', () => {
   it('reads the size of an MP4 from its picture track, turned when the phone was held upright', () => {
@@ -622,6 +644,15 @@ describe('weevils post / show (the CLI)', () => {
     // --mockup forces the device or support; the server checks the name.
     expect((await cli(['show', 'shot.png', '--mockup', 'browser', 'The new settings'], { cwd: dir })).rc).toBe(0)
     expect(last().body).toEqual({ path: path.join(dir, 'shot.png'), caption: 'The new settings', mockup: 'browser', cwd: dir, from: 'weevils' })
+    // --link: where what it shows lives; the server checks the address. weevils link adds it afterwards.
+    expect((await cli(['show', 'site.png', 'The chat', '--link', 'https://new-site.example.com', '--link-label', 'The site'], { cwd: dir })).rc).toBe(0)
+    expect(last().body).toEqual({ path: path.join(dir, 'site.png'), caption: 'The chat', link: { url: 'https://new-site.example.com', label: 'The site' }, cwd: dir, from: 'weevils' })
+    expect((await cli(['post', 'The menu is live', '--link', 'https://shop.example.com'])).rc).toBe(0)
+    expect(last().body).toMatchObject({ text: 'The menu is live', link: { url: 'https://shop.example.com', label: '' } })
+    expect(await cli(['link', 'v:abc', 'https://new-site.example.com'])).toEqual({ rc: 0, out: 'link added to the post\n', err: '' })
+    expect(last()).toEqual({ url: 'POST /api/foryou/v%3Aabc/link', body: { url: 'https://new-site.example.com', label: '' } })
+    expect((await cli(['link', 'v:abc'])).err).toBe('weevils link <post id> <https://address> ["label"]\n')
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 
   it('show / post: the evidence flags become a structured field, never guessed from the words', async () => {

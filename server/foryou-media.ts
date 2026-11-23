@@ -2,6 +2,7 @@
 // (`weevils show <file>`, or a path cited in the message that ends a turn), never by scanning folders; the bytes
 // route serves registered ids only, so no path ever comes from a request.
 
+import { execFile, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -226,6 +227,19 @@ export function citedPaths(text: string): string[] {
   return out
 }
 
+let ffmpeg: boolean | undefined
+/** ffmpeg is there to draw a clip's poster (asked once). */
+export function canDrawPosters(): boolean {
+  if (ffmpeg === undefined) {
+    try {
+      ffmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore', timeout: 5000 }).status === 0
+    } catch {
+      ffmpeg = false
+    }
+  }
+  return ffmpeg
+}
+
 export class MediaShelf {
   private file: string
   private roots: string[]
@@ -423,7 +437,55 @@ export class MediaShelf {
   }
 
   view(e: ShelfEntry): ForYouMedia {
-    return { id: e.id, type: e.type, url: '/api/foryou/media/' + e.id, name: e.name, bytes: e.bytes, ...(e.w && e.h ? { w: e.w, h: e.h } : {}), ...(e.mockup ? { mockup: e.mockup } : {}) }
+    const url = '/api/foryou/media/' + e.id
+    return { id: e.id, type: e.type, url, name: e.name, bytes: e.bytes, ...(e.w && e.h ? { w: e.w, h: e.h } : {}), ...(e.mockup ? { mockup: e.mockup } : {}), ...(e.type === 'video' && canDrawPosters() ? { poster: url + '/poster' } : {}) }
+  }
+
+  private drawing = new Map<string, Promise<string | null>>()
+
+  /** A clip's first frame as a JPEG, drawn once by ffmpeg into <shelf dir>/foryou-posters and drawn again when the clip
+   *  changes; null when it cannot be (no ffmpeg, not a clip, a file ffmpeg cannot read). */
+  poster(id: string): Promise<string | null> {
+    const e = this.get(id)
+    if (!e || e.type !== 'video' || !canDrawPosters()) return Promise.resolve(null)
+    const dir = path.join(path.dirname(this.file), 'foryou-posters')
+    const out = path.join(dir, `${e.id}-${e.mtime}.jpg`)
+    if (fs.existsSync(out)) return Promise.resolve(out)
+    const busy = this.drawing.get(out)
+    if (busy) return busy
+    const draw = (seek: string[]) => new Promise<boolean>((done) => {
+      const tmp = `${out}.${process.pid}.tmp.jpg`
+      execFile('ffmpeg', ['-loglevel', 'error', '-y', ...seek, '-i', e.path, '-frames:v', '1', '-vf', "scale='min(720,iw)':-2", '-q:v', '4', tmp], { timeout: 20_000 }, (err) => {
+        try {
+          if (!err && fs.statSync(tmp).size > 0) {
+            fs.renameSync(tmp, out)
+            return done(true)
+          }
+        } catch {}
+        fs.rmSync(tmp, { force: true })
+        done(false)
+      })
+    })
+    const job = (async () => {
+      try {
+        fs.mkdirSync(dir, { recursive: true })
+        // The older frames of this clip go.
+        for (const f of fs.readdirSync(dir)) if (f.startsWith(e.id + '-') && path.join(dir, f) !== out) fs.rmSync(path.join(dir, f), { force: true })
+      } catch {
+        return null
+      }
+      // One second in (past a fade from black or a loading screen), else the very first frame (a shorter clip).
+      return (await draw(['-ss', '1'])) || (await draw([])) ? out : null
+    })().finally(() => this.drawing.delete(out))
+    this.drawing.set(out, job)
+    return job
+  }
+
+  async servePoster(res: ServerResponse, id: string): Promise<void> {
+    const file = await this.poster(id)
+    if (!file) return void res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ error: tr(M).gone }))
+    res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff' })
+    fs.createReadStream(file).on('error', () => res.destroy()).pipe(res)
   }
 
   /** download: « Content-Disposition: attachment » (a save, where no share sheet exists); otherwise inline, named too. */

@@ -12,6 +12,8 @@ export default defineMessages({
     // ---- refused requests (shown as is by the app and by « weevils post / show »)
     notFound: 'ce n’est plus dans le flux',
     localOnly: 'réservé à cette machine',
+    linkBad: '--link attend une adresse web complète (https://…)',
+    linkLocal: '--link : jamais une adresse que seule cette machine ouvre (localhost, 127.0.0.1, réseau privé) ; donne l’adresse publique',
     emptyText: 'rien à dire',
     technicalPost: 'publie le résultat utile, pas le journal technique',
     noReply: 'on ne peut pas répondre à ça',
@@ -73,6 +75,8 @@ export default defineMessages({
     invalidVisual: 'invalid visual proposal or unavailable destination',
     notFound: 'this is no longer in the stream',
     localOnly: 'only from this machine',
+    linkBad: '--link takes a full web address (https://…)',
+    linkLocal: '--link: never an address only this machine opens (localhost, 127.0.0.1, a private network); give the public address',
     emptyText: 'nothing to say',
     technicalPost: 'publish the useful outcome, not the engineering log',
     noReply: 'this cannot be replied to',

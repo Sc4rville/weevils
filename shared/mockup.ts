@@ -2,8 +2,9 @@
 // (src/ui/foryou-mockup.css), sized to the post, on the post's own colour. One is picked per media from its shape and
 // its name (pickMockup); `weevils show <file> --mockup <name>` forces one.
 
-/** phone: an app seen on a phone · browser: a desktop window · tablet · print: a still or a render, as a lifted print ·
- *  cinema: a clip on a screen · board: a diagram or a before/after, flat, on a stepped shadow. */
+/** phone, browser, tablet: an interface (a phone screen, a desktop page, a tablet), shown as itself, never inside a drawn
+ *  device · print: a still or a render, on a thin block · cinema: a clip that is not an interface, on a screen ·
+ *  board: a diagram or a before/after, flat, on a thick block. */
 export const MOCKUPS = ['phone', 'browser', 'tablet', 'print', 'cinema', 'board'] as const
 export type Mockup = (typeof MOCKUPS)[number]
 
@@ -20,9 +21,10 @@ const TABLET = /(^|[^a-z])(tablet|ipad)([^a-z]|$)/i
  * for a still and a screen for a clip: the fallback always looks right.
  */
 export function pickMockup(m: { type: 'image' | 'video'; name: string; w?: number; h?: number; mockup?: unknown }): Mockup {
-  if (isMockup(m.mockup)) return m.mockup
   const name = m.name.toLowerCase()
+  // A before/after or a diagram is read whole: always a board, whatever was asked (a phone's shape would cut it).
   if (/\.(diagram|compare)\.\w+$/.test(name) || /\.(mmd|mermaid)$/.test(name)) return 'board'
+  if (isMockup(m.mockup)) return m.mockup
   const known = !!(m.w && m.h && m.w > 0 && m.h > 0)
   const r = known ? m.h! / m.w! : m.type === 'video' ? 9 / 16 : 1
   if (TABLET.test(name)) return 'tablet'
@@ -43,7 +45,7 @@ export function screenRatio(mockup: Mockup, r: number): number {
   const ok = r > 0 && Number.isFinite(r)
   switch (mockup) {
     // A taller capture scrolls past the bottom of the screen: its top is shown, like on the phone.
-    case 'phone': return ok ? Math.min(Math.max(r, 1.6), 2.17) : 2.17
+    case 'phone': return ok ? Math.min(Math.max(r, 1), 2.17) : 2.17
     case 'tablet': return ok ? Math.min(Math.max(r, 0.56), 1.45) : 1.33
     case 'browser': return ok ? Math.min(Math.max(r, 0.42), 1.1) : 0.625
     case 'cinema': return ok ? Math.min(Math.max(r, 0.42), 1.78) : 0.5625

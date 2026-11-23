@@ -166,19 +166,38 @@ The store keeps `{ id, path, type, bytes, mtime }`; the route serves only regist
 the cwd when present, so the item knows its project. Files cited in the closing message of a turn are registered the
 same way (same checks, at most 4, dot-directories refused).
 
-**Mockups** (`shared/mockup.ts`, `src/ui/foryou-mockup.tsx`). In a post, every picture or clip sits in a mockup drawn
-in CSS, sized to the post, on the post's own colour (no box around it). Every mockup is a solid block in the language
-of the weevils logo: sharp corners, a front in the logo's violet, and its thickness drawn as two flat faces (the side
-that faces the eye and the bottom), each one shade of the logo, joined at the corner on one clean edge; never stacked
-offset copies. `phone` (an app on a phone, slightly turned), `browser` (a desktop window, three squares in its bar),
-`tablet`, `print` (a still or a render on a thin block), `cinema` (a clip on a screen, a green light in its chin),
-`board` (a diagram or a before/after on a thick block, flat in view). The
-shelf reads a still's pixel size from its header, so the mockup is sized before the bytes arrive; a clip's size comes
-with its metadata. `pickMockup` decides: `.diagram.` / `.compare.` files → board; 2:1 or taller → phone (a longer
-capture shows its top); wide and named like a screen (screenshot, capture, desktop, page…) → browser; 4:3 named like
-a screen → tablet; otherwise print for a still, cinema for a clip. `weevils show <file> --mockup <name>` forces one
-(kept for that file). The mockup turns slightly while the post is off-screen and settles almost flat in view
-(transform only, nothing at all with reduced motion); the full-screen viewer shows the media bare.
+**Mockups** (`shared/mockup.ts`, `src/ui/foryou-mockup.tsx`). In a post, every picture or clip sits on a support drawn
+in CSS, sized to the post, on the post's own colour (no box around it), in the language of the weevils logo: sharp
+corners, and a thickness drawn as two flat faces (the side that faces the eye and the bottom), each one shade of the
+logo, joined at the corner on one clean edge; never stacked offset copies, never a glass glare. An interface is never
+put in a drawn device: `phone`, `browser` and `tablet` show the capture itself as the front of the
+block, big enough to read (up to 92% of the post's width and 76% of the screen's height for a phone screen), flat
+under the eyes, with no bezel, button, bar or rounded corner; they differ only by shape and width. The others: `print`
+(a still or a render on a thin block, leaning a little), `cinema` (a clip that is not an interface, on a violet screen
+with a green light), `board` (a diagram or a before/after on a thick block, flat in view). The shelf reads a still's
+pixel size from its header, so the support is sized before the bytes arrive; a clip's size comes with its metadata.
+`pickMockup` decides: `.diagram.` / `.compare.` files → board, always (a phone's shape would cut a before/after); 2:1
+or taller → phone (a longer capture shows its top); wide and named like a screen (screenshot, capture, desktop,
+page…) → browser; 4:3 named like a screen → tablet; otherwise print for a still, cinema for a clip. `weevils show
+<file> --mockup <name>` forces one (kept for that file). A still's support turns slightly while the post is off-screen
+and settles in view (transform only, nothing at all with reduced motion); the full-screen viewer shows the media bare.
+
+**Clips play inline, on iPhone too.** A clip is muted as an attribute (React sets only the property; iPhone autoplays
+only muted, inline clips), `playsinline` / `webkit-playsinline`, starts when it is under the eyes and pauses when it
+leaves, and never sits in a 3D-turned block (iPhone may leave a video blank there): its support only grows in, flat.
+Until it really plays, its poster shows (`GET /api/foryou/media/:id/poster`, its first frame drawn once by ffmpeg into
+`foryou-posters/` next to the shelf; without ffmpeg, the `#t=0.001` fragment shows the first frame) with the play mark
+on it, so a clip is never a black box; a tap opens it full screen, with sound.
+
+**Direct link** (`shared/post-link.ts`). When what a post shows lives at an address (a site, a preview, a page, an
+app screen), the post carries it: `weevils show <file> "caption" --link <https://…> [--link-label "label"]` (and
+`weevils post … --link`), or `weevils link <post id> <https://…> ["label"]` for a post already out (POST
+/api/foryou/:id/link, this machine only). Under the title, a living link in the preview colours says the label, else
+the address's host and path; a tap on the media opens it too (one of this weevils' pages in place, anything else in a
+new tab) instead of the full-screen viewer. Only an http(s) address someone else's phone can open: localhost,
+loopback, private networks, `.local` / `.internal` names and bare machine names are refused with a plain sentence.
+Sessions and weevboss are told to pass it whenever their visual result has an address (`server/i18n/agent-tools.ts`,
+`server/orchestrator.*.md`).
 
 **Before/after** (`server/compare.mjs`). A change shown as two states is one picture or one clip, made by
 `weevils compare <before> <after> <out.compare.png|.mp4> [--crop x,y,w,h] [--crop-before …] [--crop-after …]

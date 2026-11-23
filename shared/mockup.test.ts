@@ -30,9 +30,11 @@ describe('pickMockup', () => {
     expect(pickMockup(img('flow.diagram.png', 900, 1600))).toBe('board')
     expect(pickMockup(img('feed.compare.png', 1600, 1100))).toBe('board')
     expect(pickMockup(vid('nav.compare.mp4', 1080, 1920))).toBe('board')
+    // Even when a phone was asked for: a phone's shape would cut the before/after.
+    expect(pickMockup(img('chat.compare.png', 1376, 1484, 'phone'))).toBe('board')
   })
 
-  it('size unknown yet: a still is a print, a clip a screen; a forced mockup always wins', () => {
+  it('size unknown yet: a still is a print, a clip a screen; a forced mockup wins', () => {
     expect(pickMockup(img('picture.png'))).toBe('print')
     expect(pickMockup(vid('clip.mp4'))).toBe('cinema')
     expect(pickMockup(img('lab.png', 1170, 2532, 'browser'))).toBe('browser')
@@ -46,6 +48,8 @@ describe('screenRatio', () => {
   it('keeps the media whole when the device allows, shows the top of a longer capture, never cuts a diagram', () => {
     expect(screenRatio('phone', 844 / 390)).toBeCloseTo(844 / 390)
     expect(screenRatio('phone', 2400 / 390)).toBe(2.17)
+    // No drawn phone around it any more: a shorter capture of a phone screen stays whole.
+    expect(screenRatio('phone', 1300 / 1000)).toBeCloseTo(1.3)
     expect(screenRatio('board', 1600 / 900)).toBeCloseTo(1600 / 900)
     expect(screenRatio('cinema', 0)).toBe(0.5625)
   })

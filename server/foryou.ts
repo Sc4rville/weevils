@@ -29,6 +29,7 @@ import type { InterruptReason, Message, RequestOrigin, Session, SessionDetail, S
 import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
 import { evidenceInput, evidenceLabel, mergeEvidence, type EvidenceInput } from '../shared/evidence.ts'
+import { postLink, type PostLink } from '../shared/post-link.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { withoutWeevilsBlock } from './transcripts.ts'
 import type { Level, UsageInfo } from '../shared/infra.ts'
@@ -416,7 +417,7 @@ export interface ForYouDeps {
   file?: string
   now?: () => number
   /** The registered media (server/foryou-media.ts); without it « weevils show » is refused. */
-  shelf?: Pick<MediaShelf, 'add' | 'fromText' | 'get' | 'view' | 'serve'> | null
+  shelf?: Pick<MediaShelf, 'add' | 'fromText' | 'get' | 'view' | 'serve' | 'servePoster'> | null
   /** Sessions under this folder are weevils' own (default DATA_DIR). */
   dataDir?: string
   /** Id of this machine (default MACHINE.id): only its sessions have their files here. */
@@ -497,6 +498,8 @@ interface Stored {
   sum?: { text?: string; lang?: Lang; tries?: number; at?: number; relang?: boolean; prior?: string }
   /** weevils show / post: the evidence supplied with the publication, as given (the label is derived at read time). */
   evidence?: EvidenceInput
+  /** weevils show / post --link, weevils link: where what it shows lives (shared/post-link.ts). */
+  link?: PostLink
 }
 
 interface LiveState {
@@ -883,15 +886,16 @@ export class ForYou {
     return s
   }
 
-  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown, source?: unknown): ForYouItem {
+  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown, source?: unknown, link?: unknown): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
+    const where = this.linkOf(link)
     // The post's title, in bold on top (weevils post --title): one short line.
     const head = typeof title === 'string' ? collapse(title).slice(0, POST_TITLE_MAX) : ''
     if (!body) throw new Error(tr(M).emptyText)
     if (technicalEvent('', body) || internalFeedUpdate(body)) throw new Error(tr(M).technicalPost)
     const proof = evidenceInput(evidence)
     const s = this.sourceSession(source)
-    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: this.buttons(actions), ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : { reply: 'boss' as const, open: { page: 'boss' as const } }), ...(proof ? { evidence: proof } : {}) }
+    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: this.buttons(actions), ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : { reply: 'boss' as const, open: { page: 'boss' as const } }), ...(proof ? { evidence: proof } : {}), ...(where ? { link: where } : {}) }
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())!
@@ -901,8 +905,9 @@ export class ForYou {
    * « weevils show »: a file an agent wants the user to see. Its session is the most recently active one working in
    * (or above) the caller's folder; files shown by the same session within two minutes join one item.
    */
-  addMedia(o: { path: unknown; caption?: unknown; mockup?: unknown; cwd?: unknown; from?: string; evidence?: unknown; source?: unknown }): ForYouItem {
+  addMedia(o: { path: unknown; caption?: unknown; mockup?: unknown; cwd?: unknown; from?: string; evidence?: unknown; source?: unknown; link?: unknown }): ForYouItem {
     if (!this.shelf) throw new Error(tr(M).noMedia)
+    const where = this.linkOf(o.link)
     const cwd = typeof o.cwd === 'string' && o.cwd ? path.resolve(o.cwd) : undefined
     const entry = this.shelf.add(String(o.path ?? ''), cwd, o.mockup)
     const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 320)
@@ -920,6 +925,7 @@ export class ForYou {
       if (caption) open.title = caption
       const evidence = mergeEvidence(open.evidence, proof)
       if (evidence) open.evidence = evidence
+      if (where) open.link = where
       open.at = now
       delete open.seen
       this.changed()
@@ -939,11 +945,33 @@ export class ForYou {
       mediaIds: [entry.id],
       cwd,
       ...(proof ? { evidence: proof } : {}),
+      ...(where ? { link: where } : {}),
       ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : boss ? { reply: 'boss' as const, open: { page: 'boss' as const } } : {}),
     }
     this.put(item)
     this.changed()
     return this.view(item, snap)!
+  }
+
+  /** A post's direct link as given (shared/post-link.ts), or a plain refusal: never a link only this machine opens. */
+  private linkOf(raw: unknown): PostLink | undefined {
+    if (raw === undefined || raw === null || raw === '') return undefined
+    const r = raw as { url?: unknown; label?: unknown } | string
+    const l = typeof r === 'string' ? postLink(r) : postLink(r.url, r.label)
+    if (l === 'local') throw new Error(tr(M).linkLocal)
+    if (l === 'url') throw new Error(tr(M).linkBad)
+    return l
+  }
+
+  /** « weevils link <post> <url> »: give a post its direct link afterwards, or change it. */
+  setLink(id: string, raw: unknown): ForYouItem | null {
+    const item = this.get(id)
+    if (!item) throw new Error(tr(M).notFound)
+    const l = this.linkOf(raw)
+    if (!l) throw new Error(tr(M).linkBad)
+    item.link = l
+    this.changed()
+    return this.view(item, this.w.snapshot())
   }
 
   /** What this person reviewed by hand for their own feed (<foryou.json>.reviewed.json); nothing by default. */
@@ -1265,6 +1293,7 @@ export class ForYou {
     if (i.eventId) out.eventId = i.eventId
     if (i.tool) out.tool = i.tool
     if (i.title) out.title = i.title
+    if (i.link) out.link = i.link
     if (i.body) out.body = i.body
     if (i.open) out.open = i.open
     if (i.reply && (i.reply !== 'session' || snap.sessions.some(s => s.id === i.sessionId && s.controllable))) out.reply = i.reply
@@ -1913,9 +1942,9 @@ export function replyWithPost(i: { title?: string; text?: string }, body: string
 /**
  * GET /api/foryou[?lang=] → ForYouFeed · POST /api/foryou/seen { ids } · POST /api/foryou/:id/dismiss ·
  * POST /api/foryou/:id/act { action, card? } · POST /api/foryou/:id/reply { text } · POST /api/foryou/:id/more → { text } ·
- * POST /api/foryou/post { text, title?, actions?, from?, evidence? } and POST /api/foryou/media { path, caption?, cwd?, from?,
- * evidence? } (evidence: { demonstrated?, verified?, limits? }, shared/evidence.ts): from this
- * machine only (weevils post / show) · GET /api/foryou/media/:id → the bytes (the router already checked the cookie).
+ * POST /api/foryou/post { text, title?, actions?, from?, evidence?, link? } and POST /api/foryou/media { path, caption?, cwd?, from?,
+ * evidence?, link? } (link: { url, label? }, shared/post-link.ts) · POST /api/foryou/:id/link { url, label? } (evidence: { demonstrated?, verified?, limits? }, shared/evidence.ts): from this
+ * machine only (weevils post / show) · GET /api/foryou/media/:id → the bytes (the router already checked the cookie), /poster → a clip's first frame.
  */
 export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [string, RegExp, Handler][] {
   const id = (raw: string) => {
@@ -1950,7 +1979,13 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/post$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, { from: b?.from }), b?.evidence, b?.title, b?.session) }))
+      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, { from: b?.from }), b?.evidence, b?.title, b?.session, b?.link) }))
+    }],
+    // weevils link <post> <url> [label]: this machine only, like post and show.
+    ['POST', /^\/api\/foryou\/([^/]+)\/link$/, async (req, res, _u, [raw]) => {
+      const b = await readBody(req)
+      if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
+      await run(res, exists(id(raw)), () => ({ item: fy.setLink(id(raw), { url: b?.url, label: b?.label }) }))
     }],
     ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)), examples: fy.formatExamples() })],
     ['POST', /^\/api\/foryou\/composition$/, async (req, res) => {
@@ -1966,7 +2001,12 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/media$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, mockup: b?.mockup, cwd: b?.cwd, from: trustedFrom(req, { from: b?.from }), evidence: b?.evidence, source: b?.session }) }))
+      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, mockup: b?.mockup, cwd: b?.cwd, from: trustedFrom(req, { from: b?.from }), evidence: b?.evidence, source: b?.session, link: b?.link }) }))
+    }],
+    // A clip's first frame: shown while it loads, and when the phone does not play it by itself.
+    ['GET', /^\/api\/foryou\/media\/([\w-]+)\/poster$/, async (_req, res, _u, [mid]) => {
+      if (!fy.shelf) return json(res, 404, { error: tr(M).noMedia })
+      await fy.shelf.servePoster(res, mid)
     }],
     // GET and HEAD (a player may ask for the size first): the router matches the method exactly.
     ...(['GET', 'HEAD'] as const).map((method): [string, RegExp, Handler] => [method, /^\/api\/foryou\/media\/([\w-]+)$/, (req, res, u, [mid]) => {

@@ -732,7 +732,7 @@
   opacity: .9;
   transition: opacity .5s ease;
 }
-.fy-inview .fy-media-mark {
+.fy-playing .fy-media-mark {
   opacity: 0;
 }
 .fy-media-mark .ic {
@@ -1607,6 +1607,14 @@ button.fy-hit {
 .fy-post-media .fy-media-strip:not(.many),
 .fy-post-media .fy-two {
   margin: 0;
+}
+
+/* A post's direct link (shared/post-link.ts), under its words: where what it shows lives, one tap away. */
+.fy-post-link {
+  margin: 0;
+  padding-top: 8px;
+  font-size: 0.9375rem;
+  line-height: 1.35;
 }
 
 .fy-post-limit {

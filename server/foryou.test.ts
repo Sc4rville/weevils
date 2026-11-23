@@ -113,6 +113,9 @@ beforeEach(() => {
     serve(_req, _res, id) {
       this.served.push(id)
     },
+    async servePoster(_res, id) {
+      this.served.push(`poster:${id}`)
+    },
   }
 })
 
@@ -826,6 +829,23 @@ describe('media', () => {
     now = T0 + MIN + MEDIA_JOIN_MS + 1
     expect(fy.addMedia({ path: 'c.png', cwd: '/home/u/projects/myshop/out' }).id).not.toBe(a.id)
     expect(() => fy.addMedia({ path: 'nope.png', cwd: '/home/u/projects/myshop' })).toThrow('not a file weevils can show')
+  })
+
+  it('a post shows where its result lives: --link on show and post, weevils link afterwards, never a localhost link', () => {
+    const fy = make()
+    snap.sessions = [session({ lastActivityAt: T0 })]
+    shelf.known.add('/home/u/projects/myshop/out/site.png')
+    const a = fy.addMedia({ path: 'site.png', caption: 'The new chat', cwd: '/home/u/projects/myshop/out', link: { url: 'https://new-site.example.com', label: '' } })
+    expect(a.link).toEqual({ url: 'https://new-site.example.com/' })
+    expect(fy.post('Prices come from the sheet now.', undefined, undefined, undefined, 'The menu is live', undefined, { url: 'https://shop.example.com/menu', label: 'The menu' }).link).toEqual({ url: 'https://shop.example.com/menu', label: 'The menu' })
+    expect(() => fy.addMedia({ path: 'site.png', cwd: '/home/u/projects/myshop/out', link: { url: 'http://localhost:5173' } })).toThrow(M.en.linkLocal)
+    expect(() => fy.post('hi', undefined, undefined, undefined, undefined, undefined, { url: 'not a url' })).toThrow(M.en.linkBad)
+    const b = fy.post('An older post')
+    expect(b.link).toBeUndefined()
+    expect(fy.setLink(b.id, { url: 'https://new-site.example.com/menu', label: 'The site' })!.link).toEqual({ url: 'https://new-site.example.com/menu', label: 'The site' })
+    expect(find(fy, b.id)?.link?.label).toBe('The site')
+    expect(() => fy.setLink(b.id, { url: 'http://127.0.0.1:4179/' })).toThrow(M.en.linkLocal)
+    expect(() => fy.setLink('nope', { url: 'https://x.dev' })).toThrow(M.en.notFound)
   })
 
   it('one item holds six files at most; no session: weevboss from its folder, else weevils', () => {

@@ -9,8 +9,8 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
 
 1. The onboarding starts here, as a conversation, before anything is installed (2026-11-23). weevboss says hello
    (what weevils is, in a line) and asks what the visitor would like to make; they type it or tap a suggestion. Its
-   reply says where weevils will live, the computer where the agents work with the person's own Claude or ChatGPT
-   subscription, as three cards: **on this computer** (on a phone: "on my computer"), **my own VPS**, **create a VPS
+   reply says first what weevils runs on (the person's own subscriptions or API keys, as many as they like), then asks
+   for a first machine for the agents (others can be added later), as three cards: **on this computer** (on a phone: "on my computer"), **my own VPS**, **create a VPS
    for me** (Hetzner). It also says plainly that with a computer alone, weevils and its agents work only while it is
    on, and that a VPS keeps them working with it off. The pick is the visitor's next message, and its step follows in
    the same thread, then the install and the person's own weevils. Key words come in a living gradient, weevboss's

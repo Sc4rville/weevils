@@ -879,14 +879,15 @@ describe('a Mac', () => {
     const t = phone.text()
     expect(t).toContain('A game')
     expect(t).toContain('Love it')
-    // The computer first, then a VPS of one's own, then one created at Hetzner; the subscription said up front.
+    // The computer first, then a VPS of one's own, then one created at Hetzner; what weevils runs on said up front, then the machine to start with.
     expect(t.indexOf('On my PC')).toBeLessThan(t.indexOf('On my VPS'))
     expect(t.indexOf('On my VPS')).toBeLessThan(t.indexOf('Create a VPS for me'))
-    expect(t).toContain('your own Claude or ChatGPT subscription')
+    expect(t).toContain('your own subscriptions or API keys')
+    expect(t.indexOf('your own subscriptions or API keys')).toBeLessThan(t.indexOf('pick a first machine'))
     // A computer alone works only while it is on: said plainly, with what a VPS changes.
     expect(t).toContain('with your PC alone, your agents work only while it’s on. A VPS keeps them working with your PC off.')
     // Everything in one place: said in the hello, and shown with our blocks joining weevboss's.
-    expect(t).toContain('all your AI agents and machines together')
+    expect(t).toContain('weevils plugs into all your AI: your Claude and ChatGPT subscriptions, your API keys, as many as you have')
     expect([...phone.app.querySelectorAll('.all .blk')].map((b) => b.textContent)).toEqual(['Claude Code', 'Codex', 'your PC', 'your servers', 'your projects', 'weevboss'])
     // weevils has no rounded corners.
     expect(page).not.toMatch(/border-radius: (?!0;)/)
@@ -900,7 +901,7 @@ describe('a Mac', () => {
     const hi = await firstScreen(IPHONE)
     ;(hi.app.querySelector('textarea') as HTMLTextAreaElement).value = 'hello there'
     hi.app.querySelector('form')!.dispatchEvent(new hi.document.defaultView!.Event('submit', { cancelable: true }) as unknown as Event)
-    expect(hi.text()).toContain('Hi! First, where should your agents work?')
+    expect(hi.text()).toContain('Hi! weevils runs on your own subscriptions or API keys')
   })
 
   it('gives a computer its command in one tap from the reply, Mac and Linux alike', async () => {

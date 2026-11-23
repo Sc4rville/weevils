@@ -7,7 +7,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
 ## Navigation: one model, like iOS
 
 - **The base screen is weevboss**: its thread, or For you beside it (the words « weevboss · for you » at the top).
-- **The side bar is a drawer from the left**, top to the very bottom edge (installed on a phone too). The ☰ button or an edge swipe opens it, and the edge swipe works on
+- **The side bar is a drawer from the left**; its veil covers the screen to the very bottom edge (installed on a phone too). The ☰ button or an edge swipe opens it, and the edge swipe works on
   weevboss's screen only. It follows the finger. It closes past 38 % of its width or on a fling, and a tap outside it
   closes it too.
 - **In the side bar, a project's name folds its sessions away or brings them back.** The fold opens and closes with
@@ -23,6 +23,8 @@ once, and the code follows. Behaviour is never flipped back and forth.
   **Settings** fold the same way, from their name: folded to their one band unless this device last left them open
   (2026-11-23), in both apps. Their name is regular weight, like Autonomous: bold in the side bar means active.
   **A repo row** carries a thin square repo mark in the weevils logo's column, its name under the « w » of weevils.
+  Every folded band (weevils, each repo, Autonomous, settings) has one and the same height. The side bar ends with
+  its last band: under it, what is behind shows through, never a filler band (2026-11-23).
 - **An automation row always opens the automation** (2026-11-21). Once accepted, it opens on its overview: its
   name in the middle in bold, what it does in one line, a big living link to what it produced (the page its newest run
   published, else that run's results), then its next run, its schedule, its last run and how it went, its count, where

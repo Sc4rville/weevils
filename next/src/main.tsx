@@ -257,7 +257,7 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
       <motion.div className="nx-scrim" initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={close} />
       <motion.nav className="nx-side" style={{ x }} initial={still ? false : { x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={PANEL}
         ref={nav} onPointerDownCapture={() => { dragged.current = false }} onDragStart={() => { dragged.current = true }} onClickCapture={noTapAfterDrag} drag="x" dragDirectionLock dragConstraints={{ left: -400, right: 0 }} dragElastic={{ left: 0.2, right: 0 }} dragMomentum={false} onDragEnd={onEnd}>
-        <div className="nx-side-scroll">
+        <div className="nx-side-scroll" onClick={(e) => { if (e.target === e.currentTarget) close() }}>
           {/* weevboss and weevils' own repo are one block at the top (weevils improving itself). Where weevboss has no
               repo of its own (anyone else's install), the block is its logo and « weevils » alone. */}
           {self ? (

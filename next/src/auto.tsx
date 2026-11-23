@@ -66,7 +66,7 @@ export function NextAutoPage({ id }: { id: string }) {
     <div ref={box} className={`nx-autoview nx-auto-${view}`}>
       {/* A factory opens on its own page (the panels its manifest declares, drawn by the app's FactoryPage); an
           automation on its overview. Either way the small flip goes to its conversation and back. */}
-      {view === 'overview' ? (o.factory ? <FactoryPage id={id} heroName headAction={false} kicker="Autonomous" onConversation={talk ? flip : undefined} /> : <Overview id={id} />) : session ? <PageView page={{ kind: 'session', id: session }} /> : <AutoPage id={id} standard />}
+      {view === 'overview' ? (o.factory ? <FactoryPage id={id} heroName headAction={false} kicker="autonomous" onConversation={talk ? flip : undefined} /> : <Overview id={id} />) : session ? <PageView page={{ kind: 'session', id: session }} /> : <AutoPage id={id} standard />}
       {talk && (
         <Flip host={head} onClick={flip} label={view === 'overview' ? `Conversation of ${o.title}` : `Overview of ${o.title}`}>
           {view === 'overview' ? <><Icon name="bubble" /><span>Conversation</span></> : <Icon name={o.factory ? 'factory' : 'cycle'} />}
@@ -105,7 +105,7 @@ function Overview({ id }: { id: string }) {
     ...(where ? [['Works in', where] as [string, ReactNode]] : []),
   ]
   return (
-    <Shell slot={slotOf(id)} kicker="Autonomous" title={x.title}>
+    <Shell slot={slotOf(id)} kicker="autonomous" title={x.title}>
       <div className="nx-auto-hero">
         <span className="nx-auto-icon">{running ? <AutoMark /> : <Icon name="cycle" />}</span>
         <div className="nx-auto-name">{x.title}</div>

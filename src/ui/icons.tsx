@@ -61,6 +61,8 @@ const PATHS = {
   file: 'M6 3h8l4 4v14H6z',
   // A repository: a square folder, its tab square too.
   repo: 'M3 5h7v3h11v12H3zM3 8h7',
+  // Settings: three thin rails, each with a square knob set at its own place.
+  settings: 'M3 6h10M17 6h4M13 4h4v4h-4zM3 12h3M10 12h11M6 10h4v4H6zM3 18h8M15 18h6M11 16h4v4h-4z',
   copy: 'M9 9h11v11H9zM15 5V4H4v11h1',
   // Ce qui revient tout seul : la touche « répéter », à angles droits — une boucle ouverte à gauche, sa pointe en bas.
   cycle: `${CYCLE_LOOP}${CYCLE_HEAD}`,

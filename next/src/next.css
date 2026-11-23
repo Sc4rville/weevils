@@ -395,3 +395,13 @@ body { overflow: hidden; }
 }
 .cam-to button:disabled { opacity: .5; }
 .cam-error { font-size: 14px; opacity: .75; }
+
+/* A question's answers (the app's session-question.tsx): next draws no thin lines, so no rule above each answer; each
+   one is a step on its own band, one tone step from the question's, with room between them (the For you sheet's
+   steps, foryou.css .fy-sheet-go). */
+.nx-stage .choice-band {
+  border-top: 0; margin-top: 8px; padding: 14px 16px; min-height: 52px;
+  background: oklch(from var(--c) calc(l + var(--dl) * 2.2) calc(c * 1.06) h);
+}
+.nx-stage .choice-band:first-of-type { margin-top: 14px; }
+.nx-stage .choice-band:disabled { opacity: .55; }

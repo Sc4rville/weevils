@@ -9,7 +9,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **The base screen is weevboss**: its thread, or For you beside it (the words « weevboss · for you » at the top).
 - **The side bar is a drawer from the left**; its veil covers the screen to the very bottom edge (installed on a phone too). The ☰ button or an edge swipe opens it, and the edge swipe works on
   weevboss's screen only. It follows the finger. It closes past 38 % of its width or on a fling, and a tap outside it
-  closes it too.
+  closes it too, as does Escape on a computer's keyboard (2026-11-23).
 - **In the side bar, a project's name folds its sessions away or brings them back.** The fold opens and closes with
   the app's own motion (`Collapse`) and is remembered, as on the classic home. Its « / » and « > » keep their own
   taps. In the weevils block at the top, the logo opens weevboss and the name folds, like every project's name
@@ -136,6 +136,9 @@ once, and the code follows. Behaviour is never flipped back and forth.
   Whatever shows under the page (that inset, the bounce) wears the page's own colour, never another band's
   (weevils' repo: its gradient's base). The
   « new below » mark (a « ? » when a question waits) is a quiet tone of the page, never a dark block over the text.
+- **A question's answers are steps, not rows between rules** (2026-11-23): each answer (Allow, Deny, a choice) sits on
+  its own band, one tone step from the question's, with room between them, as the For you sheet's steps; no line
+  above or under them.
 - **Focus never draws a black box**: a field shows where you type by its caret; a button reached with the keyboard
   gets the app's one soft halo.
 - **Next's own layout choices**, the only ones (2026-11-21):

@@ -78,8 +78,8 @@ once, and the code follows. Behaviour is never flipped back and forth.
   - the session's own agent (Claude, Codex): plain text on the page, no box, its name small above;
   - you: a tinted band reaching the right edge;
   - anyone else prompting it (weevboss, another agent, an automation, a bot): the mirror of your words, a band
-    against the left edge, in that author's colour (weevboss's own, or the author's stable colour, readable in every
-    theme), its name small at the top (2026-11-22: only your own words sit on the right; this replaces « on the right
+    against the left edge, in that author's colour (weevboss's own, an automation's band colour under its name: it signs
+    its own brief, 2026-11-23; or the author's stable colour, readable in every theme), its name small at the top (2026-11-22: only your own words sit on the right; this replaces « on the right
     exactly like your own words » of 2026-11-21).
 - **Order**: messages are always shown in the server's order, each reply under its message. A stand-in only ever
   sits at the end and never stays once the real message is there.

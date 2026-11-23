@@ -1,4 +1,5 @@
 import { AutomationManifests, AutomationWorkspaces } from './automation-workspaces.ts'
+import { signAs } from './authors.ts'
 import { FactoryError, publishFactory, pushFactory, type Publication } from './factory.ts'
 import { ghOwner } from './github.ts'
 import { originOf } from './outbox-http.ts'
@@ -2587,7 +2588,9 @@ export class Optimizers {
         minutes: o.est ?? 60,
         agreed: agreedDigest(o.talk, { user: tr(O).agreedUser, auto: tr(O).agreedAuto }),
       })
-      const text = on.relay ? `${on.relay}\n\n${tr(O).relayRules}\n${brief}` : brief
+      // Its brief is signed with the automation's own id: its session shows these words as the automation's, never as
+      // the person's. A takeover keeps the signature of whoever wrote its plan (weevboss's relay).
+      const text = on.relay ? `${on.relay}\n\n${tr(O).relayRules}\n${brief}` : signAs(o.id, brief)
       const guard = this.guard()
       step = 'jail'
       // Codex has no deny list: its tasks run only inside the jail (which keeps its login, nothing else of the user's).

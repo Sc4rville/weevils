@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, Snapshot } from '../shared/api.ts'
+import { parseSigned } from './authors.ts'
 import { smart, relay as relayAnswer } from './fast.ts'
 import { headOf } from './auto-runs.ts'
 import O from './i18n/optimizers.ts'
@@ -304,6 +305,9 @@ describe('auto — the runner', () => {
     expect(cwd).toBe(path.join(dir, 'p', '.auto', 'myshop', id))
     expect(sys.worktree).toHaveBeenCalledWith(path.join(dir, 'p', 'myshop'), cwd, expect.stringMatching(/^auto\/harden-myshop-tests-\w{4}$/), undefined)
     expect(title).toBe('Harden myshop tests')
+    // Signed with the automation's own id: its session shows the brief as the automation's words, never the person's.
+    expect(text.startsWith(`[from:${id}] `)).toBe(true)
+    expect(parseSigned(text)?.author).toBe(id)
     expect(text).toMatch(/on the local branch auto\/harden-myshop-tests-\w{4} made for you/)
     expect(text).toContain(`never touch the folder ${path.join(dir, 'p', 'myshop')}`)
     expect(text).not.toContain('git worktree add')

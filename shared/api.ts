@@ -296,13 +296,18 @@ export interface Machine {
 }
 
 /** Why another machine does not answer:
+ *  - joining: its line was pasted, weevils is installing there (it shows up by itself when done);
+ *  - failed: that install stopped (detail: why; fix: the command that fixes it, when there is one);
  *  - link: nothing reaches it (it is off or asleep, or weevils on it lost its link to this one);
  *  - stopped: its link is there, but weevils on it does not answer (stopped, or still starting);
+ *  - port: another program on this machine holds its tunnel port (weevils moves it at its next connection);
  *  - key: it answers, but refuses this machine (its key changed: an update or a new line puts it back). */
 export interface MachineAway {
-  why: 'link' | 'stopped' | 'key'
-  /** The last time it answered (ms); null when this machine never saw it answer. */
+  why: 'joining' | 'failed' | 'link' | 'stopped' | 'port' | 'key'
+  /** The last time it answered (ms), or when its line was pasted (joining, failed); null: never seen. */
   since: number | null
+  detail?: string
+  fix?: string
 }
 
 export interface H24Activity {

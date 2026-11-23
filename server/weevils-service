@@ -7,6 +7,9 @@
 #   weevils-service add-remote <id> [url]     main machine: federate another weevilsd (prints its tunnel port);
 #                                             WEEVILS_TOKEN_STDIN=1: that machine's local token, read on stdin
 #   weevils-service remote-shell <id> <port>  the forced command of a key plugged in from one line (server/join.ts)
+#   weevils-service tunnel                    secondary machine: asks the main machine for its port (and waits there
+#                                             while it is switched off), then holds the reverse tunnel (the unit runs it)
+#   weevils-service drop <id>                 main machine: cuts that machine's tunnel now (switched off in the app)
 #   weevils-service config get <KEY> | set <KEY> <value> | default <KEY> <value>
 #   weevils-service mode                      systemd, launchd or background
 set -euo pipefail
@@ -151,8 +154,7 @@ bg_start() {
       echo $! >"$RUN_DIR/weevilsd.pid")
   fi
   if [ "$(units)" != weevilsd ] && ! pid_alive weevils-tunnel; then
-    (detach nohup bash -c 'while :; do ssh -NT -o BatchMode=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R "127.0.0.1:$1:127.0.0.1:$2" "$3"; sleep 10; done' \
-      _ "$WEEVILS_TUNNEL_PORT" "$WEEVILS_PORT" "$WEEVILS_MAIN_HOST" >>"$TUNNEL_LOG" 2>&1 </dev/null &
+    (detach nohup bash -c 'while :; do "$1" tunnel; sleep 3; done' _ "$0" >>"$TUNNEL_LOG" 2>&1 </dev/null &
       echo $! >"$RUN_DIR/weevils-tunnel.pid")
   fi
 }
@@ -179,11 +181,61 @@ bg_status() {
 
 # ---------------------------------------------------------------- main machine: register a secondary one
 
-# listening <port> — something already listens on it here (ss on Linux, lsof on a Mac; neither: not checked).
+# listening <port> — something already listens on it here, on any address (a program on 0.0.0.0:<port> keeps the
+# tunnel's sshd from binding 127.0.0.1:<port> too). Linux: /proc/net/tcp and tcp6 (no ss needed); a Mac: lsof.
 listening() {
-  if command -v ss >/dev/null; then ss -ltn 2>/dev/null | grep -q "127.0.0.1:$1 "
+  if [ -r /proc/net/tcp ]; then
+    cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | awk -v p="$(printf ':%04X' "$1")" '$4 == "0A" && substr($2, length($2) - 4) == p { f = 1 } END { exit !f }'
   elif command -v lsof >/dev/null; then lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
   else return 1; fi
+}
+
+# taken_ports — the tunnel ports already given: other machines' (WEEVILS_REMOTES), the keys' (authorized_keys), and the
+# one-time codes still open (join.json).
+taken_ports() {
+  {
+    cfg_get WEEVILS_REMOTES | grep -oE ':[0-9]+' | tr -d : || true
+    grep -oE 'permitlisten="127\.0\.0\.1:[0-9]+"' "$HOME/.ssh/authorized_keys" 2>/dev/null | grep -oE '[0-9]+"$' | tr -d '"' || true
+    grep -oE '"port":[0-9]+' "$HOME/.local/share/weevils/join.json" 2>/dev/null | grep -oE '[0-9]+$' || true
+  } | sort -u
+}
+
+# move_remote <id> <port> — that machine's port is held by another program here: it gets the first free one, in its
+# key (both ways and in its forced command) and in WEEVILS_REMOTES. Prints the new port.
+move_remote() {
+  local id=$1 old=$2 new=4192 taken ak=$HOME/.ssh/authorized_keys tmp
+  grep -q "weevils-join:$id\$" "$ak" 2>/dev/null || return 1
+  taken=$(taken_ports)
+  while [ "$new" = "$old" ] || grep -qx "$new" <<<"$taken" || listening "$new"; do new=$((new + 1)); done
+  tmp=$ak.weevils.tmp
+  ID=$id O=$old N=$new awk '{
+    if ($0 ~ ("weevils-join:" ENVIRON["ID"] "$")) {
+      gsub("127\\.0\\.0\\.1:" ENVIRON["O"] "\"", "127.0.0.1:" ENVIRON["N"] "\"")
+      gsub("remote-shell " ENVIRON["ID"] " " ENVIRON["O"] "\"", "remote-shell " ENVIRON["ID"] " " ENVIRON["N"] "\"")
+    }
+    print
+  }' "$ak" >"$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$ak"
+  echo "weevils-service: $id moved from port $old (held by another program) to $new" >&2
+  add_remote "$id" "http://127.0.0.1:$new" >/dev/null
+  echo "$new"
+}
+
+# hold_remote <id> <port> — before each tunnel of that machine: while it is switched off in the app (remotes/<id>.off)
+# this waits (an answer within half a second of « on », up to 10 minutes, then « off » and the machine asks again);
+# then a dead connection of its own on its port goes (reclaim_port), and a port another program holds is changed
+# (move_remote). Answers « port <n> »: the port to listen on.
+hold_remote() {
+  local id=$1 port=$2 off=$CONFIG_DIR/remotes/$1.off i=0
+  while [ -e "$off" ]; do
+    [ "$i" -lt 1200 ] || { echo off; return 0; }
+    sleep 0.5; i=$((i + 1))
+  done
+  reclaim_port "$port"
+  if listening "$port"; then
+    sleep 1
+    if listening "$port"; then port=$(move_remote "$id" "$port") || port=$2; fi
+  fi
+  echo "port $port"
 }
 
 # remote_token <id> — the secondary machine's local token, one line on stdin (« X-Weevils-Local: <hex> »), kept in
@@ -255,6 +307,8 @@ remote_shell() {
     # The tunnel about to connect: a connection of this machine that still holds its port is dead (the tunnel only
     # starts again when the last one ended); sshd there would notice only hours later. It goes: that port only.
     'weevils-service reclaim') reclaim_port "$port"; exit 0 ;;
+    # The tunnel about to connect (weevils-service tunnel there): may it, and on which port.
+    'weevils-service hold') hold_remote "$id" "$port"; exit 0 ;;
   esac
   local re='^WEEVILS_TOKEN_STDIN=1 [^ ]*weevils-service add-remote '"$id"'( http://127\.0\.0\.1:'"$port"')?$'
   if [[ "$cmd" =~ $re ]]; then
@@ -264,6 +318,49 @@ remote_shell() {
   fi
   echo "weevils-service: this key only registers $id" >&2
   exit 1
+}
+
+# drop <id> — main machine: that machine was switched off in the app (weevilsd wrote remotes/<id>.off): its tunnel's
+# end here goes now, and its next one waits in hold_remote until it is switched on again.
+drop_remote() {
+  local id=${1:?id} url port
+  url=$(cfg_get WEEVILS_REMOTES | tr ',' '\n' | sed -n "s/^[[:space:]]*$id=//p" | head -1)
+  port=${url##*:}
+  [[ "$port" =~ ^[0-9]+$ ]] && reclaim_port "$port"
+  return 0
+}
+
+# ---------------------------------------------------------------- secondary machine: the tunnel
+
+# set_service_conf KEY VALUE — one line of service.conf (written by server/install.sh), replaced in place.
+set_service_conf() {
+  local tmp=$SERVICE_CONF.tmp
+  K=$1 V=$2 awk 'BEGIN { d = 0 } $0 ~ ("^" ENVIRON["K"] "=") { print ENVIRON["K"] "=" ENVIRON["V"]; d = 1; next } { print } END { if (!d) print ENVIRON["K"] "=" ENVIRON["V"] }' "$SERVICE_CONF" >"$tmp" && mv -f "$tmp" "$SERVICE_CONF"
+}
+
+# tunnel — what the weevils-tunnel unit (or launchd agent) runs. The main machine first says whether this machine may
+# connect and on which port (weevils-service hold there: it waits while this machine is switched off in the app, frees
+# a port a dead connection still holds, moves one another program took); then the reverse tunnel itself. An older main
+# machine knows no « hold »: reclaim as before, same port.
+tunnel() {
+  load_service_conf
+  local host=$WEEVILS_MAIN_HOST port=$WEEVILS_TUNNEL_PORT here out new
+  [ -n "$host" ] || { echo "weevils-service tunnel: not a secondary machine" >&2; sleep 30; exit 1; }
+  here=$(cfg_get WEEVILS_PORT); here=${here:-4179}
+  if out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 "$host" weevils-service hold </dev/null 2>/dev/null); then
+    [ "$out" != off ] || exit 0
+    new=$(printf '%s\n' "$out" | sed -n 's/^port \([0-9][0-9]*\)$/\1/p' | tail -1)
+    if [ -n "$new" ] && [ "$new" != "$port" ]; then
+      echo "weevils-service tunnel: the main machine moved this machine to port $new (was $port)" >&2
+      set_service_conf WEEVILS_TUNNEL_PORT "$new"
+      port=$new
+    fi
+  else
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" weevils-service reclaim </dev/null >/dev/null 2>&1 || true
+  fi
+  [[ "$port" =~ ^[0-9]+$ ]] || { echo "weevils-service tunnel: no tunnel port in $SERVICE_CONF" >&2; sleep 30; exit 1; }
+  exec ssh -NT -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
+    -R "127.0.0.1:$port:127.0.0.1:$here" "$host"
 }
 
 # ----------------------------------------------------------------
@@ -279,6 +376,8 @@ case "$cmd" in
     esac ;;
   add-remote) shift; load_service_conf; add_remote "$@" ;;
   remote-shell) shift; remote_shell "$@" ;;
+  drop) shift; drop_remote "$@" ;;
+  tunnel) tunnel ;;
   mode) if systemd_user; then echo systemd; elif launchd_domain >/dev/null; then echo launchd; else echo background; fi ;;
   start | stop | restart | status | logs)
     load_service_conf

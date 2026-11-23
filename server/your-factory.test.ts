@@ -161,6 +161,15 @@ describe('what the factory switches', () => {
     expect(none.status).toBe(409)
     expect(none.out.error).toMatch(/SSH/)
   })
+  it('the switch drives another machine’s link, never this one’s', async () => {
+    const power = vi.fn()
+    const d = deps({ power })
+    await route(d, 'POST', '/api/factory/machine', { id: 'laptop', off: true })
+    await route(d, 'POST', '/api/factory/machine', { id: 'laptop', off: false })
+    await route(d, 'POST', '/api/factory/machine', { id: 'box', off: true })
+    await route(d, 'POST', '/api/factory/machine', { id: 'laptop', name: 'Laptop' })
+    expect(power.mock.calls).toEqual([['laptop', false], ['laptop', true]])
+  })
 })
 
 /** setup.ts writeConfig in small: replaces or adds a line of the test's config file. */

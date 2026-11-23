@@ -128,3 +128,44 @@ it('says why a machine does not answer, and since when, across a restart', async
   expect(again.away().since).toBe(since)
   fs.rmSync(dataDir, { recursive: true, force: true })
 })
+
+// A machine plugged in from its line is listed at once, as installing; why its install stopped, if it did; and a port
+// another program holds here (it answers, but not as weevils).
+it('a machine just plugged in says installing, then why its install stopped; a foreign program on its port says so', async () => {
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const { awayWhy } = await import('./remotes.ts')
+  expect(awayWhy(Object.assign(new Error('404'), { status: 404 }))).toBe('port')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-join-'))
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-11-23T18:40:00Z'))
+  let answer: 'none' | 'foreign' | 'ok' = 'none'
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    if (answer === 'ok') return Response.json({ version: 1, machines: [{ id: 'studio' }], sessions: [], h24: [] })
+    if (answer === 'foreign') return new Response('<html>Directory listing</html>', { status: 200 })
+    throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } })
+  }))
+  const r = new Remote('studio', 'http://127.0.0.1:4195', vi.fn(), { dataDir, weevbookDir: dataDir })
+  r.joined()
+  const at = Date.now()
+  r.start()
+  await vi.advanceTimersByTimeAsync(4000)
+  expect(r.away()).toEqual({ why: 'joining', since: at })
+  // Known across a restart here.
+  expect(new Remote('studio', 'http://127.0.0.1:4195', vi.fn(), { dataDir, weevbookDir: dataDir }).away().why).toBe('joining')
+  r.failed('weevils could not install a package it needs on this computer: tmux', 'sudo pacman -S --needed tmux')
+  expect(r.away()).toEqual({ why: 'failed', since: at, detail: 'weevils could not install a package it needs on this computer: tmux', fix: 'sudo pacman -S --needed tmux' })
+  // A fresh line pasted again: installing again.
+  r.joined()
+  expect(r.away().why).toBe('joining')
+  answer = 'ok'
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(r.online).toBe(true)
+  answer = 'foreign'
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(r.online).toBe(false)
+  expect(r.away().why).toBe('port')
+  r.stop()
+  fs.rmSync(dataDir, { recursive: true, force: true })
+})

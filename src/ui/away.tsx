@@ -23,6 +23,7 @@ export function sinceWhen(t: number, now: number, yesterday: (time: string) => s
 /** The sentence alone (tests, and any place that has no room for the button). */
 export function awayText(t: (typeof M)['fr'], name: string, away: MachineAway, now = Date.now()): string {
   const since = away.since ? t.since(sinceWhen(away.since, now, t.yesterday)) : ''
+  if (away.why === 'failed') return t.failed(name, since, (away.detail ?? '').replace(/[.\s]+$/, ''))
   return t[away.why](name, since)
 }
 
@@ -47,7 +48,15 @@ async function copyComing(text: Promise<string>): Promise<boolean> {
   }
 }
 
-export function AwayLine({ name, away, line: getLine }: { name: string; away: MachineAway; line: () => Promise<string> }) {
+/** A machine of yours that is not connected: switched off here, connecting (just switched on), or away with its reason. */
+export function AwayLine({ name, away, off = false, connecting = false, line }: { name: string; away?: MachineAway; off?: boolean; connecting?: boolean; line: () => Promise<string> }) {
+  const t = useT(M)
+  if (off) return <div className="away" role="status"><p className="away-why">{t.off(name)}</p></div>
+  if (connecting || !away) return <div className="away" role="status"><p className="away-why">{t.connecting(name)}</p></div>
+  return <Away name={name} away={away} line={line} />
+}
+
+function Away({ name, away, line: getLine }: { name: string; away: MachineAway; line: () => Promise<string> }) {
   const t = useT(M)
   const [state, setState] = useState<'idle' | 'busy' | 'copied' | 'shown'>('idle')
   const [line, setLine] = useState('')
@@ -66,7 +75,14 @@ export function AwayLine({ name, away, line: getLine }: { name: string; away: Ma
   return (
     <div className="away" role="status">
       <p className="away-why">{awayText(t, name, away)}</p>
-      {err ? (
+      {away.why === 'failed' && away.fix && (
+        <>
+          <p className="away-done">{t.failedFix(name)}</p>
+          <code className="away-line">{away.fix}</code>
+        </>
+      )}
+      {/* Installing: nothing to do, it shows up by itself. */}
+      {away.why === 'joining' ? null : err ? (
         <p className="away-err" role="alert">{err}</p>
       ) : state === 'copied' || state === 'shown' ? (
         <>

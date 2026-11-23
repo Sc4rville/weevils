@@ -73,7 +73,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
             <Line ch="@" go={null} value={m.online === false ? t.offline : t.online} className={m.online === false ? 'off' : ''} onClick={() => setOpen(open === m.id ? null : m.id)}>
               {m.online === false ? m.name : <span className="strong">{m.name}</span>}
             </Line>
-            <Collapse open={open === m.id}>{open === m.id && <MachineDetail id={m.id} name={m.name} away={m.online === false ? m.away : undefined} />}</Collapse>
+            <Collapse open={open === m.id}>{open === m.id && <MachineDetail id={m.id} name={m.name} away={m.online === false ? m.away : undefined} off={!!m.off} />}</Collapse>
           </div>
         ))}
         {/* Weevboss asks the questions in its thread (host, address, password): nothing else to type here. */}
@@ -86,7 +86,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
   )
 }
 
-function MachineDetail({ id, name, away }: { id: string; name: string; away?: MachineAway }) {
+function MachineDetail({ id, name, away, off = false }: { id: string; name: string; away?: MachineAway; off?: boolean }) {
   const t = useT(M)
   const [d, setD] = useState<InfraDetail | null>(null)
   const [err, setErr] = useState(false)
@@ -124,7 +124,7 @@ function MachineDetail({ id, name, away }: { id: string; name: string; away?: Ma
       <div className="mx-detail">
         {/* A machine of yours that does not answer: why, since when, and the line that brings it back. */}
         {away ? (
-          <AwayLine name={name} away={away} line={() => api.rejoin(id).then((r) => r.line)} />
+          <AwayLine name={name} away={away} off={off} line={() => api.rejoin(id).then((r) => r.line)} />
         ) : (
           <div className="in meta mx-note" role={err ? 'alert' : undefined}>{err ? t.cantRead : '…'}</div>
         )}

@@ -13,6 +13,7 @@
 // half; when this machine has a vault, that key is registered on the vault's repository and the answer carries the
 // vault's remote and key, so the new machine keeps its own conversations there too. No vault here, or GitHub not signed
 // in: the join is what it always was, and says nothing.
+import { spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type http from 'node:http'
@@ -57,6 +58,8 @@ export interface JoinDeps {
   remotes: () => string
   /** The machine ids already known (this one and its remotes). */
   machineIds: () => string[]
+  /** Something already listens on that port here (default: portBusy). */
+  busy?: (port: number) => boolean
   now?: () => number
 }
 
@@ -66,14 +69,41 @@ const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
 export const slugId = (raw: string): string =>
   raw.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20).replace(/-+$/, '')
 
-/** The first tunnel port no remote uses and no open code reserves. */
-export function freePort(remotes: string, reserved: number[]): number {
+/** The first tunnel port no remote uses, no open code reserves, and nothing listens on here: a port another program
+ *  holds (a preview server left running for days) refuses the tunnel's sshd, and that machine never shows up. */
+export function freePort(remotes: string, reserved: number[], busy: (port: number) => boolean = () => false): number {
   const used = new Set(reserved)
   for (const m of remotes.matchAll(/127\.0\.0\.1:(\d+)/g)) used.add(Number(m[1]))
   let port = FIRST_TUNNEL_PORT
-  while (used.has(port)) port++
+  while (used.has(port) || busy(port)) port++
   return port
 }
+
+/** Something listens on `port` here, on any address (0.0.0.0:<port> keeps sshd from binding 127.0.0.1:<port> too).
+ *  Linux: /proc/net/tcp and tcp6; elsewhere (a Mac): lsof; neither: not known, so free. */
+export function portBusy(port: number): boolean {
+  const hex = `:${port.toString(16).toUpperCase().padStart(4, '0')}`
+  let read = false
+  for (const f of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    let text: string
+    try {
+      text = fs.readFileSync(f, 'utf8')
+    } catch {
+      continue
+    }
+    read = true
+    for (const line of text.split('\n').slice(1)) {
+      const col = line.trim().split(/\s+/)
+      if (col[3] === '0A' && col[1]?.endsWith(hex)) return true
+    }
+  }
+  if (read) return false
+  const r = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { timeout: 3000 })
+  return r.status === 0
+}
+
+/** The tunnel ports the keys here already hold (permitlisten), whether or not their machine is in WEEVILS_REMOTES yet. */
+const keyPorts = (lines: string[]) => lines.flatMap((l) => [...l.matchAll(/permitlisten="127\.0\.0\.1:(\d+)"/g)].map((m) => Number(m[1])))
 
 /** The line that lets the other computer in: its own key, the tunnel's one port both ways, one forced command. */
 export function authorizedLine(service: string, id: string, port: number, key: string): string {
@@ -112,6 +142,15 @@ export class Join {
   }
 
   private now = () => (this.d.now ?? Date.now)()
+  private busy = (port: number) => (this.d.busy ?? portBusy)(port)
+
+  private keys(): string[] {
+    try {
+      return fs.readFileSync(this.d.authorizedKeys, 'utf8').split('\n').filter(Boolean)
+    } catch {
+      return []
+    }
+  }
 
   private read(): JoinCode[] {
     try {
@@ -138,7 +177,7 @@ export class Join {
     // Never a leading dash: the line is `bash -s <code>`, and bash would read it as one of its own options.
     let code = crypto.randomBytes(24).toString('base64url')
     while (code.startsWith('-')) code = crypto.randomBytes(24).toString('base64url')
-    codes.push({ hash: sha(code), at: this.now(), target, port: freePort(this.d.remotes(), codes.map((c) => c.port)) })
+    codes.push({ hash: sha(code), at: this.now(), target, port: freePort(this.d.remotes(), [...codes.map((c) => c.port), ...keyPorts(this.keys())], this.busy) })
     this.write(codes)
     return code
   }
@@ -171,13 +210,7 @@ export class Join {
     const c = codes.find((x) => !x.used && x.hash === h)
     if (!c) return { ok: false, why: 'expired' }
     const blob = key.split(' ')[1]
-    const lines = (() => {
-      try {
-        return fs.readFileSync(this.d.authorizedKeys, 'utf8').split('\n').filter(Boolean)
-      } catch {
-        return []
-      }
-    })()
+    const lines = this.keys()
     // The same computer again (its key already there): it keeps its id. Otherwise a name no machine has yet.
     const again = lines.find((l) => l.includes(` ${blob} ${TAG}`))
     let id = again ? again.slice(again.lastIndexOf(TAG) + TAG.length) : slugId(rawId) || 'computer'
@@ -187,6 +220,10 @@ export class Join {
       for (let n = 2; taken.has(id); n++) id = `${base}-${n}`
     }
     const kept = lines.filter((l) => !l.endsWith(`${TAG}${id}`) && !l.includes(` ${blob} `))
+    // Taken since the line was made (it is valid an hour): another one, free now.
+    if (this.busy(c.port)) {
+      c.port = freePort(this.d.remotes(), [c.port, ...codes.filter((x) => x !== c).map((x) => x.port), ...keyPorts(kept)], this.busy)
+    }
     fs.mkdirSync(path.dirname(this.d.authorizedKeys), { recursive: true, mode: 0o700 })
     const tmp = `${this.d.authorizedKeys}.weevils.tmp`
     fs.writeFileSync(tmp, [...kept, authorizedLine(this.d.service, id, c.port, key)].join('\n') + '\n', { mode: 0o600 })
@@ -204,7 +241,8 @@ export interface JoinRouteCtx {
   lang: string
   /** sshd's host keys, for the other computer's known_hosts. */
   hostKeys?: (host: string) => string[]
-  onJoined: (id: string) => void
+  /** Its key is in: it is shown at once (connecting), on its tunnel port. */
+  onJoined: (id: string, port: number) => void
   /** That computer's installer stopped: why, in one sentence, and the command that fixes it (may be empty). */
   onFailed?: (id: string, why: string, fix: string) => void
   /** The vault for that machine (server/weevbook/vault-github.ts shareVault): its deploy key in, the remote and the
@@ -248,7 +286,7 @@ export async function joinRoute(req: http.IncomingMessage, res: http.ServerRespo
   if (!r.ok) return text(r.why === 'bad' ? 400 : 404, `${r.why}\n`), true
   const host = r.target.slice(r.target.indexOf('@') + 1)
   console.log(`[join] ${r.id}: key authorized, tunnel port ${r.port}`)
-  ctx.onJoined(r.id)
+  ctx.onJoined(r.id, r.port)
   const lines = [`id=${r.id}`, `port=${r.port}`, `target=${r.target}`, `alias=weevils-${slugId(ctx.machine) || 'main'}`, `lang=${ctx.lang === 'fr' ? 'fr' : 'en'}`, ...(ctx.hostKeys ?? knownHosts)(host).map((k) => `known=${k}`)]
   // The vault, when there is one: never a reason for the join to fail.
   const pub = (form.get('vault') ?? '').trim()

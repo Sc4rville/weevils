@@ -36,6 +36,10 @@ export class Remote {
   private seenAt: number | null = null
   private seenSaved = 0
   private why: MachineAway['why'] = 'link'
+  /** Plugged in from a line (server/join.ts): when, and why its install stopped if it did. On disk. */
+  private joinFile: string
+  private join: { at: number; failed?: { why: string; fix: string } } | null = null
+  private timer: NodeJS.Timeout | null = null
 
   constructor(id: string, url: string, onChange: () => void, o: { dataDir?: string; weevbookDir?: string } = {}) {
     this.id = id
@@ -48,11 +52,46 @@ export class Remote {
     const dataDir = o.dataDir ?? DATA_DIR
     this.seenFile = path.join(dataDir, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.seen`)
     this.seenAt = readSeen(this.seenFile, path.join(dataDir, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.rows.json`))
+    this.joinFile = path.join(dataDir, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.join.json`)
+    try {
+      const j = JSON.parse(fs.readFileSync(this.joinFile, 'utf8')) as Remote['join']
+      if (j && typeof j.at === 'number') this.join = j
+    } catch {
+      // never joined from a line
+    }
   }
 
-  /** Why it does not answer, and since when (server/core.ts puts it on the machine, the app says it in one line). */
-  away(): MachineAway {
+  /** Why it does not answer, and since when (server/core.ts puts it on the machine, the app says it in one line). Its
+   *  line just pasted and not seen since: installing (3 hours at most), or why that install stopped. */
+  away(now = Date.now()): MachineAway {
+    const j = this.join
+    if (j && (this.seenAt == null || this.seenAt < j.at)) {
+      if (j.failed) return { why: 'failed', since: j.at, detail: j.failed.why, ...(j.failed.fix ? { fix: j.failed.fix } : {}) }
+      if (now - j.at < 3 * 3600_000) return { why: 'joining', since: j.at }
+    }
     return { why: this.why, since: this.seenAt }
+  }
+
+  /** Its key just came in (server/join.ts): shown at once, as installing. */
+  joined(now = Date.now()) {
+    this.join = { at: now }
+    this.saveJoin()
+  }
+
+  /** Its installer stopped (join.sh told): why, and the command that fixes it. */
+  failed(why: string, fix: string) {
+    this.join = { at: this.join?.at ?? Date.now(), failed: { why, fix } }
+    this.saveJoin()
+    this.onChange()
+  }
+
+  private saveJoin() {
+    try {
+      fs.mkdirSync(path.dirname(this.joinFile), { recursive: true })
+      fs.writeFileSync(this.joinFile, JSON.stringify(this.join))
+    } catch {
+      // kept in memory
+    }
   }
 
   /** It answered: written at most once a minute while it does, so the time it stopped is known within a minute. */
@@ -110,7 +149,12 @@ export class Remote {
 
   start() {
     void this.poll()
-    setInterval(() => void this.poll(), 2000)
+    this.timer = setInterval(() => void this.poll(), 2000)
+  }
+
+  stop() {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
   }
 
   /** One look at the machine: its snapshot when it answers; offline (with its kept rows) when it does not. */
@@ -118,7 +162,10 @@ export class Remote {
     try {
       const res = await fetch(`${this.url}/api/snapshot`, { headers: this.headers(), signal: AbortSignal.timeout(2500) })
       if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status })
-      let s = (await res.json()) as Snapshot
+      // Not weevils' JSON: another program answers on its port here (a preview server, say), not that machine.
+      let s = (await res.json().catch(() => {
+        throw Object.assign(new Error('not weevils'), { status: 404 }) // i18n-ignore: internal, classified by awayWhy
+      })) as Snapshot
       const owner = s.machines?.[0]
       // A reverse tunnel can accidentally lead back to us. Never ingest our own aggregate.
       if (!owner || owner.id === MACHINE.id) {
@@ -196,10 +243,13 @@ function readSeen(file: string, rows: string): number | null {
 /** What a failed look at a machine says about it. Through the reverse SSH tunnel:
  *  - nothing listens on its port here (refused), or the call hangs (a tunnel whose far end is asleep): no link;
  *  - the tunnel takes the call then closes it, or answers an error: weevils on that machine does not answer;
+ *  - 404 or not JSON: another program holds its port here;
  *  - 401 / 403: it answers, but no longer trusts this machine's token. */
 export function awayWhy(e: unknown): MachineAway['why'] {
   const err = e as { status?: number; name?: string; code?: string; cause?: { code?: string; name?: string } }
   if (err?.status === 401 || err?.status === 403) return 'key'
+  // weevilsd always has /api/snapshot: a 404 (or no JSON) comes from another program on that port here.
+  if (err?.status === 404) return 'port'
   if (typeof err?.status === 'number') return 'stopped'
   const code = err?.cause?.code ?? err?.code ?? ''
   if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET' || code === 'EPIPE') return 'stopped'

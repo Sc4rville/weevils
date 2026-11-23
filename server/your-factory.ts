@@ -190,6 +190,8 @@ export interface FactoryDeps {
   writeConfig?: (changes: Record<string, string>) => void
   /** How a provider's meter is fetched (tests give their own). */
   fetch?: typeof fetch
+  /** Another machine's link follows its switch: off cuts it now, on lets it in again (server/index.ts machinePower). */
+  power?: (id: string, on: boolean) => void
   /** A fresh one-time line that plugs a computer back in (null: other computers cannot reach this one over SSH). */
   rejoin?: () => Promise<string | null>
   /** Starts the machine's own conversation, with the person's first words. */
@@ -300,6 +302,7 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
           f.machinesOff = f.machinesOff.filter((x) => x !== id)
           if (b.off) f.machinesOff.push(id)
         })
+        if (id !== d.hereId) d.power?.(id, !b.off)
         if (b.off) {
           const here = d.hereId
           for (const s of d.sessions().filter((x) => working(x) && (x.machineId ?? here) === id)) {

@@ -1739,6 +1739,21 @@ export class Weevils {
   remoteFor(sessionId: string) {
     return this.remotes.find((r) => r.has(sessionId))
   }
+  /** A machine plugged in just now (server/join.ts): listed at once, as installing, before its own installer registers
+   *  it (weevils-service add-remote then finds it there: no restart). A new port for the same machine replaces it. */
+  addRemote(id: string, url: string): Remote {
+    const at = this.remotes.findIndex((r) => r.id === id)
+    const old = at >= 0 ? this.remotes[at] : undefined
+    if (old && old.url === url.replace(/\/$/, '')) return old
+    old?.stop()
+    const r = new Remote(id, url, () => this.bump())
+    if (old) this.remotes[at] = r
+    else this.remotes.push(r)
+    r.start()
+    this.bump()
+    return r
+  }
+
   remoteById(machineId?: string) {
     if (!machineId || machineId === MACHINE.id) return undefined
     const r = this.remotes.find((x) => x.id === machineId)

@@ -15,6 +15,8 @@
 :root[data-theme='synthwave'] { --automated-ink: #ffd36b; }
 :root[data-theme='botanical'] { --automated-ink: #8a1a52; }
 :root[data-theme='vaporwave'] { --automated-ink: #ffcfa8; }
+:root[data-theme='coastal'] { --automated-ink: #0b3d70; }
+:root[data-theme='deco'] { --automated-ink: #f2d49b; }
 :root[data-theme='zen'] { --automated-ink: #9223d8; }
 :root[data-theme='graphite'] { --automated-ink: #165cdb; }
 .h24.band { overflow: hidden; }

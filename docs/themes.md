@@ -40,6 +40,8 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
 | `desert` | désert / desert | light | late-afternoon desert: terracotta top, sage 24/7, sand calm band, umber ink | **powdered earth** sage → ochre → terracotta → clay rose → mauve (180° arc, chroma 0.065: the first *dusty* palette), 4 steps | turquoise-jewel star, cochineal-red AutoMark, burnt-sienna 24/7 title |
 | `synthwave` | synthwave / synthwave | dark | 80s neon night: violet-black top, magenta horizon 24/7, pale-pink ink | **retro sun** violet → magenta → pink → coral → orange → yellow (145° arc through red), 4 neon intensities | grid-cyan star, neon-pink AutoMark, sun-yellow 24/7 title |
 | `botanical` | botanique / botanical | light | herbarium plate: leaf-green top, petal-pink 24/7, cream paper calm band, forest-floor ink | **greens** straw → leaf → fern → eucalyptus → sky (140° arc centred on green, chroma 0.085), 4 steps: the first light theme built on greens | flower-fuchsia star, iris-violet AutoMark, berry 24/7 title |
+| `coastal` | littoral / coastal | light | a day at the seaside: surf-blue top, sand 24/7, sea-spray calm band, navy ink | **blues** sea foam → turquoise → azure → cornflower → lavender (160° arc centred on blue, chroma 0.07), 4 steps: the first light theme centred on blues | buoy-red star, kelp-green AutoMark, harbour-blue 24/7 title |
+| `deco` | art déco / art deco | dark | black lacquer and gold leaf: gilded-black top, emerald 24/7, oxblood devil band, cream ink | **metals and patinas** verdigris → malachite → brass → gold → bronze → copper (140° arc, chroma 0.085), 4 steps | gold-leaf star, jade AutoMark, champagne 24/7 title |
 | `vaporwave` | vaporwave / vaporwave | dark | pastel dusk of an empty mall: dusk-teal top, powder-pink 24/7, deep indigo calm band, lavender-white ink | **muted pastels** teal → cyan → periwinkle → lavender → orchid → pink (180° cool-to-pink arc, chroma 0.075: dusty, not neon), 4 steps | mint star, bubblegum-pink AutoMark, peach 24/7 title |
 
 ## Log
@@ -156,12 +158,37 @@ touched: `server/` (its git-heavy tests fail inside the automation worktree, as 
 note for next runs: no Docker for this user and no `~/.local/share/weevils/capture`; playwright-core from another
 project with `executablePath` set to the cached `chromium_headless_shell` works.
 
+### 2026-11-23 — coastal, deco
+
+Seventh nightly run. Two directions from the list below, one light, one dark.
+
+- **coastal** (littoral): a day at the seaside. Surf-blue top band (`#9FD0E8`), sand 24/7, coral devil band, foam
+  devil-reply, sea-spray calm band, navy ink `#030d22`. Projects in blues only, from sea foam through turquoise, azure
+  and cornflower to lavender (160° arc, four steps, chroma 0.07). Pale blues leave the sRGB gamut fast: chroma 0.09 or
+  a top step above L 0.86 clipped, so the arc is wide and the chroma low. Buoy-red star, kelp-green AutoMark,
+  harbour-blue 24/7 title. For you gradient sea foam → turquoise → azure → lavender.
+- **deco** (art déco): black lacquer and gold leaf. Gilded-black top band (`oklch(0.2 0.028 85)`, `#1C1507`), emerald
+  24/7, oxblood devil band, bronze devil-reply, cream ink `#f8f0dc`. Projects walk the metals and their patinas
+  (verdigris → brass → gold → bronze → copper), four depths: synthwave is neon and runs violet → yellow, deco is
+  green → copper and low-key. Gold star, jade AutoMark, champagne 24/7 title. Joins every dark-theme rule.
+
+Checked: contrast, logo and link-colour tests, whole front-end suite (src, test, shared: all green), typecheck, i18n,
+public guard; real-app screenshots (onboarding, For you, menu with the theme line) in en and fr at 1280×900 and
+390×844 plus slot swatches, from a throwaway server (`env -i`, empty home, own ports). Not touched: `server/`.
+
+Lesson for next runs (it cost a round): the build (LightningCSS) turns every `oklch()` into `lab()`, and Chrome then
+reads a colour of chroma under about 0.02 as hueless when a rule derives a shade from it (`oklch(from var(--c) …)`,
+`.tone` sub-bands, the composer): the hue becomes 0 and a warm near-black turns mauve. Keep `--agent` and `--calm` at
+chroma ≥ 0.02 (or exactly 0, like graphite), and check the composer's computed colour in the browser. desert's and
+botanical's calm bands (chroma 0.016) take a faint pink tint in that one derived shade; untouched here.
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.
 - **Candy-pastel dark**: brighter, sugary pastel slots on black (vaporwave stays dusty and low-chroma).
 - **Forest night**: a dark green theme (botanical is the day version; moss, never shipped, was its warm cousin).
 - **Newsprint / ink wash**: grey paper, sumi-ink black, one red seal.
-- **Ocean day / coastal**: light sand-and-surf theme, blues dominant (no light theme centres on blues yet).
-- **Art deco**: black and gold, emerald and cream; metallic accents.
+- **Glacier / arctic**: a near-white icy light theme with one aurora accent (coastal is warm-sand and blues; this would
+  be cold and almost monochrome).
+- **Lacquer red / ukiyo-e**: a dark vermilion-and-indigo woodblock theme (deco is black and gold).
 - **Seasonal / time of day**: a theme that follows the clock (dawn → noon → dusk → night) needs a product decision first.

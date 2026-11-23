@@ -1,14 +1,14 @@
 import { createContext, useContext, useSyncExternalStore } from 'react'
 import type { Snapshot } from '../../shared/api.ts'
 
-export type Theme = 'light' | 'dark' | 'zen' | 'graphite' | 'desert' | 'synthwave' | 'botanical' | 'vaporwave'
+export type Theme = 'light' | 'dark' | 'zen' | 'graphite' | 'desert' | 'synthwave' | 'botanical' | 'vaporwave' | 'coastal' | 'deco'
 
 /** Ordre du sélecteur (un tap = le suivant). */
-export const THEMES: Theme[] = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave']
+export const THEMES: Theme[] = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco']
 export const isTheme = (v: unknown): v is Theme => THEMES.includes(v as Theme)
 
 /** Barre d'état iOS (theme-color) quand aucune page n'est ouverte : la couleur de la bande du haut. */
-export const THEME_COLOR: Record<Theme, string> = { light: '#B39BFF', dark: '#5522B5', zen: '#CFC2D5', graphite: '#C4C4C4', desert: '#D9A07E', synthwave: '#1E0B3A', botanical: '#A6D2A7', vaporwave: '#0D3343' }
+export const THEME_COLOR: Record<Theme, string> = { light: '#B39BFF', dark: '#5522B5', zen: '#CFC2D5', graphite: '#C4C4C4', desert: '#D9A07E', synthwave: '#1E0B3A', botanical: '#A6D2A7', vaporwave: '#0D3343', coastal: '#9FD0E8', deco: '#1C1507' }
 
 export type Page =
   | { kind: 'think' }

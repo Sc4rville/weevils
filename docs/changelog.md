@@ -2,6 +2,14 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-23
+
+### Themes
+- Two new themes in the theme selector: **coastal** (littoral), a light seaside day (surf-blue top, sand 24/7, sea-spray
+  calm band, navy ink, projects in blues from sea foam through turquoise and azure to lavender, a buoy-red star);
+  **art deco** (art déco), black lacquer and gold leaf (gilded-black top, emerald 24/7, cream ink, projects in metals
+  and patinas from verdigris through brass and gold to copper, a gold star, a jade AutoMark). Record: `docs/themes.md`.
+
 ## 2026-11-22
 
 ### Themes

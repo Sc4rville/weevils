@@ -20,7 +20,8 @@
 /* Ink on whatever band is under it: black in light, white in dark. */
 [data-theme='dark'] .hint,
 [data-theme='synthwave'] .hint,
-[data-theme='vaporwave'] .hint {
+[data-theme='vaporwave'] .hint,
+[data-theme='deco'] .hint {
   background: #fff;
   color: #000;
 }

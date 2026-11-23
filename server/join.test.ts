@@ -6,7 +6,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { authorizedLine, freePort, Join, JOIN_TTL, joinRoute, knownHosts, slugId } from './join.ts'
+import { authorizedLine, failText, freePort, Join, JOIN_TTL, joinRoute, knownHosts, slugId } from './join.ts'
 
 const KEY = `ssh-ed25519 ${'A'.repeat(68)} weevils@laptop`
 const KEY2 = `ssh-ed25519 ${'B'.repeat(68)} weevils@desk`
@@ -170,6 +170,69 @@ describe('the routes', () => {
       expect(joined).toEqual(['laptop'])
       expect((await fetch(`${base}/api/join/${code}`, { method: 'POST', body })).status).toBe(404)
       expect((await fetch(`${base}/api/join/${code}`)).status).toBe(418)
+    } finally {
+      server.close()
+    }
+  })
+})
+
+describe('an install that stops on the other computer', () => {
+  const tools = ['curl', 'ssh-keygen'].every((c) => {
+    try {
+      return !!execFileSync('sh', ['-c', `command -v ${c}`])
+    } catch {
+      return false
+    }
+  })
+
+  it('is said once, by the computer that used the code, in one plain line without backquotes', () => {
+    const { join } = setup()
+    const code = join.create('user@weevils.example.com')
+    expect(join.failed(code, 'laptop')).toBe(false) // not used yet
+    const r = join.use(code, 'laptop', KEY)
+    expect(r.ok).toBe(true)
+    expect(join.failed(code, 'desk')).toBe(false)
+    expect(join.failed('nope', 'laptop')).toBe(false)
+    expect(join.failed(code, 'laptop')).toBe(true)
+    expect(join.failed(code, 'laptop')).toBe(false)
+    expect(failText('weevils could not\n install `tmux`\u001b[31m.')).toBe('weevils could not install tmux [31m.')
+    expect(failText('x'.repeat(500)).length).toBe(300)
+  })
+
+  it.skipIf(!tools)('join.sh shows why and the fix, and weevboss hears it instead of waiting', async () => {
+    const { join, dir } = setup()
+    const failed: [string, string, string][] = []
+    const server = http.createServer(async (req, res) => {
+      const url = new URL(req.url ?? '/', 'http://x')
+      const ctx = { join, machine: 'Box', lang: 'en', hostKeys: () => [], onJoined: () => undefined, onFailed: (id: string, why: string, fix: string) => failed.push([id, why, fix]) }
+      if (!(await joinRoute(req, res, url.pathname, ctx))) {
+        res.writeHead(418)
+        res.end()
+      }
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+    try {
+      const home = path.join(dir, 'laptop')
+      fs.mkdirSync(home)
+      // The installer as it stops on a package: its sentence and its command in the file join.sh gave it.
+      const installer = path.join(dir, 'install-stub.sh')
+      fs.writeFileSync(installer, 'printf "%s\\n" "weevils could not install a package it needs on this computer: tmux." "sudo pacman -S --needed tmux" >"$WEEVILS_FAIL_FILE"\nexit 1\n')
+      const script = await (await fetch(`${base}/api/join.sh`)).text()
+      const code = join.create('user@127.0.0.1')
+      const r = await new Promise<{ code: number; err: string }>((resolve) => {
+        const p = spawn('bash', ['-s', code], { env: { PATH: process.env.PATH, HOME: home, LANG: 'C', WEEVILS_INSTALL_SH: installer }, stdio: ['pipe', 'ignore', 'pipe'] })
+        let err = ''
+        p.stderr.on('data', (d) => (err += d))
+        p.on('exit', (c) => resolve({ code: c ?? 1, err }))
+        p.stdin.end(script)
+      })
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('weevboss has been told. Once you have run the command above, ask it for a new line')
+      expect(failed).toEqual([[expect.stringMatching(/^[a-z0-9-]+$/), 'weevils could not install a package it needs on this computer: tmux.', 'sudo pacman -S --needed tmux']])
+      // Said once: the same code cannot say it again.
+      const again = await fetch(`${base}/api/join/${code}/failed`, { method: 'POST', body: new URLSearchParams({ id: failed[0][0], why: 'x' }) })
+      expect(again.status).toBe(404)
     } finally {
       server.close()
     }

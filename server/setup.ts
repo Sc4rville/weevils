@@ -880,6 +880,13 @@ export class Setup {
     this.say(tr(M).joinKey(id))
   }
 
+  /** That computer's installer stopped (server/join.sh said why): weevboss says it and stops waiting for it. */
+  joinFailed(id: string, why: string, fix: string) {
+    if (this.p.joining?.id === id) this.p.joining = undefined
+    this.save()
+    this.say(tr(M).joinFailed(id, why, fix))
+  }
+
   /** Installe un outil dans le dossier de l'utilisateur (ou par le gestionnaire de paquets si sudo marche sans mot de
    * passe). Une seule fois à la fois ; la raison d'un échec en une ligne. */
   private install(what: 'claude' | 'gh' | 'edge' | 'codex', s: SetupState) {

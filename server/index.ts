@@ -1432,7 +1432,7 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     // A computer bringing its conversations: its one-time code is its key, not the access code (server/bring.ts).
     if (url.pathname.startsWith('/api/bring') && (url.pathname === '/api/bring.sh' || url.pathname.startsWith('/api/bring/pc/')) && (await bring.pcRoute(req, res, url.pathname))) return
     // Another computer joining from its line: the one-time code is its key (server/join.ts).
-    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: (id) => setup.joined(id), vault: joinVault }))) return
+    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: (id) => setup.joined(id), onFailed: (id, why, fix) => setup.joinFailed(id, why, fix), vault: joinVault }))) return
     const site = SITE_RE.exec(url.pathname)
     if (site && req.method === 'GET') return serveSite(res, site[1], site[2], site[3])
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.

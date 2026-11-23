@@ -36,6 +36,14 @@ export interface JoinCode {
   /** The tunnel port this code reserves: the authorized key may only listen there. */
   port: number
   used?: { id: string; at: number }
+  /** When that computer's installer said it stopped (once per code). */
+  failed?: number
+}
+
+/** What join.sh may say of a failed install: one line, no control characters, no backquote (it is shown as code). */
+export function failText(raw: string, max = 300): string {
+  const t = raw.replace(/[\u0000-\u001f\u007f`]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t
 }
 
 export interface JoinDeps {
@@ -142,6 +150,18 @@ export class Join {
     return this.read().find((c) => !c.used && c.hash === h) ?? null
   }
 
+  /** That computer's installer stopped: the spent code (still kept an hour) and its machine id vouch for it, once. */
+  failed(code: string, id: string): boolean {
+    if (!CODE_RE.test(code)) return false
+    const codes = this.read()
+    const h = sha(code)
+    const c = codes.find((x) => x.used && x.hash === h)
+    if (!c || c.used!.id !== id || c.failed) return false
+    c.failed = this.now()
+    this.write(codes)
+    return true
+  }
+
   /** The other computer's key and name, against its code: written once, the code spent. */
   use(code: string, rawId: string, rawKey: string): { ok: true; id: string; port: number; target: string } | { ok: false; why: 'expired' | 'bad' } {
     const key = rawKey.trim()
@@ -185,6 +205,8 @@ export interface JoinRouteCtx {
   /** sshd's host keys, for the other computer's known_hosts. */
   hostKeys?: (host: string) => string[]
   onJoined: (id: string) => void
+  /** That computer's installer stopped: why, in one sentence, and the command that fixes it (may be empty). */
+  onFailed?: (id: string, why: string, fix: string) => void
   /** The vault for that machine (server/weevbook/vault-github.ts shareVault): its deploy key in, the remote and the
    *  vault key out; null when there is none to give. */
   vault?: (id: string, pub: string) => Promise<{ remote: string; key: string } | null>
@@ -203,7 +225,7 @@ export async function joinRoute(req: http.IncomingMessage, res: http.ServerRespo
     text(200, fs.readFileSync(new URL('./join.sh', import.meta.url), 'utf8').replace('__BASE__', `${proto}://${host}`))
     return true
   }
-  const m = /^\/api\/join\/([A-Za-z0-9_-]{1,80})$/.exec(pathname)
+  const m = /^\/api\/join\/([A-Za-z0-9_-]{1,80})(\/failed)?$/.exec(pathname)
   if (!m || req.method !== 'POST') return false
   const chunks: Buffer[] = []
   let size = 0
@@ -213,6 +235,15 @@ export async function joinRoute(req: http.IncomingMessage, res: http.ServerRespo
     chunks.push(c)
   }
   const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
+  // join.sh, after install.sh stopped on that computer: weevboss's thread says it rather than waiting for it.
+  if (m[2]) {
+    const id = form.get('id') ?? ''
+    const why = failText(form.get('why') ?? '')
+    if (!why || !ctx.join.failed(m[1], id)) return text(404, 'expired\n'), true
+    console.log(`[join] ${id}: install failed (${why})`)
+    ctx.onFailed?.(id, why, failText(form.get('fix') ?? '', 200))
+    return text(200, 'ok\n'), true
+  }
   const r = ctx.join.use(m[1], form.get('id') ?? '', form.get('key') ?? '')
   if (!r.ok) return text(r.why === 'bad' ? 400 : 404, `${r.why}\n`), true
   const host = r.target.slice(r.target.indexOf('@') + 1)

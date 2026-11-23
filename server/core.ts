@@ -27,8 +27,8 @@ import { execFile, execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, SessionStatus, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS, WEEVBOOK_DIR } from './config.ts'
+import type { AutoDetail, AutoRun, AutoRunDetail, BandPage, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, SessionStatus, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, internalCwd, madePageCwd, madePageTranscript, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS, WEEVBOOK_DIR } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { weevbookDetail } from './offline-machines.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
@@ -355,7 +355,7 @@ export class Weevils {
     if(access&&!access.canExecute)throw new OutboxError(403,access.reason==='no-checkout'?tr(M).installationReadOnly:tr(M).sourceReadOnly)
   }
   assertRepoExecution(repo:string) { this.assertSourceExecution(this.repoDir(repo)) }
-  store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
+  store = Object.assign(new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS), { keep: madePageTranscript })
   private messageOrigins = new MessageOrigins(path.join(DATA_DIR,'message-origins.json'))
   /** Reactions an agent set by hand (`weevils react`): the rest is read from real state (server/reactions.ts). */
   readonly reactions = new ExplicitReactions(path.join(DATA_DIR, 'reactions.json'))
@@ -441,6 +441,8 @@ export class Weevils {
   relay: Relay | null = null
   /** WEEVILS_THREADS (server/threads-app.ts): each row carries its weevbook thread, one row per thread. */
   threadRows: ((sessions: Session[]) => Session[]) | null = null
+  /** next's « pages » band (server/page-band.ts), set by the server. */
+  pageBand: (() => BandPage[]) | null = null
   private githubCache: Map<string, number> = new Map()
 
   // ---------------------------------------------------------------- repos GitHub
@@ -886,7 +888,7 @@ export class Weevils {
   }
 
   private isOrchestratorPane(p: ManagedPane) {
-    return p.cwd.startsWith(DATA_DIR) || (!!this.orchestratorId && p.sessionId === this.orchestratorId)
+    return internalCwd(p.cwd) || (!!this.orchestratorId && p.sessionId === this.orchestratorId)
   }
 
   /** Une pane weevils inactive depuis 2 h est fermée : la machine respire, la session reste reprenable par --resume. */
@@ -1361,13 +1363,13 @@ export class Weevils {
   sessions(now = Date.now()): Session[] {
     const list = this.store
       .all()
-      .filter((t) => now - Math.max(t.lastActivityAt, this.store.broughtAt?.(t.id) ?? 0) < RECENT_MS && (t.messages.length > 0 || this.paneFor(t.id)) && !t.cwd.startsWith(DATA_DIR) && !t.firstPrompt?.startsWith(PLAN_MARKER))
+      .filter((t) => (now - Math.max(t.lastActivityAt, this.store.broughtAt?.(t.id) ?? 0) < RECENT_MS || madePageCwd(t.cwd)) && (t.messages.length > 0 || this.paneFor(t.id)) && !internalCwd(t.cwd) && !t.firstPrompt?.startsWith(PLAN_MARKER))
       .map((t) => this.toSession(t, now))
     const known = new Set(list.map((s) => s.id))
     for (const p of this.panes) {
       const id = p.sessionId ?? p.name
       // L'orchestrateur (dossier sous DATA_DIR) n'est pas une session de projet.
-      if (!known.has(id) && !p.cwd.startsWith(DATA_DIR)) list.push(this.placeholder(p, now))
+      if (!known.has(id) && !internalCwd(p.cwd)) list.push(this.placeholder(p, now))
     }
     // Les sessions ouvertes dans un terminal que weevils ne pilote pas polluent la liste sans servir : cachées.
     return list.filter((s) => s.controllable || (this.store.get(s.id)?.originator === 'codex-tui' && !!this.store.get(s.id)?.delegationSources?.size)).map((s) => this.archived.has(s.id) ? { ...s, archived: true } : s).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
@@ -1472,6 +1474,7 @@ export class Weevils {
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
       ...(this.sleep ? { sleep: this.sleep.state() } : {}),
       ...(this.theme?.get() ? { theme: this.theme.get() } : {}),
+      ...(this.pageBand ? { pageBand: this.pageBand() } : {}),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0', ...(this.threadRows ? { threads: true } : {}), ...(nextUrl() ? { nextUrl: nextUrl() } : {}) },
     }
     this.snapLang = locale
@@ -1889,7 +1892,7 @@ export class Weevils {
     }
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
     // A project session gets the plain-voice rule back on every relaunch; a weevboss conversation never does.
-    const boss = cwd.startsWith(DATA_DIR) || this.isBossThread(s.id)
+    const boss = internalCwd(cwd) || this.isBossThread(s.id)
     const command = s.tool === 'claude' ? [...(boss ? CLAUDE : projectClaude()), '--resume', s.id, text] : ['codex', 'resume', ...(boss ? CODEX_FLAGS : projectCodexFlags()), s.id, text]
     const at = Date.now()
     await this.spawn(s.tool, cwd, s.title, command, s.id)
@@ -2033,7 +2036,9 @@ export class Weevils {
     return capture(pane.name)
   }
 
-  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string; sourceThreadId?:string; title?: string }): Promise<{ id: string }> {
+  /** cwd: a folder of weevils' own (a page of the pages band, server/page-band.ts), set by the server only, never from a
+   *  request; it must be inside the projects or weevils' data. */
+  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string; sourceThreadId?:string; title?: string; cwd?: string }): Promise<{ id: string }> {
     const author = normalizeFrom(input.from)
     if (author && input.text) input = { ...input, text: signAs(author, input.text, input.sourceThreadId) }
     const project = this.snapshot().projects.find((p) => p.id === input.projectId)
@@ -2043,10 +2048,11 @@ export class Weevils {
     // Your factory: nothing new starts on a machine you turned off, nor with an intelligence you turned off.
     if (this.machineOff(machineId)) throw new OutboxError(409, tr(M).machineOff(this.snapshot().machines.find((m) => m.id === (machineId || MACHINE.id))?.name ?? machineId ?? MACHINE.name))
     if (this.factory.intelOff.includes(input.tool)) throw new OutboxError(409, tr(M).intelOff(input.tool === 'codex' ? 'Codex' : 'Claude'))
-    const remote = this.remoteById(machineId)
+    const remote = input.cwd ? undefined : this.remoteById(machineId)
     if (remote) return remote.call('POST', '/api/sessions', { ...input, from: undefined, repo: repoGuess, machineId: remote.snap?.machines[0]?.id })
+    if (input.cwd && !insideRoots(input.cwd)) throw new Error(tr(M).dirNotFound(input.cwd))
     const repo = repoGuess ?? (this.repoRoot(input.projectId) ? input.projectId : undefined)
-    const cwd = repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR
+    const cwd = input.cwd ?? (repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR)
     if (!fs.existsSync(cwd)) throw new Error(tr(M).dirNotFound(cwd))
     this.assertSourceExecution(cwd)
     let text = input.text.trim()

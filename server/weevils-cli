@@ -111,7 +111,7 @@ weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   we
   m_show_no_file='quel fichier ? weevils show <fichier> ["légende"]' m_show_compare='un avant/après se fait avec weevils compare <avant> <après> <sortie.compare.png> [--crop x,y,w,h], puis weevils show de ce fichier (deux schémas .mmd marchent aussi)' m_shown='affiché dans « pour toi »' # i18n-ignore
   m_page_usage='weevils page <dossier|fichier> "titre" --kind opportunities|library|preview|report|render
 weevils page list <items.json> "titre" [--kind opportunities] · weevils page library "titre" <dossier>…
-weevils pages · weevils page machine · weevils page rm <slug>' # i18n-ignore
+weevils pages · weevils page machine · weevils page rm <slug> · weevils page pin|unpin <slug> (bande « pages »)' # i18n-ignore
   export WVM_NO_ASKS='(aucune demande)' WVM_STALE='EN PANNE' WVM_PENDING='message(s) pas encore découpé(s) en demandes' WVM_REPORT='retour' WVM_EXPECT='attendu' # i18n-ignore
   export WVM_NO_GOALS='(aucun objectif)' WVM_DONE_OF='faites' WVM_NO_TRACE='(journal vide)' WVM_NO_MEM='(rien en mémoire interne)' WVM_DIGEST='tokens par tour' # i18n-ignore
   export WVM_KNOW='mémoire' WVM_ASKS='demandes' WVM_LOG='journal' WVM_NOTHING='rien trouvé' WVM_OK='ok' # i18n-ignore
@@ -158,7 +158,7 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   m_show_no_file='which file? weevils show <file> ["caption"]' m_show_compare='a before/after is made with weevils compare <before> <after> <out.compare.png> [--crop x,y,w,h], then weevils show that file (two .mmd diagrams work too)' m_shown='shown in "for you"'
   m_page_usage='weevils page <folder|file> "title" --kind opportunities|library|preview|report|render
 weevils page list <items.json> "title" [--kind opportunities] · weevils page library "title" <folder>…
-weevils pages · weevils page machine · weevils page rm <slug>'
+weevils pages · weevils page machine · weevils page rm <slug> · weevils page pin|unpin <slug> (the « pages » band)'
   export WVM_NO_ASKS='(no requests)' WVM_STALE='STALE' WVM_PENDING='message(s) not split into requests yet' WVM_REPORT='report' WVM_EXPECT='expects'
   export WVM_NO_GOALS='(no goals)' WVM_DONE_OF='done' WVM_NO_TRACE='(empty trace)' WVM_NO_MEM='(nothing in the internal memory)' WVM_DIGEST='tokens per turn'
   export WVM_KNOW='memory' WVM_ASKS='requests' WVM_LOG='log' WVM_NOTHING='nothing found' WVM_OK='ok'
@@ -638,6 +638,11 @@ print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)" "$cal
       rm) [ -n "${2:-}" ] || { echo "$m_page_usage" >&2; exit 1; }
           ledger DELETE "/api/pages/$(q "$2")" >/dev/null; exit 0 ;;
       machine) ledger POST /api/pages '{"build":"machine"}' | json 'print("["+d["title"]+"]("+d["url"]+")")'; exit 0 ;;
+      # The pages band of the side bar (server/page-band.ts): a published page joins it, or leaves it (stays published).
+      pin) [ -n "${2:-}" ] || { echo "$m_page_usage" >&2; exit 1; }
+           ledger POST /api/pages/band/pin "$("$py" -c 'import json,sys; print(json.dumps({"slug":sys.argv[1]}))' "$2")" | json 'print(d["title"])'; exit 0 ;;
+      unpin) [ -n "${2:-}" ] || { echo "$m_page_usage" >&2; exit 1; }
+             ledger DELETE "/api/pages/band/$(q "$2")" >/dev/null; exit 0 ;;
       list|library) build=$1; shift ;;
       *) build='' ;;
     esac

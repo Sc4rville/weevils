@@ -50,6 +50,31 @@ live part is a small mark on the pieces whose files main changed in the last day
 log of weevils' own checkout). No activity feed, no load, no quota: that is the app's job. It replaced the
 `weevils-machine` live dashboard, which is removed at the next start.
 
+## The pages band
+
+next's side bar has a « pages » band: the person's own pages, anything they ask for.
+
+- `+` (or the band's name while it is empty) opens a nearly blank screen: a couple of ideas drawn from their own
+  weevils (a visualizer for one of their automations, a studio for one of their projects…) take turns in the middle,
+  with a slow crossfade. A tap on one, or their own words in the box, starts the page.
+- A new page gets its own folder, `~/.local/share/weevils/made-pages/<slug>`, a blank first version, its living link
+  (`/p/preview/<slug>`) and a conversation: an ordinary Claude session working in that folder, told its job by the
+  folder's `CLAUDE.md` (`AGENTS.md` for Codex). Its first message is the idea.
+- Opening the page shows that conversation (the app's own session page) with the page itself sitting with the thread,
+  above it on a phone, beside it on a wide screen. The page reloads, with a crossfade, each time its files change
+  (`GET /api/pages/band/<slug>/stamp`, asked every 1.5 s while it is on screen). Reopened later from the band, it is
+  the same conversation: talk on to keep shaping it.
+- By default the page wears weevils' look: its keyed address serves `weevils.css`, the current theme's colours as CSS
+  variables (`--ink`, `--bg`, `--agent`, `--h24`, `--p0`…`--p15`, `--font`) and the house rules. The agent may make
+  anything else.
+- It may read weevils' own data, read-only: `weevils.json` at its keyed address (sessions, automations and their runs,
+  requests and goals, projects, the theme; never a folder, a key or an address). The page still runs in the pages'
+  sandbox, without weevils' origin: nothing in it can change anything in weevils. Only pages made in the band get
+  these two files.
+- A page published elsewhere joins the band with `weevils page pin <slug>` (`unpin` takes it out; it stays
+  published). It opens as any living link does, without a conversation.
+- `weevils page rm <slug>` unpublishes a page; it leaves the band with it. Its folder stays.
+
 ## Where it lives
 
 - The address is on the weevils host itself: `https://<your weevils address>/p/<kind>/<slug>`. Without a domain it

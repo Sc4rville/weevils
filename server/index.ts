@@ -24,7 +24,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, NEXT_DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB, THREADS, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, MADE_PAGES_DIR, DIST_DIR, NEXT_DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB, THREADS, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -79,6 +79,8 @@ import { Curator } from './foryou-curator.ts'
 import { Voices, voiceParam } from './foryou-voice.ts'
 import { geminiKey, liveUpgrade, sameOrigin } from './live.ts'
 import { changedPieces, KEY_RE as PAGE_KEY_RE, PageRefused, Pages } from './pages.ts'
+import { PageBand, pageData, readStylesheet, themeCss } from './page-band.ts'
+import { MISC } from './projects.ts'
 import { pageLink } from '../shared/pages.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 import { Bring, realGit } from './bring.ts'
@@ -639,6 +641,28 @@ pages.collections = collectionReaders({ ledger: () => w.ledger, automations: () 
 for (const source of ['requests', 'automations', 'repositories'] as const) {
   try { pages.publishCollection(source, tr(PM)[source]) } catch (e) { console.error('[pages]', source, e) }
 }
+// The « pages » band (server/page-band.ts): the person's own pages, each built by a conversation in its own folder.
+const pageBand = new PageBand({
+  dataDir: DATA_DIR,
+  root: MADE_PAGES_DIR,
+  pages,
+  start: (cwd, title, text) => w.create({ projectId: MISC, tool: 'claude', text, title, cwd }),
+  url: (p) => `${(PUBLIC_URL || `http://127.0.0.1:${PORT}`).replace(/\/$/, '')}${p}`,
+  local: `http://127.0.0.1:${PORT}`,
+  resolve: (id) => w.sessionIdOf(id),
+  changed: () => w.bump(),
+})
+w.pageBand = () => pageBand.list()
+let stylesheet: string | null | undefined
+pages.extra = (slug, rest) => {
+  if (rest !== '/weevils.json' && rest !== '/weevils.css') return undefined
+  if (!pageBand.made(slug)) return undefined
+  const snap = w.snapshot()
+  if (rest === '/weevils.css') return { type: 'text/css; charset=utf-8', body: themeCss(snap.theme, stylesheet === undefined ? (stylesheet = readStylesheet()) : stylesheet) }
+  let requests: unknown[] = []
+  try { requests = pages.collections.requests?.() ?? [] } catch { /* the ledger is unreadable for now */ }
+  return { type: 'application/json', body: JSON.stringify(pageData(snap, requests)) }
+}
 /** The address of a page, as a link to paste: the public one, else the one this request came by. */
 const pageUrl = (req: http.IncomingMessage, p: string) => {
   const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? `127.0.0.1:${PORT}`)
@@ -740,6 +764,26 @@ const routes: [string, RegExp, Handler][] = [
       json(res, e instanceof PageRefused ? 400 : 500, { error: (e as Error).message })
     }
   }],
+  // The pages band (server/page-band.ts): a new page from an idea (the app), a published page joining it or leaving it
+  // (weevils page pin / unpin), and when a page's files last changed (its preview reloads).
+  ['POST', /^\/api\/pages\/band$/, async (req, res) => {
+    const b = await readBody(req)
+    try {
+      json(res, 200, await pageBand.make(b.idea))
+    } catch (e) {
+      json(res, e instanceof PageRefused ? 400 : e instanceof OutboxError ? e.status : 500, { error: (e as Error).message })
+    }
+  }],
+  ['POST', /^\/api\/pages\/band\/pin$/, async (req, res) => {
+    const b = await readBody(req)
+    try {
+      json(res, 200, pageBand.add(String(b.slug ?? '')))
+    } catch (e) {
+      json(res, e instanceof PageRefused ? 404 : 500, { error: (e as Error).message })
+    }
+  }],
+  ['DELETE', /^\/api\/pages\/band\/([a-z0-9-]{1,80})$/, (_req, res, _url, [slug]) => json(res, 200, { ok: pageBand.drop(slug) })],
+  ['GET', /^\/api\/pages\/band\/([a-z0-9-]{1,80})\/stamp$/, (_req, res, _url, [slug]) => json(res, 200, { stamp: pageBand.stamp(slug) })],
   ['DELETE', /^\/api\/pages\/([a-z0-9-]{1,80})$/, (req, res, _url, [slug]) => {
     if (!isLocal(req)) return json(res, 403, { error: tr(PM).localOnly })
     const ok = pages.remove(slug)

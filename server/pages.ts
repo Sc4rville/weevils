@@ -63,6 +63,9 @@ export class Pages {
   collections: Record<string, () => ListItem[]> = {}
   /** Set by the server: without it the explainer marks nothing as recently changed. */
   live?: MachineLive
+  /** Set by the server: files a page gets beyond its folder's (a page of the pages band: weevils.json, weevils.css,
+   *  server/page-band.ts). */
+  extra?: (slug: string, rest: string) => { type: string; body: string } | undefined
   readonly dir: string
   private index: string
   private secret: string
@@ -142,7 +145,8 @@ export class Pages {
   private save(meta: Omit<PageMeta, 'slug' | 'path' | 'createdAt' | 'updatedAt'>, wanted?: string): PageMeta {
     const list = this.read()
     const base = slugOf(wanted || meta.title)
-    const same = list.find((p) => p.slug === base || (p.kind === meta.kind && p.title === meta.title))
+    // An address asked for is that page's; otherwise the same kind and title is the same page.
+    const same = list.find((p) => p.slug === base) ?? (wanted ? undefined : list.find((p) => p.kind === meta.kind && p.title === meta.title))
     let slug = same?.slug ?? base
     for (let i = 2; !same && list.some((p) => p.slug === slug); i++) slug = `${base}-${i}`
     const now = Date.now()
@@ -278,6 +282,11 @@ export class Pages {
       this.fresh(page)
     }
     if (page.build?.type === 'machine' && rest === '/state.json') return void this.machineState(res)
+    const extra = this.extra?.(slug, rest)
+    if (extra) {
+      res.writeHead(200, { 'content-type': extra.type, 'cache-control': 'no-store', 'access-control-allow-origin': '*', 'x-content-type-options': 'nosniff' })
+      return void res.end(req.method === 'HEAD' ? undefined : extra.body)
+    }
     if (page.build?.type === 'collection' && rest === '/items.json') {
       try {
         const read = this.collections[page.build.source]

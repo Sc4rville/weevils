@@ -1475,8 +1475,10 @@ export class Setup {
     if (r.task) this.p.pending = { text, brief: '' }
     this.save()
     this.say(r.text)
+    // The link as said in the thread (after a restart, any of Claude's sign-in links in sight counts).
     const link = this.linkSaid
-    if (r.task || !link || !this.p.log.slice(-6).some((m) => m.text.includes(link))) await this.askProvider()
+    const seen = this.p.log.slice(-6).some((m) => (link ? m.text.includes(link) : /\]\(https:\/\/(?:[\w-]+\.)*claude\.(?:ai|com)\//.test(m.text)))
+    if (r.task || !seen) await this.askProvider()
     return true
   }
 

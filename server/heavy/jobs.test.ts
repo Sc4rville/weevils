@@ -44,14 +44,14 @@ beforeAll(async () => {
   fs.writeFileSync(path.join(repo, '.gitignore'), 'out/\nsecret.env\n')
   fs.writeFileSync(path.join(repo, 'pkg', 'note.txt'), 'committed\n')
   // The job: says where it runs, reads the session's uncommitted change and new file, writes a build output.
-  fs.writeFileSync(path.join(repo, 'pkg', 'job.sh'), 'echo "heavy=$WEEVILS_HEAVY"; cat note.txt new.txt; [ -f ../secret.env ] && echo LEAK; mkdir -p ../out && echo built > ../out/result.txt; exit 3\n')
+  fs.writeFileSync(path.join(repo, 'pkg', 'job.sh'), 'echo "heavy=$WEEVILS_HEAVY node_env=${NODE_ENV:-unset}"; cat note.txt new.txt; [ -f ../secret.env ] && echo LEAK; mkdir -p ../out && echo built > ../out/result.txt; exit 3\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-q', '-m', 'first')
   fs.writeFileSync(path.join(repo, 'pkg', 'note.txt'), 'changed, not committed\n')
   fs.writeFileSync(path.join(repo, 'pkg', 'new.txt'), 'new, untracked\n')
   fs.writeFileSync(path.join(repo, 'secret.env'), 'TOKEN=x\n')
 
-  const pcEnv = { ...process.env, HOME: path.join(root, 'pc-home'), WEEVILS_HEAVY_DIR: path.join(root, 'pc-queue') }
+  const pcEnv = { ...process.env, NODE_ENV: 'production', HOME: path.join(root, 'pc-home'), WEEVILS_HEAVY_DIR: path.join(root, 'pc-queue') }
   fs.mkdirSync(pcEnv.HOME, { recursive: true })
   const runner = new Runner({ dir: path.join(root, 'pc-cache'), env: pcEnv, shell: '/bin/sh' })
   pc = await serve(runnerRoutes(runner, json, () => true, pcEnv, () => ({ ...free, takes, idle: takes })) as Route[])
@@ -92,7 +92,7 @@ describe('heavy jobs on another machine', () => {
     const home = path.join(root, 'vps-home-1')
     const r = await cli(process.pid, home)
     expect(r.err).toContain('runs on the PC')
-    expect(r.out).toContain('heavy=1')
+    expect(r.out).toContain('heavy=1 node_env=unset') // weevilsd's own NODE_ENV=production stays out of the job
     expect(r.out).toContain('changed, not committed')
     expect(r.out).toContain('new, untracked')
     expect(r.out).not.toContain('LEAK') // what .gitignore leaves out stays here

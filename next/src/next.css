@@ -230,7 +230,7 @@ body { overflow: hidden; }
 .nx-boss-row .nx-boss-logo, .nx-boss-row .nx-fold { background: none; border: 0; padding: 0; color: inherit; font: inherit; display: flex; align-items: center; gap: 10px; }
 .nx-boss-row .nx-fold { flex: 1; min-width: 0; min-height: 44px; text-align: left; }
 .nx-boss-row .nx-boss-logo { min-width: var(--mark-w); min-height: 44px; }
-/* Every band's head (weevils, a repo, autonomous, factory, settings): its icon in one column, the weevils logo's
+/* Every band's head (weevils, a repo, autonomous, your factory, settings): its icon in one column, the weevils logo's
    (a 44px tap target), and its name after the same gap on every band, so every name starts under the « w » of weevils. */
 :root { --mark-w: 44px; --mark-gap: 12px; }
 .nx-repo-row { gap: var(--mark-gap); }
@@ -278,7 +278,7 @@ body { overflow: hidden; }
 .nx-settings .row .go { flex: none; }
 .nx-settings .row .val { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* factory (factory.tsx): one band under Autonomous, in the theme's calm tone, that unfolds into its levels and
+/* Your factory (factory.tsx): one band under Autonomous, in the theme's calm tone, that unfolds into its levels and
    their bands. Every band is the side bar's height and one small tone step from the one above (a staircase, as
    Autonomous): no line, no gap, no shadow. Deeper bands sit a little further in. */
 .nx-factory { padding-bottom: 0; }
@@ -309,7 +309,7 @@ body { overflow: hidden; }
 .nx-switch.on { background: var(--ink); border-color: var(--ink); }
 .nx-switch.on i { transform: translateX(18px); background: var(--c); }
 @media (prefers-reduced-motion: reduce) { .nx-switch, .nx-switch i { transition: none; } }
-/* A project's switch (factory > Projects): the same switch, smaller and lighter, so the row reads as its name;
+/* A project's switch (Your factory > Projects): the same switch, smaller and lighter, so the row reads as its name;
    its tap target stays a finger wide. */
 .nx-switch.small { width: 26px; height: 15px; margin: 0 2px 0 6px; border-width: 1.5px; border-color: color-mix(in oklab, var(--ink) 35%, transparent); }
 .nx-switch.small::before { content: ''; position: absolute; inset: -15px -9px; }

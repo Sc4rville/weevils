@@ -99,7 +99,7 @@ import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 import { startMoves } from './moves-app.ts'
 
 const w = new Weevils()
-// factory: API keys turned off stay out of the environment from the start (server/your-factory.ts).
+// Your factory: API keys turned off stay out of the environment from the start (server/your-factory.ts).
 applyKeys(w.factory.intelOff, CONFIG_FILE)
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
 /** A signed brief's spoken line: the sender's own (`weevils send|new --say`), else asked of the cheap model at once. */
@@ -195,7 +195,7 @@ const readMailKeys = () => {
 readMailKeys()
 mailSeen = mailKeys()
 fs.watchFile(CONFIG_FILE, { interval: 3000 }, () => {
-  // factory: a key turned off stays out of the environment, even written again (server/your-factory.ts).
+  // Your factory: a key turned off stays out of the environment, even written again (server/your-factory.ts).
   applyKeys(w.factory.intelOff, CONFIG_FILE)
   readMailKeys()
   if (mailKeys() === mailSeen) return
@@ -389,7 +389,7 @@ if (foryou) {
 
 let codexSeen = { at: 0, ok: false }
 const codexReady = () => {
-  // Turned off in factory: never handed work (server/your-factory.ts).
+  // Turned off in Your factory: never handed work (server/your-factory.ts).
   if (w.factory.intelOff.includes('codex')) return false
   if (Date.now() - codexSeen.at > 30_000) codexSeen = { at: Date.now(), ok: !!which('codex') && fs.existsSync(path.join(path.dirname(CODEX_DIR), 'auth.json')) }
   return codexSeen.ok
@@ -1300,11 +1300,11 @@ const routes: [string, RegExp, Handler][] = [
     w.pinRepo(String(body.repo ?? ''), !!body.pinned)
     json(res, 200, { ok: true })
   }],
-  // factory (server/your-factory.ts): machines, intelligence, projects, in weevils next's side bar. Main machine only.
+  // Your factory (server/your-factory.ts): machines, intelligence, projects, in weevils next's side bar. Main machine only.
   ...(ORCHESTRATOR ? factoryRoutes(factoryDeps(), json, readBody) : []),
 ]
 
-/** What factory reads and changes, all of it weevils' own (server/your-factory.ts). */
+/** What Your factory reads and changes, all of it weevils' own (server/your-factory.ts). */
 function factoryDeps(): FactoryDeps {
   const farFacts = new Map<string, { at: number; v: MachineFacts | null }>()
   return {

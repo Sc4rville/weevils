@@ -1,4 +1,4 @@
-// factory (server/your-factory.ts): what it reads is weevils' own, and its switches really switch.
+// Your factory (server/your-factory.ts): what it reads is weevils' own, and its switches really switch.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'

@@ -1,4 +1,4 @@
-// Messages of server/your-factory.ts (factory): refusals shown in the app, and the hidden context of a machine's own
+// Messages of server/your-factory.ts (Your factory): refusals shown in the app, and the hidden context of a machine's own
 // conversation (never shown: the app strips « ⟦weevils … ⟧ »).
 import { defineMessages } from '../i18n.ts'
 

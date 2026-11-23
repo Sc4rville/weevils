@@ -1,4 +1,4 @@
-// factory's Projects (docs/next-interaction.md): one band per product, its mother repo; clones and worktrees of
+// Your factory's Projects (docs/next-interaction.md): one band per product, its mother repo; clones and worktrees of
 // the same remote, its « <product>-<part> » repos and an automation's folders never get a band of their own.
 import fs from 'node:fs'
 import os from 'node:os'

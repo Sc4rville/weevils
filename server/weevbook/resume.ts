@@ -70,7 +70,9 @@ export interface ResumeOptions {
   /** Without a hub, for a thread that has no lease on the vault yet (pushed before step 4): a turn at work elsewhere
    *  is taken for stopped once its thread was silent this long (SILENT_FOR). */
   silentMs?: number
-  /** Without a hub: the person said to take it even from a machine that still renews its lease (07-vault.md, step 4). */
+  /** The person said to take it even from a machine that still renews its lease (07-vault.md, step 4, without a hub),
+   *  or whose code could not be checked: a thread whose code does not travel, its machine not answering, continues
+   *  here as the synced copy has it, and the answer says that machine's changes stayed there unchecked. */
   force?: boolean
   /** The person named the engine ("send this to Claude on …"): refused when it is not the thread's own provider. */
   provider?: Provider
@@ -144,9 +146,16 @@ async function resumeTable(o: ResumeOptions, x: { me: string; at: number; mine: 
   return { machines, away: old.machine !== x.me ? old.machine : undefined, repo, clone, src, from: old.machine }
 }
 
+/** The facts the table reads: a forced move of a thread whose code does not travel, its machine silent, is placed as
+ *  if its code had no checkpoint (the synced copy as it is); codeHere then says what could not be checked. */
+function unchecked(o: ResumeOptions, t: Awaited<ReturnType<typeof resumeTable>>, facts: ThreadFacts): ThreadFacts {
+  return o.force && facts.checkpoint === 'none' && !t.src && !t.clone && t.away ? { ...facts, checkpoint: null } : facts
+}
+
 /** The other machine's code brought into this clone, for a thread whose checkpoint does not travel. */
-async function codeHere(t: Awaited<ReturnType<typeof resumeTable>>, facts: ThreadFacts, log?: (line: string) => void): Promise<CodeReport | undefined> {
-  if (facts.checkpoint !== 'none' || !t.clone) return undefined
+async function codeHere(t: Awaited<ReturnType<typeof resumeTable>>, facts: ThreadFacts, log?: (line: string) => void, cwd?: string): Promise<CodeReport | undefined> {
+  if (facts.checkpoint !== 'none') return undefined
+  if (!t.clone) return !t.src && t.away && cwd ? uncheckedCode(cwd, t.from) : undefined
   if (!t.src) return uncheckedCode(t.clone, t.from)
   if (!t.src.code) return { ...uncheckedCode(t.clone, t.from), checked: true, line: `${t.from}'s session is not in a repository: nothing to compare with ${t.clone}` }
   try {
@@ -459,7 +468,7 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   const tb = await resumeTable(o, { me, at, mine, last, project, events })
   const retry = nx.kind === 'dispatch' && nx.retry
   const facts = { ...threadFacts(events, { project, cloneable: !!ckEvent?.repo, retry, turn: nx.kind === 'dispatch' ? nx.turn : turns.length }), repo: tb.repo }
-  const d = decide({ now: at, thread: facts, table: { machines: tb.machines, quotas: { [`${provider}:${account(provider)}`]: zero(at) } }, ledger: [], preferred: provider, away: tb.away })
+  const d = decide({ now: at, thread: unchecked(o, tb, facts), table: { machines: tb.machines, quotas: { [`${provider}:${account(provider)}`]: zero(at) } }, ledger: [], preferred: provider, away: tb.away })
   if (d.rule === 'hold' || !d.engine) return fail('hold', `${d.hold ?? 'hold'}: ${d.reason}`)
   if (parseEngine(d.engine)?.provider !== provider) return fail('hold', `only ${provider} resumes in step 3`)
   const rung: 1 | 2 = d.rung === 1 ? 1 : 2
@@ -476,7 +485,7 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
     if (p.onlyThere) return fail('hold', `only-there: ${p.onlyThere}`)
     cwd = p.cwd
     restored = p.restored
-    code = await codeHere(tb, facts, o.log)
+    code = await codeHere(tb, facts, o.log, p.cwd)
   }
 
   // 5. The journal and the lease, in one push: leg.end (moved), assigned, leg.start, running.
@@ -666,7 +675,7 @@ async function resumeFromVault(o: ResumeOptions, t0: number, claimed: { yes: boo
   const tb = await resumeTable(o, { me, at: t, mine, last, project, events })
   const dispatching = nx.kind === 'dispatch'
   const facts = { ...threadFacts(events, { project, cloneable: !!ckEvent?.repo, retry: dispatching && nx.retry, turn: dispatching ? nx.turn : turns.length }), repo: tb.repo }
-  const d = decide({ now: t, thread: facts, table: { machines: tb.machines, quotas: { [`${provider}:${account(provider)}`]: zero(t) } }, ledger: [], preferred: provider, away: tb.away })
+  const d = decide({ now: t, thread: unchecked(o, tb, facts), table: { machines: tb.machines, quotas: { [`${provider}:${account(provider)}`]: zero(t) } }, ledger: [], preferred: provider, away: tb.away })
   if (d.rule === 'hold' || !d.engine) return fail('hold', `${d.hold ?? 'hold'}: ${d.reason}`)
   if (parseEngine(d.engine)?.provider !== provider) return fail('hold', `only ${provider} resumes in step 3`)
   const rung: 1 | 2 = d.rung === 1 ? 1 : 2
@@ -690,7 +699,7 @@ async function resumeFromVault(o: ResumeOptions, t0: number, claimed: { yes: boo
     if (p.onlyThere) return fail('hold', `only-there: ${p.onlyThere}`)
     cwd = p.cwd
     restored = p.restored
-    code = await codeHere(tb, facts, o.log)
+    code = await codeHere(tb, facts, o.log, p.cwd)
   }
 
   // The journal, here: the other machine's leg closed, this one opened, the turn running.

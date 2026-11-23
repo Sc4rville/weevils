@@ -28,8 +28,9 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, SessionStatus, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS, WEEVBOOK_DIR } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
+import { weevbookDetail } from './offline-machines.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
@@ -1435,7 +1436,9 @@ export class Weevils {
     if (this.snap && this.snapLang === locale) return this.snap
     const now = Date.now()
     const remote = this.remotes.filter((r) => r.online && r.snap && r.snap.machines[0]?.id !== MACHINE.id)
-    const listed = [...new Map([...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, this.archived.has(s.id) ? { ...s, archived: true } : s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    // A machine that does not answer keeps its conversations in the list, readable, marked offline.
+    const offline = this.remotes.flatMap((r) => (!r.online && r.machineId?.() !== MACHINE.id ? (r.offlineRows?.() ?? []) : []))
+    const listed = [...new Map([...offline, ...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, this.archived.has(s.id) ? { ...s, archived: true } : s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     const sessions = this.threadRows ? this.threadRows(listed) : listed
     this.snap = {
       version: this.version,
@@ -1743,7 +1746,11 @@ export class Weevils {
     const local = this.detail(id)
     if (local) return local
     const r = this.remoteFor(id)
-    return r ? r.call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(id)}`) : undefined
+    if (r) return r.call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(id)}`)
+    // Its machine does not answer: the history synced here (the weevbook), never a dead row.
+    const row = this.snapshot().sessions.find((s) => s.id === id && s.offline)
+    if (!row) return undefined
+    return (await weevbookDetail(path.join(WEEVBOOK_DIR, '.git'), row).catch(() => null)) ?? { session: row, messages: [] }
   }
 
   detail(id: string): SessionDetail | undefined {

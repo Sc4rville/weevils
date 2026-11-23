@@ -272,7 +272,12 @@ As built (step 4), for machines that share a vault and no hub:
   the other HEAD when git can fast-forward, each uncommitted file that differs is carried when this clone's own copy is
   untouched on the same commit, and everything else is named in the answer (`code-state.ts`), never overwritten.
   Nothing is touched on the machine left. A hub that only has the thread from the vault (its machine joined with a
-  vault) leaves the lease to the vault: the resume takes the vault's.
+  vault) leaves the lease to the vault: the resume takes the vault's. When that machine does not answer, `--force`
+  continues the thread from the synced copy, and the answer says its uncommitted changes stayed there, unchecked.
+- **A machine that stops answering keeps its conversations in the list** (`server/offline-machines.ts`): the rows it
+  showed the last time it answered (kept on disk, so a restart of the app's weevilsd does not forget them), and every
+  thread synced here whose last leg is still open on it and moved in the last week. They are marked offline, never at
+  work, read only; opening one reads its history from the weevbook.
 - **The resume** is step 3's, with the lease in front: the thread's lease is taken `working` before anything is
   written (so that no machine takes it over meanwhile), given back idle when the resume is refused, and the resumed
   journal is pushed at once with its lease. The steal writes `turn failed` (`machine-lost`) and `leg.end`

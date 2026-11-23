@@ -15,6 +15,8 @@ export default defineMessages({
     writeTo: (_tool: string) => 'écris un message',
     resumeWith: (_tool: string) => 'reprends la session',
     readOnly: 'ouverte hors de weevils : lecture seule',
+    /** Une conversation dont la machine ne répond plus : son historique synchronisé, en lecture. */
+    offlineOn: (machine: string) => `${machine} est hors ligne : lecture seule`,
     composerLabel: (title: string) => `message à la session ${title}`,
     /** Bulle provisoire d'un envoi avec photos. */
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
@@ -71,6 +73,7 @@ export default defineMessages({
     writeTo: (_tool: string) => 'write a message',
     resumeWith: (_tool: string) => 'resume the session',
     readOnly: 'opened outside weevils: read only',
+    offlineOn: (machine: string) => `${machine} is offline: read only`,
     composerLabel: (title: string) => `message to session ${title}`,
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
     helpers: 'helpers',

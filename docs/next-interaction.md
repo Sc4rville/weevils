@@ -136,6 +136,9 @@ once, and the code follows. Behaviour is never flipped back and forth.
   Whatever shows under the page (that inset, the bounce) wears the page's own colour, never another band's
   (weevils' repo: its gradient's base). The
   « new below » mark (a « ? » when a question waits) is a quiet tone of the page, never a dark block over the text.
+- **A question's answers are steps, not rows between rules** (2026-11-23): each answer (Allow, Deny, a choice) sits on
+  its own band, one tone step from the question's, with room between them, as the For you sheet's steps; no line
+  above or under them.
 - **Focus never draws a black box**: a field shows where you type by its caret; a button reached with the keyboard
   gets the app's one soft halo.
 - **Next's own layout choices**, the only ones (2026-11-21):

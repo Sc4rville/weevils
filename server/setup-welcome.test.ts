@@ -246,6 +246,10 @@ describe('another computer, by talking', () => {
     machines.push({ id: 'laptop', name: 'laptop', online: true })
     await (s as unknown as { watch: () => Promise<void> }).watch()
     expect(texts().at(-1)).toBe('laptop is plugged in: I can run agents there now.')
+    // A real win (the machine is online): the line carries it, the key's line does not.
+    const said = s.messages()
+    expect(said.at(-1)?.win).toMatchObject({ kind: 'machine', id: expect.stringMatching(/^machine:laptop:/) })
+    expect(said.at(-2)?.win).toBeUndefined()
   })
 
   // docs/spec/07-vault.md, « The history »: a date or a few conversations for the other computer ride on its line.

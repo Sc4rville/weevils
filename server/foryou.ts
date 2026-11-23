@@ -25,7 +25,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type http from 'node:http'
 import path from 'node:path'
-import type { InterruptReason, Message, RequestOrigin, Session, SessionDetail, Snapshot } from '../shared/api.ts'
+import type { InterruptReason, Message, RequestOrigin, Session, SessionDetail, Snapshot, WinKind } from '../shared/api.ts'
 import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
 import { evidenceInput, evidenceLabel, mergeEvidence, type EvidenceInput } from '../shared/evidence.ts'
@@ -448,6 +448,8 @@ export interface ForYouDeps {
 
 /** A recorded item. Everything the app may read is copied field by field in view(): the rest never leaves. */
 interface Stored {
+  /** A real win this card announces (shared/api.ts Win): the app celebrates it once. */
+  win?: ForYouItem['win']
   recap?: ForYouItem['recap']
   composition?: ForYouItem['composition']
   visualProposal?: ForYouItem['visualProposal']
@@ -538,6 +540,8 @@ export interface NewItem {
   open?: ForYouItem['open']
   actions?: { label: string; brief: string; sourceIntentId?: string; op?: string }[]
   lang?: Lang
+  /** This card announces a real win, proven by the caller's state (its id, its kind): celebrated once in the app. */
+  win?: { id: string; kind: WinKind }
 }
 
 const questionKey = (i: Stored) => crypto.createHash('sha256').update(JSON.stringify([i.at, i.text, i.q])).digest('hex').slice(0, 12)
@@ -1057,6 +1061,7 @@ export class ForYou {
       ...(n.open ? { open: n.open } : {}),
       ...(gone ? { gone } : {}),
     }
+    if (n.win) item.win = { ...n.win, at: item.at }
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())
@@ -1254,6 +1259,7 @@ export class ForYou {
     if (i.visualProposal) out.visualProposal = i.visualProposal
     if (i.composition) out.composition = i.composition
     if (i.recap) out.recap = i.recap
+    if (i.win) out.win = i.win
     if (i.projectId) out.projectId = i.projectId
     if (i.sessionId) out.sessionId = i.sessionId
     if (i.eventId) out.eventId = i.eventId

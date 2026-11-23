@@ -62,4 +62,13 @@ describe('reactions, from real state', () => {
     for (const e of ['👍', '✅', '🛠️', '👍🏽', '🇫🇷', '👨‍💻']) expect(isEmoji(e)).toBe(true)
     for (const e of ['ok', 'done ✅', '1', '', '👍👍👍👍👍👍👍👍👍👍👍']) expect(isEmoji(e)).toBe(false)
   })
+
+  it('a request verified done (a landed commit as evidence): its message carries the win, once per request', () => {
+    const verified = ask({ id: 'r7', src: 'u1', status: 'done', closedAt: 50, closedBy: 'auto', dispatches: [{ session: 's', at: 1, evidence: 'abc1234' }] })
+    const closedByHand = ask({ id: 'r8', src: 'u2', status: 'done', closedAt: 60, dispatches: sent('s') })
+    const out = withBossReactions([user('u1'), user('u2', 2)], { asks: [verified, closedByHand], sessionStatus: st({}), working: false })
+    expect(out[0].win).toEqual({ id: 'done:r7', kind: 'done', at: 50 })
+    expect(out[1].reaction).toBe(R.done)
+    expect(out[1].win).toBeUndefined()
+  })
 })

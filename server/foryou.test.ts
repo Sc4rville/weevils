@@ -119,6 +119,14 @@ beforeEach(() => {
 // ---------------------------------------------------------------- the store
 
 describe('the store', () => {
+  it('a card that announces a real win keeps it (id, kind, when), stored and shown', () => {
+    const fy = make()
+    fy.add({ id: 'auto-live:a1:0123456789ab', kind: 'boss', who: 'weevils', title: '“Tidy” is live', text: '“Tidy” is live', win: { id: 'land:0123456789ab', kind: 'land' } })
+    expect(find(fy, 'auto-live:a1:0123456789ab')?.win).toEqual({ id: 'land:0123456789ab', kind: 'land', at: now })
+    fy.add({ id: 'plain', kind: 'boss', text: 'Just a word' })
+    expect(find(fy, 'plain')?.win).toBeUndefined()
+  })
+
   it('writes foryou.json for the user only, through a temporary file', () => {
     const fy = make()
     fy.post('hello')

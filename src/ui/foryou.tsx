@@ -26,6 +26,7 @@ import { Icon } from './icons'
 import { usePageChrome } from './shell'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/foryou'
+import { celebrateWin } from './celebrate'
 import './foryou.css'
 
 const cssVar = (name: string) => `var(--${name})`
@@ -402,6 +403,10 @@ export function ForYouItemView({ item, compact, alt }: { item: ForYouItem; compa
   const band = useRef<HTMLElement>(null)
   const inView = useInView(band, 0.5, !compact)
   const { markSeen } = fy
+  // A real win this card announces: celebrated once, when it comes into view (ui/celebrate.ts).
+  useEffect(() => {
+    if (!compact && inView && !item.seen) celebrateWin(item.win, band.current, Date.now(), 12 * 3600_000)
+  }, [compact, inView, item.win, item.seen])
   // Seen once it stayed under the eyes a moment (any device then knows).
   useEffect(() => {
     if (compact || item.seen || !inView) return

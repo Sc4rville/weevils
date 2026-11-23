@@ -150,7 +150,7 @@ if (WEEVBOOK) {
   moves = startMoves({
     w, machine: MACHINE, dataDir: DATA_DIR, home: HOME, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR, roots: PROJECT_ROOTS, projectsDir: PROJECTS_DIR,
     ...(WEEVBOOK_HUB ? { hub: WEEVBOOK_HUB } : {}), ...(sync ? { sync } : {}), vault: vaultNow, watch: ORCHESTRATOR && vaultOn && !WEEVBOOK_HUB,
-    poke: (thread) => threadsApp?.threads.poke(thread), log: (l) => console.log(l),
+    poke: (thread) => threadsApp?.threads.poke(thread), announce: ORCHESTRATOR, title: (thread) => threadsApp?.topic?.(thread), log: (l) => console.log(l),
   })
   // Threads (step 4): every message goes to the dispatcher, which runs on the machine that serves the app.
   if (sync && THREADS) {

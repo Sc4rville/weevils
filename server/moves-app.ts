@@ -41,6 +41,10 @@ export interface MovesOptions {
   watch: boolean
   /** The dispatcher looks at a thread again (an agreed move of its own). */
   poke?: (thread: string) => void
+  /** This machine runs weevboss: it says the moves done in its thread. */
+  announce?: boolean
+  /** A thread's title, for the line that says it moved. */
+  title?: (thread: string) => string | undefined
   log?: (line: string) => void
 }
 
@@ -173,7 +177,13 @@ export function startMoves(o: MovesOptions) {
       return remote.call<MoveResult>('POST', '/api/weevbook/move', r).catch((e: Error): MoveResult => ({ ok: false, why: 'unreachable', detail: e.message }))
     },
   }
-  const move = (r: MoveRequest) => moveThread(host, r)
+  /** A move done (its history is on the new machine, its lease taken): one line in weevboss's thread, a win the app
+   *  celebrates. Said once, by the machine that runs weevboss (the one a move is asked of or forwarded to). */
+  const move = async (r: MoveRequest) => {
+    const done = await moveThread(host, r)
+    if (done.ok && o.announce) w.setup?.sayWin(tr(M).continues(o.title?.(done.thread) ?? '', done.machine), { id: `move:${done.thread}:${Date.now()}`, kind: 'move' })
+    return done
+  }
 
   /** The person said yes: the open proposals (`id`: that one) are run. A silent machine that came back keeps its work. */
   const agree = async (id?: string): Promise<Agreed[]> => {

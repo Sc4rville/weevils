@@ -3634,3 +3634,32 @@ main.stack {
 
 /* The onboarding's sync line (setup.tsx SyncLine): small, quiet, under weevboss's words; it counts by itself. */
 .sync-line { margin: -8px 0 0; padding-left: var(--pad, 18px); font-size: 0.85rem; opacity: 0.75; font-variant-numeric: tabular-nums; }
+
+/* ---------- A real win (ui/celebrate.ts): a colour sweep across its line, confetti from it, then nothing. ---------- */
+.win-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 1;
+  z-index: 1;
+}
+.win-sweep {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+}
+.win-burst {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+.win-burst > i {
+  position: absolute;
+  top: 0;
+  display: block;
+  will-change: transform, opacity;
+}

@@ -22,7 +22,7 @@ import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import type { Message, Tool } from '../shared/api.ts'
+import type { Message, Tool, Win } from '../shared/api.ts'
 import { preferredTool, providerStatus, providerReady, codexLogged } from './provider.ts'
 import type { MachineFacts } from '../shared/infra.ts'
 import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '../shared/setup.ts'
@@ -732,7 +732,7 @@ export class Setup {
    * `once` (les explications d'une brique, ask()) : un texte identique posté il y a peu n'est pas répété ; on renvoie l'id
    * du message existant, que l'app ramène sous les yeux (une brique relancée). Jamais pour le reste : un nouvel essai, une
    * nouvelle coupure, ce que dit l'utilisateur ont leur bulle, en bas du fil (les détections ont leur propre garde). */
-  private add(role: 'user' | 'assistant', text: string, once = false) {
+  private add(role: 'user' | 'assistant', text: string, once = false, win?: Omit<Win, 'at'>) {
     const id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     const same = once ? this.p.log.slice(-12).findLast((m) => m.role === role && m.text === text && Date.now() - m.at < REPEAT_MS) : undefined
     if (same) {
@@ -740,12 +740,15 @@ export class Setup {
       return (this.lastSaid = same.id)
     }
     const last = this.p.log.at(-1)?.at ?? 0
-    this.p.log.push({ id, role, text, at: Math.max(Date.now(), last + 1) })
+    const at = Math.max(Date.now(), last + 1)
+    this.p.log.push({ id, role, text, at, ...(win ? { win: { ...win, at } } : {}) })
     this.save()
     this.deps.bump()
     return (this.lastSaid = id)
   }
   say = (text: string, once = false) => this.add('assistant', text, once)
+  /** A line that announces a real win, proven by the state that triggers it: the app celebrates it once. */
+  sayWin = (text: string, win: Omit<Win, 'at'>) => this.add('assistant', text, false, win)
   userSays = (text: string) => this.add('user', text)
 
   /** Un secret demandé par un agent ([[setup:key:NOM]]) : écrit dans la config, jamais montré (pas même la fin) ni
@@ -1128,7 +1131,7 @@ export class Setup {
       const p = await syncProgress()
       if (p.state !== 'done') return false
       marks['vault:summary'] = Date.now()
-      this.say(t.syncDone(p.total))
+      this.sayWin(t.syncDone(p.total), { id: `vault:${marks['vault:summary']}`, kind: 'vault' })
       const m = (await this.detect()).machine
       if (offersServer(m)) marks['vps:due'] = Date.now()
       return true
@@ -1182,7 +1185,7 @@ export class Setup {
     this.p.joining = undefined
     if (m) {
       this.cache = null
-      this.say(tr(M).joinOnline(m.name || m.id))
+      this.sayWin(tr(M).joinOnline(m.name || m.id), { id: `machine:${m.id}:${j.at}`, kind: 'machine' })
     }
     return true
   }

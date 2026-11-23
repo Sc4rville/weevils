@@ -2,7 +2,7 @@
 // Contract between weevilsd (server/foryou.ts, main machine only) and the app (src/ui/foryou.tsx).
 // Named "for you" everywhere in the code: "feed" already means the home list of project bands.
 
-import type { Tool, WorkstreamIdentity } from './api.ts'
+import type { Tool, Win, WorkstreamIdentity } from './api.ts'
 import type { ForYouEvidence } from './evidence.ts'
 
 /**
@@ -110,6 +110,8 @@ export interface ForYouRecap {
 }
 
 export interface ForYouItem {
+  /** This card announces a real win (work landed on main…): the app celebrates it once. */
+  win?: Win
   /** Sleep mode's morning recap: its lines, each backed by a run or a session state. */
   recap?: ForYouRecap
   /** Verified target identity only; never an origin or completion signal. */

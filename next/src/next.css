@@ -362,7 +362,7 @@ body { overflow: hidden; }
 }
 .cam-mark .ic { width: 20px; height: 20px; }
 .cam-mark.cam-on { opacity: .9; z-index: 1002; }
-.cam-freeze { position: fixed; inset: 0; z-index: 1001; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.cam-freeze { position: fixed; inset: 0 0 auto 0; z-index: 1001; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .cam-still { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .cam-veil {
   position: absolute; inset: 0; pointer-events: none;

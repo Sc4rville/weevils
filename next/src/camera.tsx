@@ -13,6 +13,7 @@ import { useT } from '../../src/i18n/index.ts'
 import CM from '../../src/i18n/camera.ts'
 import { api } from '../../src/api.ts'
 import { call } from './data.ts'
+import { screenHeight } from '../../src/ui/viewport.ts'
 import { mark, isMark, place, region, type Box } from './camera-geometry.ts'
 
 /** What is on the screen, read at the moment of the tap (main.tsx knows it). */
@@ -44,7 +45,8 @@ async function shoot(): Promise<HTMLCanvasElement> {
   try {
     return await domToCanvas(document.body, {
       width: innerWidth,
-      height: innerHeight,
+      // Installed on an iPhone, the stage can be a status bar taller than innerHeight (src/ui/viewport.ts).
+      height: screenHeight(),
       scale: Math.min(devicePixelRatio || 1, 2),
       backgroundColor: bg,
       filter: (n) => !isMark(n),
@@ -145,7 +147,7 @@ export function Camera({ spot }: { spot: () => Spot }) {
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientY - y0) < 8) return
       moved = true
-      setY(place(ev.clientY, innerHeight))
+      setY(place(ev.clientY, screenHeight()))
     }
     const up = () => {
       el.removeEventListener('pointermove', move)
@@ -174,14 +176,14 @@ export function Camera({ spot }: { spot: () => Spot }) {
       const b = { x: ev.clientX, y: ev.clientY }
       if (!drawing && Math.hypot(b.x - a.x, b.y - a.y) < 10) return
       drawing = true
-      setPick(region(a, b, innerWidth, innerHeight))
+      setPick(region(a, b, innerWidth, screenHeight()))
     }
     const up = (ev: PointerEvent) => {
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)
       el.removeEventListener('pointercancel', up)
       if (drawing) {
-        const box = region(a, { x: ev.clientX, y: ev.clientY }, innerWidth, innerHeight)
+        const box = region(a, { x: ev.clientX, y: ev.clientY }, innerWidth, screenHeight())
         if (box.w >= 24 && box.h >= 24) void take(box)
         else setPick(null)
         return
@@ -201,7 +203,7 @@ export function Camera({ spot }: { spot: () => Spot }) {
   return (
     <>
       {mode !== 'off' && (
-        <div className={`cam-freeze ${box ? 'cam-picking' : ''}`} {...mark} onPointerDown={onFrozen}>
+        <div className={`cam-freeze ${box ? 'cam-picking' : ''}`} {...mark} style={{ height: screenHeight() }} onPointerDown={onFrozen}>
           {/* The screen as it was at the tap: from here on, what you see is what is sent. */}
           {frozen && <img className="cam-still" src={frozen} alt="" draggable={false} />}
           <div className="cam-veil" style={box ? { left: box.x, top: box.y, width: box.w, height: box.h } : undefined} />

@@ -29,8 +29,9 @@ vi.mock('./claude-credentials.ts', () => ({ claudeLoggedIn: () => auth.ready }))
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-welcome-'))
 process.env.WEEVILS_CONFIG = path.join(dir, 'env')
 process.env.WEEVILS_LANG = 'en'
-const { Setup, greeting, firstRunBrief, joinHost, looksLikeLoginCode, joinChoice, vaultLine, githubBrief } = await import('./setup.ts')
-const { withLang } = await import('./i18n.ts')
+const { Setup, greeting, firstRunBrief, joinHost, looksLikeLoginCode, joinChoice, vaultLine, githubBrief, offersServer } = await import('./setup.ts')
+const { withLang, tr } = await import('./i18n.ts')
+const { default: M } = await import('./i18n/setup.ts')
 const { DATA_DIR } = await import('./config.ts')
 const { Join } = await import('./join.ts')
 
@@ -371,5 +372,23 @@ describe('agents ask before acting: what weevboss’s turn cannot run goes to a 
     await s.ask('reach')
     expect(delegate).not.toHaveBeenCalled()
     expect(handoff).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the sync said by weevils, then the server offer', () => {
+  it('the lines, with their links in the sentence (never a button)', () => {
+    const t = withLang('en', () => ({ start: tr(M).syncStart, done: tr(M).syncDone(340), one: tr(M).syncDone(1), offer: tr(M).vpsOffer }))
+    expect(t.start).toBe('You’re connected to GitHub and Claude. I’m syncing your conversations so you can pick them up from any machine or subscription.')
+    expect(t.done).toBe('Done: your 340 conversations are yours now, safe on your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe: with it, a new machine gets everything back.')
+    expect(t.one).toContain('your conversation is yours now')
+    expect(t.offer).toContain('I can [set it up now](/#do=server), or [remind you later](/#do=later).')
+    for (const x of Object.values(t)) expect(x).not.toMatch(/\[\[setup:/)
+  })
+  it('the server is offered only to a machine that is not on day and night', () => {
+    expect(offersServer({ kind: 'laptop', alwaysOn: false })).toBe(true)
+    expect(offersServer({ kind: 'desktop', alwaysOn: null })).toBe(true)
+    expect(offersServer({ kind: 'desktop', alwaysOn: true })).toBe(false)
+    expect(offersServer({ kind: 'vps', alwaysOn: true })).toBe(false)
+    expect(offersServer({ kind: 'server', alwaysOn: null })).toBe(false)
   })
 })

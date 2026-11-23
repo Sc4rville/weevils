@@ -348,14 +348,28 @@ empty text with its signature, so the risk was small; the rule keeps it at none.
      about `cleanupPeriodDays` old (30 by default, read from `~/.claude/settings.json`; 7 days before to 3 days after).
    - **In weevilsd** the pusher starts as soon as a vault is set (the remote and the key, looked for every 30 s): no
      restart after `vault setup`, `vault restore` or a join.
-   - **weevboss's onboarding, by talking only** (`server/orchestrator.<lang>.md`, `firstRunBrief` and
-     `githubDevice` in `server/setup.ts`): `weevils setup github` runs `gh auth login --web` and posts the code and
-     the github.com/login/device link in weevboss's name (gh is installed first when missing); when the code was typed,
-     weevboss is handed the next step and runs `weevils weevbook vault setup` itself, gives the 24 words once, asks the
-     history question, says the summary sentence from `vault summary --json` ("the last 30 days" when
-     `claude_window`), and offers the Claude.ai and ChatGPT export once. `weevils setup` has a `vault` line with what
-     was said already (`weevils setup mark vault:code | vault:history | vault:summary | vault:export`). A new install
-     that finds a vault on the person's GitHub (`vault: found`) asks for the recovery code in the chat.
+   - **The onboarding, said by weevils itself** (2026-11-22, the owner's vision: start where the conversations are,
+     then a near-invisible sync; `server/setup.ts` `watchSync` and `act`, `server/sync-progress.ts`, `SyncLine` in
+     `src/ui/setup.tsx`, shown by next's weevboss thread). No model decides any of it, and nothing is a button: actions
+     are links in the sentence (`/#do=github | server | later | recovery`, `src/ui/living-link.tsx`).
+     1. The hello carries « [Connect your GitHub](/#do=github) and I'll keep all your conversations there, yours. »
+        when GitHub is not signed in (and after Claude's sign-in, the same link). The link starts gh's device sign-in
+        and posts its code and link in weevboss's name.
+     2. Once Claude and GitHub are both connected, on a new install (it had the first-run welcome) or from that link,
+        weevils runs `vault setup` itself and says « You're connected to GitHub and Claude. I'm syncing your
+        conversations so you can pick them up from any machine or subscription. » Under it, a small line counts by
+        itself (« 120 of 340 synced »: the first import's progress, `DATA_DIR/weevbook-backfill.json`, against the
+        vault's own status) and is gone when done. Nothing to tap, nothing to wait for; the newest come first.
+     3. When the import is done and nothing waits for the vault: « Done: your 340 conversations are yours now, safe on
+        your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe… ». The 24 words are shown once, on
+        that tap (from the key, never kept in what weevboss reads); a second tap says they were shown.
+     4. Then, once a session of theirs ended a turn (they have seen weevils work) and only on a machine that is not on
+        day and night: « To keep weevils working 24/7, even with your computer off, I recommend a server (about
+        €5/month). I can [set it up now](/#do=server), or [remind you later](/#do=later). » « set it up now » is the
+        machine setup; « later » is remembered and weevboss offers it again only when it truly helps.
+     weevboss never repeats any of it; what is left to it: the GitHub link once more when useful, a vault found on
+     their GitHub (it asks for the recovery code), another computer's history (`weevils setup ask machine`), and the
+     Claude.ai and ChatGPT export once. An install that ran before this keeps its vault as it is: nothing announced.
    - *Deviations.* `handoff.md` is in the vault (the table above said rebuilt). A machine does not fetch the other
      machines' threads into its weevbook by itself: `vault restore` does it when asked, and the summary reads them in
      memory (an automatic restore next to a hub's own sync waits for the lease on GitHub, step 4). The accounts counted

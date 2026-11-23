@@ -110,6 +110,10 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **weevboss's thread** is the classic message list (`Messages`), with its own setup buttons and working line.
   - Next adds only one thing: a stand-in for your message while it is sent (`next/src/pending.ts`). It ends when the
     server's copy arrives, even when that copy carries a photo, a file or weevils' context.
+  - During the onboarding's sync, a small line under weevboss's words counts by itself (« 120 of 340 synced », the
+    app's `SyncLine`) and is gone when done (docs/spec/07-vault.md « The onboarding »).
+  - A message of yours whose session waits for your OK (❓) has one living link under it, « … is waiting for your
+    OK », that opens that session at its question (`bits.tsx` WaitingOn, both apps).
 - **Who wrote it, in a session** (the server's author field, never a guess from the words):
   - the session's own agent (Claude, Codex): plain text on the page, no box, its name small above;
   - you: a tinted band reaching the right edge;

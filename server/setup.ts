@@ -653,6 +653,7 @@ export class Setup {
   /** GitHub's sign-in started from the person's own link (the sync line says the rest) rather than for weevboss. */
   private githubForSync = false
   private syncing = false
+  private syncFailedAt = 0
   /** Sur un Mac, « joignable de partout » part chez weevboss dès le tap : quand, pour qu'un double tap ne le confie pas deux fois. */
   private reachAt = 0
   /** La dernière explication postée par une puce : un second tap ne la répète pas. */
@@ -1072,7 +1073,7 @@ export class Setup {
    * night, the server offer, as two links (set it up now, remind you later). True when something was said.
    */
   private async watchSync(): Promise<boolean> {
-    if (!providerReady() || !this.p.githubLogged || this.syncing) return false
+    if (!providerReady() || !this.p.githubLogged || this.syncing || Date.now() - this.syncFailedAt < 5 * 60_000) return false
     const marks = this.p.marks
     const t = tr(M)
     if (!marks['sync:start']) {
@@ -1080,7 +1081,9 @@ export class Setup {
       if (!this.p.firstRun && !this.githubForSync) return false
       const s = await this.detect(true)
       if (!s.github.logged) return false
-      if (s.vault.state === 'found') return false // their recovery code first: weevboss asks for it
+      // A repository already there: a real vault (its recovery code first, weevboss asks for it), or an empty one left by
+      // a setup cut short, which the setup below simply takes.
+      if (s.vault.state === 'found' && marks['sync:found']) return false
       if (s.vault.state === 'on') {
         // Set up before (by hand, or by an older weevils): nothing to announce.
         marks['sync:start'] = marks['vault:summary'] = Date.now()
@@ -1090,8 +1093,14 @@ export class Setup {
       try {
         const out: string[] = []
         // The recovery code it prints is not kept: the app shows it from the key, when the person taps for it.
-        const code = await vaultMain(['setup'], (l) => out.push(l.replace(/^([a-z]+ ){23}[a-z]+$/, '…')))
+        const code = await vaultMain(['vault', 'setup'], (l) => out.push(l.replace(/^([a-z]+ ){23}[a-z]+$/, '…')))
+        if (code !== 0 && s.vault.state === 'found') {
+          marks['sync:found'] = Date.now()
+          return true
+        }
         if (code !== 0) {
+          // Tried again in five minutes (GitHub down, a refusal): never a line in the thread for it.
+          this.syncFailedAt = Date.now()
           console.log(`[setup] vault setup: ${out.filter(Boolean).at(-1) ?? code}`)
           return false
         }
@@ -1109,7 +1118,7 @@ export class Setup {
       marks['vault:summary'] = Date.now()
       this.say(t.syncDone(p.total))
       const m = (await this.detect()).machine
-      if (m.alwaysOn !== true && m.kind !== 'vps' && m.kind !== 'server') marks['vps:due'] = Date.now()
+      if (offersServer(m)) marks['vps:due'] = Date.now()
       return true
     }
     if (marks['vps:due'] && !marks['vps:offer'] && !marks['vps:later'] && (this.deps.worked?.() ?? true)) {
@@ -1777,6 +1786,9 @@ export class Setup {
     return l.filter(Boolean).join('\n')
   }
 }
+
+/** The server offer after the sync: only for a machine that is not on day and night (a laptop, a desktop that sleeps). */
+export const offersServer = (m: Pick<MachineInfo, 'alwaysOn' | 'kind'>): boolean => m.alwaysOn !== true && m.kind !== 'vps' && m.kind !== 'server'
 
 /** The subscription weevboss thinks with: Codex when chosen (or the only one this machine can run), else Claude. */
 export const providerTool = (providers: { claude: boolean; codex: boolean }): 'claude' | 'codex' =>

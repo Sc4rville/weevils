@@ -7,13 +7,17 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
 `og.png`, 1200×630, comes from the content repository (`productions/og/weevils-og-ask.png`), and its URL carries
 `?v=<first 8 characters of its sha256>` so that X fetches the new card when it changes).
 
-1. A short page (English by default, a small FR switch) says what weevils is, then right away: **plug in your
-   machine** ("a server keeps your agents working while your phone and computer are off").
-   - On a phone: exactly three machines: a server created for you at Hetzner (recommended, for agents that run
-     24/7), your own VPS (rented anywhere), or your own computer (Mac, Linux, or Windows with WSL).
-   - On a Mac, Linux or Windows (WSL) computer: connect this computer here and now (one command), with a nudge
-     toward a VPS ("your agents keep working with this computer off").
-2. **Create a server for me** at **Hetzner**: the person creates an account and an API token (links on the page),
+1. The onboarding starts here, as a conversation, before anything is installed (2026-11-23). weevboss says hello
+   (what weevils is, in a line) and asks what the visitor would like to make; they type it or tap a suggestion. Its
+   reply says where weevils will live, the computer where the agents work with the person's own Claude or ChatGPT
+   subscription, as three cards: **on this computer** (on a phone: "on my computer"), **my own VPS**, **create a VPS
+   for me** (Hetzner). It also says plainly that with a computer alone, weevils and its agents work only while it is
+   on, and that a VPS keeps them working with it off. The pick is the visitor's next message, and its step follows in
+   the same thread, then the install and the person's own weevils. Key words come in a living gradient, weevboss's
+   messages type in, a small drawing shows phone → weevboss → your machine, the command copies in one tap, and the
+   machine answering and weevils ready are celebrated once (a colour sweep and a few confetti); « reduce motion »
+   keeps it all still. Nothing reaches the service before a pick (a computer's setup starts when its card is tapped).
+2. **Create a VPS for me** at **Hetzner**: the person creates an account and an API token (links on the page),
    pastes the token in a masked field, then picks one of three sizes with the real prices from Hetzner's API: light
    (4 GB, 2 to 3 agents), recommended (8 GB, about 6), strong (16 GB, about a dozen; a Claude Code session takes up
    to about 1 GB). Hetzner offers no OAuth to third parties: a token is the only way. Since 2026-11-17 the token never
@@ -21,13 +25,13 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    allows it, CORS), creates the server with the cloud-init this service gave the setup (`userData` in the
    `POST /api/job` answer: it only runs `/i/<sid>`), then tells this service just the server's id, address and size
    (`POST /api/hetzner/created`). (Hostinger was offered too
-   until 2026-11-14; dropped as one option too many. A VPS rented there goes through "I already have a VPS".)
+   until 2026-11-14; dropped as one option too many. A VPS rented there goes through "My own VPS".)
    - Hetzner: the cheapest x86 type of each size near the person, Ubuntu 24.04, a cloud-init that runs the install.
      Hetzner bills by the hour: each size shows its real hourly price and its monthly cap ("€0.0115/h · max
      €7.19/month"), VAT included, with the server's IPv4 address that Hetzner bills on top of the type (`GET /pricing`),
      and the button says "billed by the hour". Sign-up asks for an ID check (a photo of an ID and a selfie, through iDenfy), then a manual review: the page says
      so under the option and on the account step, so nobody is surprised.
-   **I already have a VPS**: first, the same one-line command as a computer, to paste in a terminal on the server (as
+   **My own VPS**: first, the same one-line command as a computer, to paste in a terminal on the server (as
    root or a sudo user): no secret goes anywhere; its first request (`/i/<sid>.env`) starts the setup, and the
    address it comes from names the machine (`<ip>.sslip.io`). Only a real server gets that: since 2026-11-20 the
    request says what the machine is (`?os=`, `?systemd=`, and `?own=`, the address `/ip` showed it when that address
@@ -37,7 +41,7 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    and a cloud server behind 1:1 NAT (AWS, GCP: a tunnel link, safe). A person's Claude Code on a Mac at home refused
    the old rule, rightly: it would have set up Caddy there. That is the whole screen: since 2026-11-17 there is no IP/password form
    any more (people's AI assistants rightly refused to send a root password to a third party).
-   **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/install.sh | bash -s <id>`
+   **On this computer** (on my computer) (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/install.sh | bash -s <id>`
    in its terminal. Since 2026-11-15 that script is the same file for everyone (`/install.sh`, its SHA-256 at
    `/install.sh.sha256`), opens with a plain « what it does / never does / the code it runs / undo in one line » header,
    and reads the setup's settings from `/i/<id>.env` as checked values: people's own AI assistants refused the old

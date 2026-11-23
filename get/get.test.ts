@@ -864,43 +864,68 @@ describe('a Mac', () => {
   const LINUX = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
 
-  it('is offered the “connect this computer” command on the first screen, like Linux, with the nudge toward a server', async () => {
+  /** The visitor's first message: a tap on a suggestion. Then the home picked from weevboss's reply, by its card. */
+  const answer = (sc: Awaited<ReturnType<typeof firstScreen>>, chip = 0) => (sc.app.querySelectorAll('.chip')[chip] as HTMLElement).click()
+  const pick = (sc: Awaited<ReturnType<typeof firstScreen>>, kind: 'pc' | 'vps' | 'new') => (sc.app.querySelector(`.card.k-${kind}`) as HTMLElement).click()
+
+  it('starts as a conversation: weevboss asks, the visitor answers, the reply offers three homes and says what a computer alone means', async () => {
+    const phone = await firstScreen(IPHONE)
+    expect(phone.text()).toContain('What would you like to make?')
+    // Nothing is asked of the service before the visitor picks a home (a phone asks only whether it started a setup).
+    expect(phone.calls.filter((c) => c !== '/api/nearby')).toEqual([])
+    expect([...phone.app.querySelectorAll('.chip')].map((c) => c.textContent)).toEqual(['A game', 'A website', 'A small tool', 'Just looking'])
+    expect(phone.app.querySelector('.card')).toBeNull()
+    answer(phone)
+    const t = phone.text()
+    expect(t).toContain('A game')
+    expect(t).toContain('Love it')
+    // The computer first, then a VPS of one's own, then one created at Hetzner; the subscription said up front.
+    expect(t.indexOf('On my computer')).toBeLessThan(t.indexOf('My own VPS'))
+    expect(t.indexOf('My own VPS')).toBeLessThan(t.indexOf('Create a VPS for me'))
+    expect(t).toContain('your own Claude or ChatGPT subscription')
+    // A computer alone works only while it is on: said plainly, with what a VPS changes.
+    expect(t).toContain('weevils and its agents work only while it’s on. A VPS keeps them working with your computer off.')
+    expect(t).not.toMatch(/Hostinger|hPanel|curl/)
+    expect(page).not.toMatch(/\(Linux\)|Linux only|Linux seulement/)
+    // A pick is the visitor's next message, and its step follows in the same thread.
+    pick(phone, 'new')
+    await vi.waitFor(() => expect(phone.text()).toContain('A server of your own, at Hetzner'))
+    expect([...phone.app.querySelectorAll('.msg.me')].map((m) => m.textContent)).toEqual(['A game', 'Create a VPS for me'])
+    // A greeting gets a greeting back.
+    const hi = await firstScreen(IPHONE)
+    ;(hi.app.querySelector('textarea') as HTMLTextAreaElement).value = 'hello there'
+    hi.app.querySelector('form')!.dispatchEvent(new hi.document.defaultView!.Event('submit', { cancelable: true }) as unknown as Event)
+    expect(hi.text()).toContain('Hi! First, weevils needs a home')
+  })
+
+  it('gives a computer its command in one tap from the reply, Mac and Linux alike', async () => {
     const mac = await firstScreen(MAC)
+    expect(mac.calls).not.toContain('/api/job')
+    answer(mac)
+    expect(mac.text()).toContain('On this computer')
+    pick(mac, 'pc')
     await vi.waitFor(() => expect(mac.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
     expect(mac.calls).toContain('/api/job')
     expect(mac.text()).toContain('Connect this computer')
-    expect(mac.text()).toContain('Or straight on a server')
-    expect(mac.text()).toContain('even with your computer off')
     expect(mac.text()).toContain('Mac password')
     expect(mac.text()).not.toMatch(/Linux for now|take a VPS/)
-    // Same screen for Linux, without the Mac note; a phone gets the person's computer first (recommended) and no command.
     const linux = await firstScreen(LINUX)
+    answer(linux)
+    pick(linux, 'pc')
     await vi.waitFor(() => expect(linux.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
     expect(linux.text()).toContain('Connect this computer')
     expect(linux.text()).not.toContain('Mac password')
-    const phone = await firstScreen(IPHONE)
-    // A phone asks only whether it already started a setup from here (nothing kept: a fresh visit).
-    expect(phone.calls.filter((c) => c !== '/api/nearby')).toEqual([])
-    // Exactly three machines: Hetzner, a VPS rented anywhere, the person's computer.
-    expect(phone.text()).toContain('Create a server for me at Hetzner')
-    expect(phone.text()).toContain('I already have a VPS')
-    expect(phone.text()).toContain('My computer')
-    // A Mac works (bootstrap.sh handles Darwin): the computer option names it, never « Linux » alone.
-    expect(phone.text()).toContain('Mac, Linux or Windows.')
-    // Start where the conversations are (2026-11-22): the computer comes first and is the recommended one; the
-    // subscription it needs is said up front.
-    const t = phone.text()
-    expect(t.indexOf('My computer')).toBeLessThan(t.indexOf('Create a server for me at Hetzner'))
-    expect(t).toMatch(/My computer\s*recommended/)
-    expect(t).toContain('You need a Claude (or ChatGPT) subscription.')
-    expect(page).not.toMatch(/\(Linux\)|Linux only|Linux seulement/)
-    expect(phone.text()).not.toMatch(/Hostinger|hPanel/)
-    expect(phone.text()).not.toContain('curl')
     // French, and no sentence left that sends a Mac away.
     const fr = await firstScreen(MAC, 'fr')
+    expect(fr.text()).toContain('Tu veux faire quoi ?')
+    answer(fr)
+    expect(fr.text()).toContain('que quand il est allumé')
+    pick(fr, 'pc')
     expect(fr.text()).toContain('Branche cet ordinateur')
     expect(fr.text()).toContain('mot de passe du Mac')
-    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mac, Linux ou Windows.')
+    const frPhone = await firstScreen(IPHONE, 'fr')
+    answer(frPhone)
+    expect(frPhone.text()).toContain('Sur mon ordinateur')
     expect(page).not.toMatch(/Hostinger|hPanel/)
     expect(page).not.toMatch(/Linux for now|Linux pour l’instant|prends un VPS|take a VPS/)
   }, 60_000)
@@ -911,7 +936,7 @@ describe('a Mac', () => {
     expect(page).not.toContain('function resumeScreen')
     const back = await firstScreen(IPHONE, 'en', 'https://get.example/#hetzner')
     await vi.waitFor(() => expect(back.text()).toContain('A server of your own, at Hetzner'))
-    expect(back.text()).not.toContain('Plug in your machine')
+    expect(back.text()).not.toContain('What would you like to make?')
     // One Back button, fixed top left, on every step after the first (and the phone's gesture: one history entry per
     // step); the page reopens where it was. No detour, no restart link, no resume-link box, no nearby screen.
     expect(page).not.toMatch(/function keepBox|function nearbyScreen|W\.noVps|W\.startOver|W\.seePrice/)
@@ -946,9 +971,9 @@ describe('a Mac', () => {
     expect(note(vps, 'This machine is a computer')?.hidden).toBe(true)
   })
 
-  it('resumes a computer setup on the first screen, where its command already is', async () => {
+  it('resumes a computer setup on its command, right here on a computer, sent to oneself from a phone', async () => {
     expect(page).toContain("const computer = os === 'linux' || os === 'windows' || os === 'mac'")
-    expect(page).toContain('if (!computer) pc()')
+    expect(page).toContain("if (job.kind === 'pc') return computer ? pcHere() : pc(true)")
   })
 })
 

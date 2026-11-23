@@ -278,6 +278,14 @@ export class Runner {
     }
   }
 
+  /** A job's environment: weevilsd's, without what is weevilsd's own (NODE_ENV=production in its service would make
+   *  `npm ci` skip the dev dependencies every test run needs), the user's tools first in PATH. */
+  private async jobEnv(): Promise<NodeJS.ProcessEnv> {
+    const env: NodeJS.ProcessEnv = { ...this.env, PATH: await this.userPath(), WEEVILS_HEAVY: '1' }
+    delete env.NODE_ENV
+    return env
+  }
+
   private async work(job: Job) {
     const say = (s: string) => {
       job.log += s
@@ -304,10 +312,11 @@ export class Runner {
         for (const d of [...new Set([work, cwd])]) {
           const inst = installerFor(d)
           if (!inst) continue
-          const sum = crypto.createHash('sha256').update(fs.readFileSync(path.join(d, inst.lock))).digest('hex')
+          // « 2 »: installs made before NODE_ENV was left out lack the dev dependencies, so they are made again.
+          const sum = `2:${crypto.createHash('sha256').update(fs.readFileSync(path.join(d, inst.lock))).digest('hex')}`
           const stamp = path.join(this.dir, job.key, `deps-${crypto.createHash('sha1').update(d).digest('hex').slice(0, 12)}`)
           if (fs.existsSync(path.join(d, 'node_modules')) && fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8') === sum) continue
-          const code = await run(inst.argv[0], inst.argv.slice(1), { cwd: d, env: { ...this.env, PATH: await this.userPath(), WEEVILS_HEAVY: '1' }, onOut: say, job })
+          const code = await run(inst.argv[0], inst.argv.slice(1), { cwd: d, env: await this.jobEnv(), onOut: say, job })
           if (code !== 0) throw new Error(`${inst.argv.join(' ')}: exit ${code}`) // i18n-ignore: machine-to-machine
           fs.writeFileSync(stamp, sum)
         }
@@ -317,7 +326,7 @@ export class Runner {
       if (job.stopped) throw Object.assign(new Error('stopped'), { setup: true }) // i18n-ignore: machine-to-machine
       job.phase = 'running'
       const since = Date.now() - 1000
-      job.code = await run('nice', ['-n', String(Math.max(0, 10 - os.getPriority())), ...job.argv], { cwd: path.join(work, job.dir), env: { ...this.env, PATH: await this.userPath(), WEEVILS_HEAVY: '1' }, onOut: say, job })
+      job.code = await run('nice', ['-n', String(Math.max(0, 10 - os.getPriority())), ...job.argv], { cwd: path.join(work, job.dir), env: await this.jobEnv(), onOut: say, job })
       // What the job wrote (a build's output, an updated snapshot), packed for the sender.
       const files = writtenSince(work, since)
       if (files.length) {

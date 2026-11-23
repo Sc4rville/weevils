@@ -101,6 +101,10 @@ type Cut = { at: number; reason: InterruptReason }
 const CLEAN_END = new Set(['prompt_input_exit', 'clear', 'logout'])
 /** Une coupure plus ancienne que ça, découverte après coup (redémarrage, déploiement), n'est pas annoncée : seulement montrée. */
 const ANNOUNCE_WITHIN_MS = 6 * 3600_000
+/** A background command running longer than this after its launch is a watcher (a wait loop, a server), not work in
+ *  progress: Claude Code caps a foreground command at 10 minutes, a real build or test run in the background ends well
+ *  within it. Past it, the command alone never keeps its session « working ». */
+export const WATCHER_MS = 10 * 60_000
 /** A timer's journal: the fields its runs are read from (journalRuns), and how many of its newest entries. */
 const JOURNAL_FIELDS = '_SYSTEMD_INVOCATION_ID,USER_INVOCATION_ID,INVOCATION_ID,MESSAGE,EXIT_STATUS,UNIT_RESULT,JOB_RESULT'
 const JOURNAL_LINES = 20_000
@@ -1189,7 +1193,9 @@ export class Weevils {
     const subagents = alive ? t.subagents : t.subagents.map((s) => (s.status === 'working' ? { ...s, status: 'stopped' as const, endedAt: Math.max(s.startedAt, lastSeen) } : s))
     const running = subagents.filter((s) => s.status === 'working')
     // Tant qu'il tourne, la session travaille : ni « idle », ni « done » après 30 min, ni « a fini » (notifyTransitions).
-    if (running.length && status !== 'needs_user') status = 'working'
+    // Except a long-lived watcher: a background command still running past WATCHER_MS (a wait loop, a server, a tail)
+    // is not the agent's turn. The session is idle and fades like any other; `background` still counts it.
+    if (running.some((s) => s.kind !== 'shell' || now - s.startedAt < WATCHER_MS) && status !== 'needs_user') status = 'working'
     // Coupée en plein travail : ni « terminée », ni « travaille » ; elle attend une reprise.
     let interrupted = this.cutOf(t, alive, hook, t.subagents.some((x) => x.status === 'working'))
     // Read on the screen: paused by the usage limit, signed out, stopped. A calm status, nothing to answer.

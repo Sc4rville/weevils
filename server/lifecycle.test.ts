@@ -389,6 +389,24 @@ describe('notifications', () => {
 describe('arrière-plan (sous-agents, workflow, commandes)', () => {
   const sub = (over: Partial<Subagent> = {}): Subagent => ({ id: 'a1', kind: 'step', label: 'build:page', activity: 'Bash · npm test', workflow: 'wf', phase: 'Build', status: 'working', startedAt: NOW - 40 * MIN, ...over })
 
+  it('a long-lived background watcher alone never keeps its session working: idle, then done, still counted as background', () => {
+    const watcher = sub({ id: 'w1', kind: 'shell', label: 'Wait until the build ends', activity: 'until … do sleep 5', workflow: undefined, phase: undefined })
+    add(transcript({ lastActivityAt: NOW - 45 * MIN, subagents: [{ ...watcher, startedAt: NOW - 3 * MIN }] }))
+    w.panes = [pane({ createdAt: NOW - 50 * MIN })]
+    w.hooks.set('s1', { event: 'Stop', at: NOW - 45 * MIN, pid: ALIVE })
+    // Just launched, it may be a real test run: the session still works.
+    expect(one()).toMatchObject({ status: 'working', background: 1 })
+    // Past ten minutes, a watcher: the session fades like any idle one, its watcher still counted.
+    w.store.get('s1')!.subagents = [{ ...watcher, startedAt: NOW - 40 * MIN }]
+    expect(one()).toMatchObject({ status: 'done', background: 1, workStartedAt: null })
+    w.store.get('s1')!.lastActivityAt = NOW - 5 * MIN
+    w.hooks.set('s1', { event: 'Stop', at: NOW - 5 * MIN, pid: ALIVE })
+    expect(one()).toMatchObject({ status: 'idle', background: 1 })
+    // A sub-agent is the agent's own work: it keeps the session working however long it runs.
+    w.store.get('s1')!.subagents = [{ ...watcher, startedAt: NOW - 40 * MIN }, sub({ kind: 'agent' })]
+    expect(one()).toMatchObject({ status: 'working', background: 2 })
+  })
+
   it('L14 tour fini mais un sous-agent tourne : working, jamais terminée après 30 min ; workStartedAt = début de l’arrière-plan ; pas de file', () => {
     add(transcript({ lastActivityAt: NOW - 45 * MIN, queued: [{ key: 'old', at: NOW - 46 * MIN }], subagents: [sub(), sub({ id: 'a2', status: 'done', endedAt: NOW - 30 * MIN })] }))
     w.panes = [pane({ createdAt: NOW - 50 * MIN })]

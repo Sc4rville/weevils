@@ -382,7 +382,7 @@ export function Composer({
   prompt: _prompt,
   className = 'tone',
   disabled,
-  voice = false,
+  voice = true,
   anyFile = false,
   draft,
   formRef,
@@ -402,7 +402,7 @@ export function Composer({
   prompt?: ReactNode
   className?: string
   disabled?: boolean
-  /** Dictée : un appui pour enregistrer, un appui pour transcrire dans le champ. */
+  /** Dictation, one tap to record and one to transcribe into the box: in every box to write a message in, unless a box says otherwise (2026-11-23). */
   voice?: boolean
   /** Toute pièce jointe (PDF, zip…), pas seulement des photos. */
   anyFile?: boolean

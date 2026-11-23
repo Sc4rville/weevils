@@ -13,15 +13,19 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { DATA_DIR } from './config.ts' // charge aussi ~/.config/weevils/env dans process.env
+import { CONFIG_FILE, DATA_DIR } from './config.ts' // charge aussi ~/.config/weevils/env dans process.env
+import { configValue } from './your-factory.ts'
 import { lang, tr, withLang, type Lang } from './i18n.ts'
 import { isLang } from '../shared/i18n.ts'
 import { which } from './platform.ts'
 import V from './i18n/voice.ts'
 
-/** Clé OpenAI : l'environnement, où config.ts a déjà chargé ~/.config/weevils/env. Jamais dans le code ni dans les logs. */
-export function openaiKey(): string | undefined {
-  return process.env.OPENAI_API_KEY?.trim() || undefined
+/** Clé OpenAI : l'environnement, où config.ts a déjà chargé ~/.config/weevils/env. Jamais dans le code ni dans les logs.
+ *  Your factory › Intelligence can switch the OpenAI key off: it then leaves weevils' environment, so the agents it
+ *  starts never spend it. Dictation is weevils' own way to type, not an agent: it still reads the key from the config
+ *  file (2026-11-23: a key saved in the app, then switched off for the agents, left the mic dead). */
+export function openaiKey(file = CONFIG_FILE, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.OPENAI_API_KEY?.trim() || configValue(file, 'OPENAI_API_KEY')?.trim() || undefined
 }
 
 const EXT: Record<string, string> = { 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac' }

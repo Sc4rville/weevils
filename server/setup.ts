@@ -54,6 +54,7 @@ import { githubRepo } from './weevbook/vault.ts'
 import { VAULT_REPO, withoutVault } from './weevbook/vault-github.ts'
 import { discoveryHint, isTry, mayOffer, nextStep, stepDone, STEPS, tryBrief, type JourneyFacts, type Step } from './journey.ts'
 import J from './i18n/journey.ts'
+import { openaiKey } from './transcribe.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
 const LAB_ON = !!process.env.WEEVILS_LAB_DIR?.trim()
@@ -725,7 +726,7 @@ export class Setup {
   }
 
   flags() {
-    return { provider: preferredTool(), ready: providerReady(), providers: this.providers(), codex: codexLogged(), claude: claudeLogged(), voice: !!(cartesia() || edgeTts()), dictation: !!process.env.OPENAI_API_KEY?.trim(), github: ghCache?.v.logged ?? true, welcomed: !!this.p.welcomed, syncing: !!this.p.marks['sync:start'] && !this.p.marks['vault:summary'] }
+    return { provider: preferredTool(), ready: providerReady(), providers: this.providers(), codex: codexLogged(), claude: claudeLogged(), voice: !!(cartesia() || edgeTts()), dictation: !!openaiKey(), github: ghCache?.v.logged ?? true, welcomed: !!this.p.welcomed, syncing: !!this.p.marks['sync:start'] && !this.p.marks['vault:summary'] }
   }
 
   /**
@@ -792,7 +793,7 @@ export class Setup {
       claude: { installed: !!which('claude'), logged: claudeLogged() },
       codex: providerStatus('codex'),
       github: gh,
-      voice: { spoken: cartesia() ? 'cartesia' : edgeTts() ? 'edge' : null, openai: !!process.env.OPENAI_API_KEY?.trim(), https: https || reach === 'local' },
+      voice: { spoken: cartesia() ? 'cartesia' : edgeTts() ? 'edge' : null, openai: !!openaiKey(), https: https || reach === 'local' },
       devil: { plugged: !!dv, model: dv?.model },
       mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length, pending: authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name) },
       phone: { devices: this.deps.devices(), push: this.deps.push() },

@@ -10,8 +10,6 @@ const WEBKIT = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.
 export const SHOOT_MS = 20_000
 /** The picture given up past SHOOT_MS (the line then says it took too long). */
 export class SlowShot extends Error {}
-/** An empty picture, in place of a photo off the screen during the copy. */
-const NONE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
 
 /** The page drawn again by the browser itself, at the size of the screen; the camera's own layers left out. */
 export async function shoot(): Promise<HTMLCanvasElement> {
@@ -55,7 +53,9 @@ async function make(): Promise<HTMLCanvasElement> {
     img.style.width = `${r.width}px`
     img.style.height = `${r.height}px`
     img.removeAttribute('srcset')
-    img.setAttribute('src', NONE)
+    // No address at all (never an empty picture in its place: Safari leaves a lazy photo off the screen unloaded,
+    // and the copy waited for it, 3 s).
+    img.removeAttribute('src')
   })
   let svg: SVGElement
   try {

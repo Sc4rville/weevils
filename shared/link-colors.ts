@@ -140,10 +140,10 @@ const LIGHT_TEXT = new Set<LinkTheme>(['dark', 'dark-bubble', 'synthwave', 'synt
 export const LINK_MIN_CONTRAST = 4.8
 const MAX_CHROMA = 0.2
 
-/** The most vivid in-gamut colour of hue h at lightness l, chroma at most MAX_CHROMA. */
-function vivid(l: number, h: number): Rgb {
+/** The most vivid in-gamut colour of hue h at lightness l, chroma at most max. */
+function vivid(l: number, h: number, max = MAX_CHROMA): Rgb {
   let lo = 0
-  let hi = MAX_CHROMA
+  let hi = max
   if (inGamut(oklchToRgb([l, hi, h]))) return oklchToRgb([l, hi, h])
   for (let i = 0; i < 24; i++) {
     const mid = (lo + hi) / 2
@@ -155,13 +155,13 @@ function vivid(l: number, h: number): Rgb {
 
 /** The shade of hue h for a theme: from a vivid lightness (0.52 on light grounds, 0.72 on dark ones), moving away from the grounds that clears every ground. When no
  *  shade of the hue can (a mid-tone ground on a dark theme), the hue fades towards the text colour until it does. */
-export function linkShade(theme: LinkTheme, h: number): Rgb {
+export function linkShade(theme: LinkTheme, h: number, chroma = MAX_CHROMA): Rgb {
   const gs = LINK_GROUNDS[theme]
   const passes = (c: Rgb) => gs.every((g) => contrast(c, g) >= LINK_MIN_CONTRAST)
   const light = LIGHT_TEXT.has(theme)
   for (let i = 0; i <= 100; i++) {
     const l = light ? 0.72 + i * 0.003 : 0.52 - i * 0.004
-    const c = vivid(l, h)
+    const c = vivid(l, h, chroma)
     if (passes(rgbFromHex(c))) return rgbFromHex(c)
   }
   return light ? [1, 1, 1] : [0, 0, 0]
@@ -173,6 +173,15 @@ export function linkColors(theme: LinkTheme): Record<PageKind, [string, string]>
   return Object.fromEntries(Object.entries(LINK_HUES).map(([k, [a, b]]) => [k, [rgbToHex(linkShade(theme, a)), rgbToHex(linkShade(theme, b))]])) as Record<PageKind, [string, string]>
 }
 
+/** Bold words in a reply (« **…** » from weevboss or a session): a gradient of their own, never a link's. Links are
+ *  two close shades of one hue, vivid, drifting; bold runs from violet to teal, softer (chroma at most BOLD_CHROMA)
+ *  and still, so it reads as emphasis, not as something to tap. Same grounds, same AA bar as the links. */
+export const BOLD_HUES: [number, number] = [290, 190]
+export const BOLD_CHROMA = 0.12
+export function boldColors(theme: LinkTheme): [string, string] {
+  return [rgbToHex(linkShade(theme, BOLD_HUES[0], BOLD_CHROMA)), rgbToHex(linkShade(theme, BOLD_HUES[1], BOLD_CHROMA))]
+}
+
 /** The app's rules: `[data-theme=…] .living.lk-<kind>` gets its two colours (light is also the default theme), and
  *  inside weevboss's message bubble its own. An outside author's bubble (.msg.orch.ext) has a colour of its own,
  *  unknown here: links there take the text colour, which that bubble is made to carry. */
@@ -182,6 +191,9 @@ export function linkCss(): string {
     const root = theme === 'light' ? ':root' : `:root[data-theme='${theme}']`
     for (const [k, [a, b]] of Object.entries(linkColors(theme))) out.push(`${root} .living.lk-${k}{--lk-a:${a};--lk-b:${b}}`)
     for (const [k, [a, b]] of Object.entries(linkColors(`${theme}-bubble`))) out.push(`${root} .msg.orch .living.lk-${k}{--lk-a:${a};--lk-b:${b}}`)
+    const [ba, bb] = boldColors(theme)
+    const [oa, ob] = boldColors(`${theme}-bubble`)
+    out.push(`${root} .msg .md{--bd-a:${ba};--bd-b:${bb}}`, `${root} .msg.orch .md{--bd-a:${oa};--bd-b:${ob}}`)
   }
   out.push(':root .msg.orch.ext .living,:root[data-theme] .msg.orch.ext .living{--lk-a:var(--ink);--lk-b:var(--ink)}')
   return out.join('\n')

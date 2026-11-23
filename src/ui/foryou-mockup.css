@@ -1,5 +1,5 @@
 /* ---------- The mockup bank (shared/mockup.ts, src/ui/foryou-mockup.tsx) ----------
-   A post's media sits on a support drawn here, on the post's own colour: no box around it, no dead space.
+   A post's media sits in a device or a support drawn here, on the post's own colour: no box around it, no dead space.
    Each mockup is sized from its screen's shape (--sr, height / width): as wide as it may be (--mw of the tile, at most
    --mx) without its screen growing taller than --cap. It leans a little (to the side --s) while the post is off-screen
    and settles almost flat under the eyes; only `transform` moves, so scrolling stays smooth. */
@@ -47,7 +47,7 @@
   width: min(var(--mw), var(--mx), calc(var(--cap) / var(--sr)));
   aspect-ratio: 1 / var(--sr);
   /* While it loads: a dark screen, never a white box. */
-  background: #211b2e;
+  background: #0d0d10;
 }
 .fy-media.fy-mocked .fy-mock .fy-mock-screen > :is(img, video) {
   width: 100%;
@@ -57,89 +57,76 @@
   transform: none;
   transition: none;
 }
-/* The thickness, in the language of the weevils logo: a solid block, never stacked copies. Two flat faces, the side
-   that faces the eye (--s, the way the mockup turns) and the bottom, each one shade of the logo, joined at the corner on
-   one clean edge. Sharp corners everywhere, as on the logo's blocks. --d is the depth; the bottom shows a little less. */
-.fy-mock {
-  --d: 9px;
-  --dx: var(--d);
-  --dy: calc(var(--d) * 0.75);
-  --face-top: #9f7aea;
-  --face-mid: #49405f;
-  --face-dark: #211b2e;
-  /* Under the side face's edge only: no hairline of the post's colour between the front and its faces. */
-  box-shadow: calc(var(--s) * 1px) 1px 0 var(--face-mid);
-}
-.fy-mock-side,
-.fy-mock-base {
+/* The glass: one soft diagonal light. */
+.fy-mock-screen::after {
+  content: '';
   position: absolute;
+  inset: 0;
   pointer-events: none;
-  transform: scaleX(var(--s));
-}
-.fy-mock-side {
-  top: 0;
-  left: calc(50% + var(--s) * 50% + (var(--s) - 1) * var(--dx) / 2);
-  width: var(--dx);
-  height: calc(100% + var(--dy));
-  background: var(--face-mid);
-  clip-path: polygon(0 0, 100% var(--dy), 100% 100%, 0 100%);
-}
-.fy-mock-base {
-  top: 100%;
-  left: calc((var(--s) - 1) * var(--dx) / 2);
-  width: calc(100% + var(--dx));
-  height: var(--dy);
-  background: var(--face-dark);
-  clip-path: polygon(0 0, calc(100% - var(--dx)) 0, 100% 100%, var(--dx) 100%);
+  background: linear-gradient(118deg, rgb(255 255 255 / 0.09) 0 24%, rgb(255 255 255 / 0) 24.4%);
 }
 
-/* An interface (phone, browser, tablet): never a drawn device. The capture itself is the front of the block, big
-   enough to read, flat under the eyes, with the two faces of the logo for its thickness; no frame, no glass, no
-   buttons, no bar. The three differ only by their shape and how wide they may grow. */
+/* The thickness: hard steps on the side that faces the eye (the weevils staircase), then a soft shadow on the band. */
 .fy-mock-phone,
 .fy-mock-tablet,
-.fy-mock-browser {
-  --ry: 0deg;
-  --rx: 0deg;
-  --rz: 0deg;
-  --k: 0.97;
-  --d: 9px;
+.fy-mock-cinema {
+  background: #09090c;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.17),
+    calc(var(--s) * -1px) 1px 0 #2a2a31,
+    calc(var(--s) * -2px) 2px 0 #222228,
+    calc(var(--s) * -3px) 3px 0 #1b1b20,
+    calc(var(--s) * -4px) 4px 0 #141418,
+    calc(var(--s) * -14px) 28px 44px -16px rgb(0 0 0 / 0.5);
 }
-.fy-inview :is(.fy-mock-phone, .fy-mock-tablet, .fy-mock-browser) {
-  --ry: 0deg;
-  --rx: 0deg;
-  --rz: 0deg;
-  --k: 1;
-}
-/* phone: a phone's screen, as tall as the post allows; a longer capture shows its top, as on the phone itself. */
+
+/* phone: an app seen on a phone. A taller capture shows its top, as on the phone itself. */
 .fy-mock-phone {
-  --mw: 92cqw;
-  --mx: 400px;
-  --cap: 76dvh;
+  --mw: 60cqw;
+  --mx: 290px;
+  padding: 8px;
+  border-radius: 40px;
+}
+.fy-mock-phone .fy-mock-screen {
+  border-radius: 32px;
 }
 .fy-mock-phone .fy-mock-screen > :is(img, video) {
   object-position: top;
 }
-.fy-mock-tablet {
-  --mw: 96cqw;
-  --mx: 640px;
-  --cap: 62dvh;
-}
-.fy-mock-browser {
-  --mw: calc(100cqw - 12px);
-  --mx: 760px;
-  --cap: 60dvh;
+/* The earpiece, in the top edge. */
+.fy-mock-phone::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 18%;
+  height: 2.5px;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  background: #26262d;
 }
 
-/* cinema: a clip that is not an interface (a render, a film), on a screen of the logo's violet with its green light. */
+/* tablet: a wider screen in a thicker edge. */
+.fy-mock-tablet {
+  --mw: 82cqw;
+  --mx: 520px;
+  --cap: 50dvh;
+  padding: 12px;
+  border-radius: 24px;
+}
+.fy-mock-tablet .fy-mock-screen {
+  border-radius: 12px;
+}
+
+/* cinema: a clip on a screen, a small chin with its light. */
 .fy-mock-cinema {
   --mw: 92cqw;
   --mx: 720px;
   padding: 6px 6px 15px;
-  background: var(--face-top);
+  border-radius: 12px;
 }
 .fy-mock-cinema .fy-mock-screen {
-  background: var(--face-dark);
+  border-radius: 6px;
 }
 .fy-mock-cinema::before {
   content: '';
@@ -148,24 +135,65 @@
   left: 50%;
   width: 5px;
   height: 5px;
+  border-radius: 50%;
   transform: translateX(-50%);
   background: #3ddc84;
+  box-shadow: 0 0 6px #3ddc84;
 }
 
-/* A clip never turns in 3D: iPhone may leave a video blank inside a 3D-turned block. It only grows in, flat. */
-.fy-clip .fy-media-hit {
-  perspective: none;
+/* browser: a desktop capture in a window, its bar with three dots and an empty address. */
+.fy-mock-browser {
+  --mw: 92cqw;
+  --mx: 720px;
+  --cap: 50dvh;
+  --ry: -11deg;
+  padding-top: 22px;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle, #ff6b5a 0 3.4px, transparent 3.9px) 4px 3px / 16px 16px no-repeat,
+    radial-gradient(circle, #ffc53d 0 3.4px, transparent 3.9px) 17px 3px / 16px 16px no-repeat,
+    radial-gradient(circle, #3ddc84 0 3.4px, transparent 3.9px) 30px 3px / 16px 16px no-repeat,
+    #f1eee8;
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 0.08),
+    calc(var(--s) * -2px) 2px 0 rgb(0 0 0 / 0.22),
+    calc(var(--s) * -4px) 4px 0 rgb(0 0 0 / 0.14),
+    calc(var(--s) * -6px) 6px 0 rgb(0 0 0 / 0.08),
+    calc(var(--s) * -14px) 26px 44px -16px rgb(0 0 0 / 0.45);
 }
-.fy-clip .fy-mock {
-  transform: scale(var(--k));
+.fy-mock-browser::before {
+  content: '';
+  position: absolute;
+  top: 5.5px;
+  left: 28%;
+  width: 44%;
+  height: 11px;
+  border-radius: 6px;
+  background: #fff;
+}
+.fy-mock-browser .fy-mock-screen {
+  border-radius: 0 0 10px 10px;
+}
+.fy-inview .fy-mock-browser {
+  --ry: -4deg;
 }
 
-/* print: a still or a render, mounted on a thin block that leans. */
+/* print: a still or a render, a lifted print on a stack of steps. */
 .fy-mock-print {
   --ry: -6deg;
   --rx: 14deg;
   --rz: -2.4deg;
-  --d: 6px;
+  border-radius: 4px;
+  box-shadow:
+    calc(var(--s) * -3px) 3px 0 rgb(0 0 0 / 0.2),
+    calc(var(--s) * -6px) 6px 0 rgb(0 0 0 / 0.12),
+    calc(var(--s) * -9px) 9px 0 rgb(0 0 0 / 0.07),
+    calc(var(--s) * -14px) 30px 46px -18px rgb(0 0 0 / 0.5);
+}
+.fy-mock-print .fy-mock-screen {
+  border-radius: 4px;
+  outline: 1px solid rgb(255 255 255 / 0.3);
+  outline-offset: -1px;
 }
 .fy-inview .fy-mock-print {
   --ry: -3deg;
@@ -173,7 +201,8 @@
   --rz: -1deg;
 }
 
-/* board: a diagram or a before/after on a thick block, flat under the eyes, to be read. */
+/* board: a diagram or a before/after, black edge; its thickness is a solid block like the weevils logo (two flat
+   faces, one shade each, joined on one clean edge at the corner), never stacked copies. Flat under the eyes, to be read. */
 .fy-mock-board {
   --mw: 88cqw;
   --mx: 640px;
@@ -181,12 +210,44 @@
   --ry: 0deg;
   --rx: 16deg;
   --rz: 0deg;
+  --b: 3px;
   --d: 12px;
-  padding: 5px;
-  background: var(--face-top);
+  border: var(--b) solid #111;
+  /* Under the side face's edge only: no hairline of the post's colour between the edge and its faces. */
+  box-shadow: 1px 1px 0 #49405f;
+}
+/* The faces: only the board has them (the other mockups keep their own look). */
+.fy-mock-side,
+.fy-mock-base {
+  display: none;
+}
+.fy-mock-board > .fy-mock-side,
+.fy-mock-board > .fy-mock-base {
+  display: block;
+  position: absolute;
+  pointer-events: none;
+}
+.fy-mock-board > .fy-mock-side {
+  top: calc(-1 * var(--b));
+  left: calc(100% + var(--b));
+  width: var(--d);
+  height: calc(100% + 2 * var(--b) + var(--d) * 0.75);
+  background: #49405f;
+  clip-path: polygon(0 0, 100% calc(var(--d) * 0.75), 100% 100%, 0 100%);
+}
+.fy-mock-board > .fy-mock-base {
+  top: calc(100% + var(--b));
+  left: calc(-1 * var(--b));
+  width: calc(100% + 2 * var(--b) + var(--d));
+  height: calc(var(--d) * 0.75);
+  background: #211b2e;
+  clip-path: polygon(0 0, calc(100% - var(--d)) 0, 100% 100%, var(--d) 100%);
 }
 .fy-mock-board .fy-mock-screen {
   background: #e9e6df;
+}
+.fy-mock-board .fy-mock-screen::after {
+  content: none;
 }
 .fy-inview .fy-mock-board {
   --ry: 0deg;
@@ -194,11 +255,19 @@
   --rz: 0deg;
 }
 
+/* A clip never turns in 3D: iPhone may leave a video blank inside a 3D-turned block. Its mockup stays the same, it only
+   grows in, flat. */
+.fy-clip .fy-media-hit {
+  perspective: none;
+}
+.fy-clip .fy-mock {
+  transform: scale(var(--k));
+}
+
 /* Several media in a row, or a pair: smaller, side by side, the same rule. */
 .fy-media-strip.many .fy-mocked .fy-mock {
   --cap: min(48dvh, 78vw);
   --mw: 80cqw;
-  --d: 7px;
 }
 .fy-two .fy-media.fy-mocked {
   aspect-ratio: auto;
@@ -211,7 +280,6 @@
 .fy-two .fy-mocked .fy-mock {
   --cap: 40dvh;
   --mw: 86cqw;
-  --d: 7px;
 }
 
 @media (prefers-reduced-motion: reduce) {

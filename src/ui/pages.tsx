@@ -47,6 +47,7 @@ import { ProjectPage } from './project-screen'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 import { WebPage } from './living-link'
+import { WeevilLoading } from './loading'
 
 
 
@@ -220,7 +221,7 @@ function SessionPage({ id }: { id: string }) {
     return (
       <Shell slot={held?.slot ?? 'agent'} kicker={held?.kicker ?? 'weevils'} title={missing && !pending.length ? gone : '…'} bodyRef={body} side={held?.side}>
         {/* A session just launched (its first message is on its way) is not gone, only not listed yet. */}
-        {missing && !pending.length && <GoneBack />}
+        {missing && !pending.length ? <GoneBack /> : !pending.length && <WeevilLoading />}
       </Shell>
     )
 

@@ -22,6 +22,7 @@ import { Shell } from './shell'
 import { getLang, useT } from '../i18n'
 import M from '../i18n/memory'
 import './memory.css'
+import { WeevilLoading } from './loading'
 
 /** How long a refused write's reason stays on screen. */
 const NOTE_MS = 3200
@@ -345,6 +346,7 @@ export function MemoryPage() {
           </div>
         </div>
       )}
+      {!list && !err && <WeevilLoading inline />}
       {list?.map((m) => (
         <Item
           key={m.id}

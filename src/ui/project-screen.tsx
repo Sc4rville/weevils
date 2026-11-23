@@ -21,6 +21,7 @@ import { TempoIcon } from './tempo'
 import './project-screen.css'
 import { WeevbookLine } from './threads'
 import { inProject } from '../../shared/ask-project.ts'
+import { WeevilLoading } from './loading'
 
 type Row = LedgerView['asks'][number]
 
@@ -35,13 +36,15 @@ export function requestsOf(asks: Row[], project: { id: string; name: string }, s
 }
 
 /** The ledger, read while the project is open: again when a request opens or closes, at most every 30 s otherwise. */
+// The last list read, kept for the next page that shows requests: it opens on it at once and refreshes behind.
+let lastLedger: LedgerView | null = null
 export function useLedger(): { ledger: LedgerView | null; reload: () => void } {
   const { snap } = useApp()
-  const [v, setV] = useState<LedgerView | null>(null)
+  const [v, setV] = useState<LedgerView | null>(lastLedger)
   const last = useRef(0)
   const load = () => {
     last.current = Date.now()
-    api.ledger().then(setV).catch(() => undefined)
+    api.ledger().then((x) => { lastLedger = x; setV(x) }).catch(() => undefined)
   }
   useEffect(load, [snap.asksOpen])
   useEffect(() => {
@@ -66,6 +69,8 @@ export function ProjectRequests({ project, fill, withSessions }: { project: { id
     return groupsOf(asks, snap.sessions, withSessions ? openSessionsOf(snap.sessions, project.id) : [])
   }, [ledger, project.id, project.name, snap.sessions, withSessions])
   // A project with nothing asked yet says so, in the words of the page of all requests, rather than a blank page.
+  // On its way: the weevil, from the first frame (the list of every request can take a moment on a phone network).
+  if (!ledger && !groups.length) return <WeevilLoading />
   if (ledger && !groups.length) return <EmptyRequests />
   return <RequestGroups groups={groups} onChanged={reload} fill={fill} />
 }

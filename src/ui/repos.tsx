@@ -12,6 +12,7 @@ import { Line } from './bits'
 import { markSeen, useViewHint } from './hints'
 import { askSetup, device } from './setup'
 import { bossOnReturn, reveal, takeBossOnReturn } from './follow'
+import { WeevilLoading } from './loading'
 
 /** Couleur par position : un pas de 7 sur les 16 teintes, donc deux rectangles voisins (à côté ou dessous) n'ont jamais une teinte proche. */
 const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
@@ -147,6 +148,7 @@ export function ReposPage() {
           </button>
         </div>
       </form>
+      {!repos && !err && <WeevilLoading inline />}
       <div ref={grid} className="repo-grid">
         {repos?.map((r, i) => {
           const on = pinned.has(r.name)

@@ -1,4 +1,5 @@
 import type { RequestOrigin } from '../shared/api.ts'
+import { sendJson } from './http-json.ts'
 import { collectionReaders } from './page-collections.ts'
 import { markdownFileRoutes } from './markdown-files.ts'
 import { proposeThinkLayout } from './think-ai.ts'
@@ -586,10 +587,7 @@ function requestOrigin(req: http.IncomingMessage, body: { origin?: unknown; forU
 
 // ---------------------------------------------------------------- utilitaires
 
-const json = (res: http.ServerResponse, status: number, body: unknown) => {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
-  res.end(JSON.stringify(body))
-}
+const json = sendJson
 
 const readBody = (req: http.IncomingMessage, limit = 1 << 20) =>
   new Promise<any>((resolve, reject) => {

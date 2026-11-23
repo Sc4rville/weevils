@@ -46,6 +46,15 @@ export const REMOTES = process.env.WEEVILS_REMOTES
 export const CLAUDE_DIR = path.join(HOME, '.claude', 'projects')
 export const CODEX_DIR = path.join(process.env.CODEX_HOME ?? path.join(HOME, '.codex'), 'sessions')
 export const DATA_DIR = path.join(HOME, '.local', 'share', 'weevils')
+/** The pages of next's « pages » band, one folder each (server/page-band.ts): their conversations are the person's
+ *  sessions, unlike everything else that runs under DATA_DIR (weevboss and its helpers). */
+export const MADE_PAGES_DIR = path.join(DATA_DIR, 'made-pages')
+/** A folder of weevils' own machinery (weevboss, its turns…): its sessions are never listed as the person's. */
+export const internalCwd = (cwd: string) => cwd.startsWith(DATA_DIR) && !madePageCwd(cwd)
+/** A page's conversation (MADE_PAGES_DIR): reopened from the band whenever its page is, so never too old to list. */
+export const madePageCwd = (cwd: string) => cwd.startsWith(MADE_PAGES_DIR + path.sep)
+/** Claude Code's folder for a page's transcripts (its cwd with every other character as « - »). */
+export const madePageTranscript = (file: string) => path.basename(path.dirname(file)).startsWith(`${MADE_PAGES_DIR.replace(/[^a-zA-Z0-9]/g, '-')}-`)
 /** Journaux des jobs longs (<nom>.log) : chacun s'affiche comme une activité 24/7 tant qu'il s'écrit. LOGS_DIR est celui
  * où weevils écrit (job de démo) ; sans WEEVILS_LOGS_DIR, le rail lit aussi ~/logs, où les agents lancent leurs jobs
  * (nohup … > ~/logs/<nom>.log). */

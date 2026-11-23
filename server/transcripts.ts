@@ -538,6 +538,8 @@ export class TranscriptStore {
   /** A conversation brought from another machine (server/bring.ts): when it arrived here. The sessions list keeps it
    * with the recent ones from then (core.ts), ready to resume; its own activity stays as it was (not « live »). */
   broughtAt?: (id: string) => number | undefined
+  /** Files followed whatever their age (a page's conversation, reopened from the pages band at any time). */
+  keep?: (file: string) => boolean
   private originBases=new Map<Message,Pick<Message,'role'|'author'|'coordination'|'sourceThreadId'>>()
   /** The project folders as last listed (listClaudeFiles). */
   private listings = new Map<string, Listing>()
@@ -578,7 +580,7 @@ export class TranscriptStore {
         continue
       }
       if (!t) {
-        if (now - st.mtimeMs > this.recentMs) {
+        if (now - st.mtimeMs > this.recentMs && !this.keep?.(file)) {
           this.cold.add(file)
           continue
         }

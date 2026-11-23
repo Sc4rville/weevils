@@ -60,6 +60,8 @@ const PATHS = {
   play: 'M7 4l12 8-12 8z',
   grip: 'M7 9h10M7 15h10',
   file: 'M6 3h8l4 4v14H6z',
+  // A page of next's « pages » band: a window, its bar across the top.
+  page: 'M3 4h18v16H3zM3 9h18',
   // A repository: a square folder, its tab square too.
   repo: 'M3 5h7v3h11v12H3zM3 8h7',
   // Settings: three thin rails, each with a square knob set at its own place.

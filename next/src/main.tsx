@@ -44,6 +44,7 @@ import { useApp } from '../../src/ui/app-context.tsx'
 import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
 import { ForYouPage } from '../../src/ui/foryou.tsx'
 import { Camera, type Spot } from './camera.tsx'
+import { NewPage, PageStudio, PagesSection, type NxPage } from './pages.tsx'
 
 const THEME_KEY = 'weevils-theme'
 /** One motion for every move in next (docs/next-interaction.md): the app's own page spring (bits.tsx spring), the
@@ -204,15 +205,20 @@ function ProjectGroup({ snap, project, color, current, open, page, boss }: { sna
 }
 
 /** still: shown again in place (no slide), as the page that covered it leaves. */
-function SideBar({ snap, colors, current, open, close, page, still = false }: {
+function SideBar({ snap: all, colors, current, open, close, page, openPages, still = false }: {
   still?: boolean
-  page: (p: Page) => void
+  page: (p: NxPage) => void
+  /** The pages of the pages band open right now (bold in it). */
+  openPages: Set<string>
   snap: Snapshot
   colors: Record<string, string>
   current: string | null
   open: (id: string | null) => void
   close: () => void
 }) {
+  // A page's conversation lives in the pages band, never under a project (pages.tsx).
+  const building = new Set((all.pageBand ?? []).flatMap((p) => (p.session ? [p.session] : [])))
+  const snap = building.size ? { ...all, sessions: all.sessions.filter((s) => !building.has(s.id)) } : all
   // Projects as on the original home: weevils itself first, then what works, then the most recent.
   const last = (p: Project) => Math.max(0, ...snap.sessions.filter((s) => s.projectId === p.id && !s.archived).map((s) => s.lastActivityAt))
   const busy = (p: Project) => snap.sessions.some((s) => s.projectId === p.id && !s.archived && live(s))
@@ -305,6 +311,8 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
               </Collapse>
             </section>
           )}
+          {/* Pages: the person's own pages, each built in a conversation (pages.tsx). */}
+          <PagesSection snap={all} page={page} openSlugs={openPages} />
           {/* Your factory: machines, intelligence, projects and the global Tempo (factory.tsx). */}
           <FactorySection snap={snap} colors={colors} page={page} toBoss={close} />
           {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
@@ -395,7 +403,7 @@ function App() {
   const bt = useT(BM)
   const hostRef = useRef<HTMLDivElement>(null)
   // The app's own pages (files, a file, a project's page…), drawn by its PageView on top of everything, as a stack.
-  const [pages, setPages] = useState<{ p: Page; side: boolean }[]>([])
+  const [pages, setPages] = useState<{ p: NxPage; side: boolean }[]>([])
   const pagesRef = useRef(pages)
   pagesRef.current = pages
   // The side bar: `side` open, `sideStill` shown again in place (no slide) as a page leaves to uncover it.
@@ -472,7 +480,7 @@ function App() {
   // the screen (never under the app's 140 px) or on a real fling (the app's 700 px/s, with 40 px of travel).
   // A session asked for from weevboss's screen or the side bar opens in the session layer (weevboss's strip above
   // it); asked for from a page, it is one more page on that page, so back comes back to the page.
-  const push = useCallback((p: Page, fromSide = false) => {
+  const push = useCallback((p: NxPage, fromSide = false) => {
     if (p.kind === 'calm') return
     if (p.kind === 'session' && (fromSide || !pagesRef.current.length)) { open(p.id, fromSide); return }
     setPages((s) => [...s, { p, side: fromSide }])
@@ -564,7 +572,7 @@ function App() {
     const s = sid ? snap?.sessions.find((x) => x.id === sid) : undefined
     const proj = s ? snap?.projects.find((x) => x.id === s.projectId) : top && 'projectId' in top ? snap?.projects.find((x) => x.id === top.projectId) : undefined
     const screen = top ? top.kind : session ? 'session' : side ? 'side bar' : document.querySelector('.nx-fy') ? 'for you' : 'weevboss'
-    const page = top && top.kind !== 'session' ? pageFacts(top) : undefined
+    const page = top && top.kind !== 'session' ? pageFacts(top as Page) : undefined
     return {
       context: {
         ui: 'next', screen, theme, viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1 },
@@ -589,6 +597,8 @@ function App() {
   const sProject = session ? snap.projects.find((x) => x.id === snap.sessions.find((s) => s.id === session)?.projectId) : undefined
   // The session's colour behind it and in weevboss's wash: its repo's, and for weevils' own repo the base of its
   // gradient (the page itself wears the gradient: shell.tsx identity).
+  // The band's pages open right now: bold in the pages band.
+  const openPages = new Set(pages.flatMap(({ p }) => (p.kind === 'page-studio' ? [p.slug] : p.kind === 'webpage' ? [p.path.split('/').pop() ?? ''] : [])))
   const sColor = sProject && selfProject(sProject) ? 'color-mix(in oklch, var(--fy-g1), var(--fy-g2) 30%)' : `var(--${(sProject && colors[sProject.id]) ?? 'p0'})`
 
   /** Where the two For you destinations that are not pages lead (reach.ts). */
@@ -638,14 +648,16 @@ function App() {
         </motion.div>
       </motion.section>
       <AnimatePresence>
-        {side && <SideBar still={sideStill} snap={snap} colors={colors} current={session} open={(id) => (id === null ? open(null) : open(id, true))} close={() => setSide(false)} page={(p) => push(p, true)} />}
+        {side && <SideBar still={sideStill} openPages={openPages} snap={snap} colors={colors} current={session} open={(id) => (id === null ? open(null) : open(id, true))} close={() => setSide(false)} page={(p) => push(p, true)} />}
       </AnimatePresence>
       <div className="nx-pages">
         {/* Every page, wherever it was asked from, is the app's own page and its own move: in from the right edge,
             back out to the right (its chevron, or its swipe following the finger), uncovering what was under it. */}
         <AnimatePresence>
           {pages.map(({ p }, i) => {
-            const key = `${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'file' ? p.path : p.kind === 'project' ? p.projectId : p.kind === 'session' || p.kind === 'auto' ? p.id : ''}`
+            const key = `${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'file' ? p.path : p.kind === 'project' ? p.projectId : p.kind === 'session' || p.kind === 'auto' ? p.id : p.kind === 'page-studio' ? p.slug : p.kind === 'webpage' ? p.path : ''}`
+            if (p.kind === 'pages-new') return <NewPage key={key} />
+            if (p.kind === 'page-studio') return <PageStudio key={key} slug={p.slug} />
             return p.kind === 'project' ? <NextProjectPage key={key} projectId={p.projectId} /> : p.kind === 'auto' ? <NextAutoPage key={key} id={p.id} /> : p.kind === 'machine' && p.machine ? <NextMachinePage key={key} id={p.machine} /> : <PageView key={key} page={p} />
           })}
         </AnimatePresence>

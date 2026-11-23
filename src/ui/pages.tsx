@@ -8,7 +8,7 @@ import { OutboxStatus } from './outbox-status'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
@@ -157,6 +157,10 @@ function ErrorBand({ text }: { text: string }) {
 // ---------------------------------------------------------------------------
 // Session : le fil et ses bandes d'état.
 
+/** Set around a session page by the one that holds it (next's page studio, next/src/pages.tsx): what sits with the
+ *  thread instead of the app's preview (always shown), and the word of its back button. */
+export const SessionSide = createContext<{ side: ReactNode; kicker: string; slot?: string } | null>(null)
+
 function SessionPage({ id }: { id: string }) {
   const appLang = useLang()
   const { snap, now, replace, colors } = useApp()
@@ -171,6 +175,7 @@ function SessionPage({ id }: { id: string }) {
   useEffect(() => dropSeed(id), [id])
   const [preview, setPreview] = usePreviewState(id)
   const [showSettings, setShowSettings] = useState(false)
+  const held = useContext(SessionSide)
   /** Whether the header pill shows its phrase whole (not cut with « … » on a narrow screen). */
 
 
@@ -213,7 +218,7 @@ function SessionPage({ id }: { id: string }) {
   // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
   if (!s)
     return (
-      <Shell slot="agent" kicker="weevils" title={missing && !pending.length ? gone : '…'} bodyRef={body}>
+      <Shell slot={held?.slot ?? 'agent'} kicker={held?.kicker ?? 'weevils'} title={missing && !pending.length ? gone : '…'} bodyRef={body} side={held?.side}>
         {/* A session just launched (its first message is on its way) is not gone, only not listed yet. */}
         {missing && !pending.length && <GoneBack />}
       </Shell>
@@ -248,9 +253,9 @@ function SessionPage({ id }: { id: string }) {
 
   return (
     <Shell
-      slot={colors[s.projectId] ?? 'agent'}
-      identity={!!project && selfProject(project)}
-      kicker={project?.name ?? t.sessionsKicker}
+      slot={held?.slot ?? colors[s.projectId] ?? 'agent'}
+      identity={!held && !!project && selfProject(project)}
+      kicker={held?.kicker ?? project?.name ?? t.sessionsKicker}
       title={s.title}
       scrollHeading
       sessionLayout
@@ -277,7 +282,7 @@ function SessionPage({ id }: { id: string }) {
       }
       float={<FollowDown show={follow.behind} urgent={s.status === 'needs_user'} body={body} toEnd={toEnd} />}
       bodyRef={body}
-      side={preview.open ? <Preview session={s} project={project} url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
+      side={held ? held.side : preview.open ? <Preview session={s} project={project} url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
       foot={
         <>
           <FootError text={err} />

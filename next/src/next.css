@@ -445,3 +445,30 @@ body { overflow: hidden; }
 }
 .nx-stage .choice-band:first-of-type { margin-top: 14px; }
 .nx-stage .choice-band:disabled { opacity: .55; }
+
+/* The pages band (pages.tsx): a new page is a nearly blank screen, a couple of ideas taking turns in its middle, each
+   in the living links' drifting colours (no box, no line); one replaces the other with a slow crossfade, in place. */
+.page-body > .nx-ideas {
+  flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 22px;
+  padding: 24px var(--pad) 48px;
+}
+.page-body:has(> .nx-ideas) > .fill { flex: 0; }
+.nx-idea { display: grid; text-align: center; }
+.nx-idea > * { grid-area: 1 / 1; }
+.nx-idea-text {
+  font: inherit; font-size: 22px; font-weight: 500; line-height: 1.25; letter-spacing: -0.01em;
+  border: 0; padding: 4px 0; background-color: transparent; text-align: center; cursor: pointer;
+}
+.nx-idea-text:disabled { cursor: default; }
+/* A page being built: the page above, its conversation under it (the box to write in stays at the bottom); side by
+   side on a wide screen. The page fills its half, nothing around it. */
+.nx-studio .page.split .page-cols { flex-direction: column-reverse; }
+@media (min-width: 900px) { .nx-studio .page.split .page-cols { flex-direction: row; } }
+.nx-studio .page.split .page-side { background: var(--c); }
+.nx-live { position: relative; flex: 1; min-height: 0; }
+.nx-live iframe {
+  position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent;
+  opacity: 0; transition: opacity .4s ease;
+}
+.nx-live iframe.ready { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .nx-live iframe { transition: none; } }

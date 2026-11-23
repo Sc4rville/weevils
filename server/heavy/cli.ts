@@ -142,6 +142,11 @@ async function offloadOnce(helper: { id: string; name: string }, from: string): 
         say(`${helper.name} could not prepare the job (${p.setupError}): running it here instead.`)
         return null
       }
+      if ((p.phase === 'done' || p.phase === 'failed') && p.code === 127) {
+        // i18n-ignore: read by the agent that ran the command, in English
+        say(`${helper.name} could not start ${argv[0]} (missing there): running it here instead.`)
+        return null
+      }
       if (p.phase === 'done' || p.phase === 'failed') {
         if (p.files) {
           const r = await fetch(`${base}${at}/run/${id}/files`, { headers: token(), signal: AbortSignal.timeout(10 * 60_000) }).catch(() => null)

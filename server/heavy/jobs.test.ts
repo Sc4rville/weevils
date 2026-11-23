@@ -70,12 +70,12 @@ afterAll(() => {
 })
 
 /** weevils-heavy, as a session runs it, with this machine's only slot taken by `holder`. */
-function cli(holder: number, home: string) {
+function cli(holder: number, home: string, argv = ['sh', 'job.sh']) {
   const q = path.join(home, 'queue')
   fs.mkdirSync(q, { recursive: true })
   fs.writeFileSync(path.join(q, '00000000000001-1-held.json'), JSON.stringify({ pid: holder, at: 1, cmd: 'npm run check', cwd: '/elsewhere', state: 'running' }))
   return new Promise<{ code: number; out: string; err: string }>((resolve) => {
-    const p = spawn(process.execPath, ['--no-warnings', path.join(import.meta.dirname, 'cli.ts'), '--', 'sh', 'job.sh'], {
+    const p = spawn(process.execPath, ['--no-warnings', path.join(import.meta.dirname, 'cli.ts'), '--', ...argv], {
       cwd: path.join(repo, 'pkg'),
       env: { ...process.env, HOME: home, WEEVILS_PORT: new URL(main.url).port, WEEVILS_HEAVY_DIR: q, WEEVILS_HEAVY_SLOTS: '1', WEEVILS_HEAVY: '' },
     })
@@ -128,6 +128,14 @@ describe('heavy jobs on another machine', () => {
     } finally {
       takes = true
     }
+  }, 60_000)
+
+  it('runs it here when the other machine lacks the tool', async () => {
+    const holder = spawn('sleep', ['2'])
+    const r = await cli(holder.pid!, path.join(root, 'vps-home-3'), ['weevils-no-such-tool'])
+    expect(r.err).toContain('runs on the PC')
+    expect(r.err).toContain('missing there): running it here instead')
+    expect(r.code).toBe(127)
   }, 60_000)
 
   it('calls a machine idle only with nothing heavy of its own and a low load', () => {

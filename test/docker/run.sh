@@ -250,7 +250,7 @@ run_systemd() {
     tpid=$(docker exec "$c3" bash -c 'pgrep -u test -f "ssh -NT .*-R 127.0.0.1:4193"' | head -1)
     docker network disconnect "$net" "$c3"
     docker exec "$c3" kill -9 "$tpid"
-    check "main: the dead connection still holds desk's port" as_test 'ss -ltnH | grep -q "127.0.0.1:4193 "'
+    check "main: the dead connection still holds desk's port" as_test 'grep -q "0100007F:1061 00000000:0000 0A" /proc/net/tcp'
     sleep 3
     docker network connect "$net" "$c3"
     check "main: desk online again within a minute (the stale port reclaimed)" online_desk

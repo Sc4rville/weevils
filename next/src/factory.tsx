@@ -15,7 +15,7 @@ import { useApp, type Page } from '../../src/ui/app-context.tsx'
 import { selfProject } from '../../src/ui/recursive-identity.ts'
 import { Collapse, Composer, ToolIcon } from '../../src/ui/bits.tsx'
 import { focusBoss } from '../../src/ui/follow.ts'
-import { Icon } from '../../src/ui/icons.tsx'
+import { G, Icon } from '../../src/ui/icons.tsx'
 import { PageView } from '../../src/ui/pages.tsx'
 import { seedPending } from '../../src/ui/pending.ts'
 import { askSetup, openKey } from '../../src/ui/setup.tsx'
@@ -132,9 +132,9 @@ export function factoryProjects(snap: Snapshot): Row[] {
 // ---------------------------------------------------------------- small parts
 
 /** The switch: a plain rectangle and its square knob, in the band's own ink. */
-function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (on: boolean) => void }) {
+function Switch({ on, label, onChange, small = false }: { on: boolean; label: string; onChange: (on: boolean) => void; small?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} className={`nx-switch ${on ? 'on' : ''}`}
+    <button type="button" role="switch" aria-checked={on} aria-label={label} className={`nx-switch ${small ? 'small' : ''} ${on ? 'on' : ''}`}
       onClick={(e) => { e.stopPropagation(); navigator.vibrate?.(6); onChange(!on) }}>
       <i />
     </button>
@@ -493,13 +493,23 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   /** A project's band: its repo colour and mark, a tap to its page, its switch for the side bar. */
   function projectBand(r: Row, at: number, depth: number) {
     const on = flipped.get(r.id) ?? (r.project ? inSideBar(snap, r.project) : snap.pinnedRepos.includes(r.id) && !snap.hiddenProjects?.includes(r.id))
+    const openPage = () => page({ kind: 'project', projectId: r.id })
     return (
       <Band key={r.id} step={at} depth={depth} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
-        <button className="nx-fx-main" onClick={r.project ? () => page({ kind: 'project', projectId: r.id }) : undefined} disabled={!r.project}>
+        <button className="nx-fx-main" onClick={openPage}>
           <span className="nx-mark"><Icon name="repo" /></span>
           <span className="nx-row-title">{r.name}</span>
         </button>
-        <Switch on={on} label={`${r.name} in the side bar`} onChange={(v2) => showProject(r, v2)} />
+        {/* A small switch, then the side bar's own « / » (its files) and « > » (its page), in the same places. */}
+        <Switch small on={on} label={`${r.name} in the side bar`} onChange={(v2) => showProject(r, v2)} />
+        <div className="chars">
+          <button className="ch" aria-label={`Files of ${r.name}`} onClick={() => page({ kind: 'files', projectId: r.id, ...(r.project ? {} : { repo: r.repos[0] ?? r.id }) })}>
+            <Icon name="slash" />
+          </button>
+          <button className="ch" aria-label={`Open ${r.name}`} onClick={openPage}>
+            <G c=">" />
+          </button>
+        </div>
       </Band>
     )
   }

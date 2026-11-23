@@ -86,3 +86,16 @@ it('settings wears its own icon in the same column, through the app\'s own band'
   const icons = fs.readFileSync(path.join(root, 'src/ui/icons.tsx'), 'utf8')
   expect(icons).toMatch(/\n  settings: '[^']+'/)
 })
+
+it('your factory > Projects: a small switch, then the side bar’s own « / » and « > » on every band', () => {
+  const fx = fs.readFileSync(path.join(root, 'next/src/factory.tsx'), 'utf8')
+  const band = fx.slice(fx.indexOf('function projectBand'))
+  expect(band).toMatch(/<Switch small /)
+  expect(band).toMatch(/className="chars">[\s\S]*?kind: 'files'[\s\S]*?<Icon name="slash" \/>[\s\S]*?<G c=">" \/>/)
+  expect(band).not.toMatch(/disabled=\{!r\.project\}/)
+  const big = body('.nx-switch'), small = body('.nx-switch.small')
+  expect(px(small, 'width')).toBeLessThan(px(big, 'width'))
+  expect(px(small, 'height')).toBeLessThan(px(big, 'height'))
+  // The same right edge as a repo's row in the side bar.
+  expect(px(body('.nx-fx-band.nx-fx-project'), 'padding-right')).toBe(px(body('.nx-project-line'), 'padding-right'))
+})

@@ -74,6 +74,8 @@ once, and the code follows. Behaviour is never flipped back and forth.
   **Projects** lists products, never folders (2026-11-23): one band per mother repo. Clones and worktrees of the same
   remote, and a product's « <product>-<part> » repos, fold into it; an automation's folders (auto-…) belong to
   autonomous and never appear; a folder that is not a git repo is not a project (server/projects.ts motherRepos).
+  Each of its bands carries a small, light switch (in the side bar or not), then the side bar's own « / » (its files)
+  and « > » (its page, empty until something is asked there) in the same places as on a repo's row (2026-11-23).
 - **A project's « > » is its requests, one column** (2026-11-21). One band per request, the Automations
   staircase (one colour, one small tone step per band, no lines, no gaps, no shadows). A band is a short title, a
   small star before it while its session works (the star's place is always kept, so titles never move), and a small

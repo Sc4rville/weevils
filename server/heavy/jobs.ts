@@ -317,7 +317,7 @@ export class Runner {
       if (job.stopped) throw Object.assign(new Error('stopped'), { setup: true }) // i18n-ignore: machine-to-machine
       job.phase = 'running'
       const since = Date.now() - 1000
-      job.code = await run('nice', ['-n', '10', ...job.argv], { cwd: path.join(work, job.dir), env: { ...this.env, PATH: await this.userPath(), WEEVILS_HEAVY: '1' }, onOut: say, job })
+      job.code = await run('nice', ['-n', String(Math.max(0, 10 - os.getPriority())), ...job.argv], { cwd: path.join(work, job.dir), env: { ...this.env, PATH: await this.userPath(), WEEVILS_HEAVY: '1' }, onOut: say, job })
       // What the job wrote (a build's output, an updated snapshot), packed for the sender.
       const files = writtenSince(work, since)
       if (files.length) {

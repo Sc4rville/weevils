@@ -849,6 +849,18 @@ a, a:hover, a:focus, a:active, a:visited, button, [role='link'] {
 .md-h2 { font-size: 1.1563rem; }
 .md-h3 { font-size: 1.0625rem; }
 .md strong { font-weight: 800; }
+/* Bold in a reply from weevboss or a session: its own still gradient, violet to teal, softer than a living link's two
+   drifting shades so it reads as emphasis, never as something to tap. Its shades are computed per theme and band to
+   read at AA (shared/link-colors.ts boldColors, --bd-a / --bd-b). Not on your own messages, not in an outside author's
+   bubble (its colour is its own); a win ([[win]]**…**) keeps its colours and confetti. No motion: a thread is full
+   of bold, and a still gradient costs the phone nothing after the first paint. */
+:where(.msg:not(.tone), .msg.orch:not(.ext)) .md strong:not(.win) {
+  background-image: linear-gradient(100deg, var(--bd-a, currentColor), var(--bd-b, currentColor));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.md a strong:not(.win) { background-image: none; -webkit-text-fill-color: inherit; }
 .md ul, .md ol { padding-inline-start: 1.3em; white-space: normal; }
 .md li + li { margin-top: .3em; }
 .md li > ul { margin-top: .3em; }

@@ -16,7 +16,6 @@ export default defineMessages({
     invalidPath: "Chemin de code invalide",
     pinnedChanged: "Le code de la version figée a été modifié",
     entrypoint: "Le point d’entrée de l’automatisation est absent",
-    dirtySource: "Le code de l’automatisation a des changements non enregistrés ; rien n’a été modifié",
   },
   en: {
     invalidId: "Invalid automation ID",
@@ -33,6 +32,5 @@ export default defineMessages({
     invalidPath: "Invalid source path",
     pinnedChanged: "Pinned automation source changed",
     entrypoint: "Automation entrypoint missing",
-    dirtySource: "The automation's source has uncommitted changes; nothing was modified",
   },
 })

@@ -39,7 +39,6 @@ import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
 import { FactorySection, NextMachinePage, shownNow, useFlips } from './factory.tsx'
-import { AutoIcon } from '../../src/ui/factory.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
 import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
@@ -299,7 +298,7 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
               {autos.map((o, i) => (
                 <button key={o.id} className={`nx-row nx-sub ${o.state === 'running' ? 'nx-active' : ''}`} style={{ '--step': Math.min(i, 8) } as React.CSSProperties}
                   onClick={() => page({ kind: 'auto', id: o.id })}>
-                  <span className="nx-mark"><AutoIcon factory={!!o.factory} running={o.state === 'running'} /></span>
+                  <span className="nx-mark">{o.state === 'running' ? <AutoMark /> : <Icon name="cycle" />}</span>
                   <span className="nx-row-text"><span className="nx-row-title">{o.title}</span></span>
                 </button>
               ))}

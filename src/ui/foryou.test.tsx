@@ -372,13 +372,13 @@ describe('for you: a feed of posts', () => {
     expect([...host.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual([t().openConversation])
   })
 
-  it('« Look » on an automation’s post opens that automation’s page (the factory proposal is there), never a drawer the host may not have', async () => {
+  it('« Look » on an automation’s post opens that automation’s page, never a drawer the host may not have', async () => {
     setLang('en')
-    const post = { ...base, id: 'factory:a1', kind: 'boss' as const, who: 'weevboss', text: 'Ad maker can become a factory: 38 runs, 9 of the last 10 good.', open: { page: 'auto' as const, id: 'a1' } }
+    const post = { ...base, id: 'post-a1', kind: 'boss' as const, who: 'weevboss', text: 'Ad maker: 38 runs, 9 of the last 10 good.', open: { page: 'auto' as const, id: 'a1' } }
     srv.feed = feed([post])
     render(<ForYouPage />, { ...snap(), optimizers: [{ id: 'a1', title: 'Ad maker', why: '', repo: null, kind: 'other', heavy: false, state: 'queued', createdAt: NOW }] })
     await flush()
-    await click(band('factory:a1').querySelector('.fy-post-head'))
+    await click(band('post-a1').querySelector('.fy-post-head'))
     expect([...host.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual([t().tapLook])
     await click(host.querySelector('.fy-sheet-go'))
     expect(pushed).toEqual([{ kind: 'auto', id: 'a1' }])

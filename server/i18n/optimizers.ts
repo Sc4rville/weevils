@@ -151,11 +151,6 @@ export default defineMessages({
     mergedLive: (t: string) => `« ${t} » est en ligne`,
     /** The person wrote into a running task's session: the run ends there, the session is theirs (core.ts sendOne). */
     handedOver: 'continuée par toi',
-    /** From automation to factory (docs/automations/PROTOCOL.md): weevboss's one line, and the refusals of the unlock. */
-    factoryLine: (t: string, why: string) => `${t} peut devenir une usine : ${why}.`,
-    factoryWhy: (runs: number, ok: number, of: number) => `${runs} passages, ${ok} réussis sur les ${of} derniers`,
-    factoryUserOnly: 'Seule la personne peut débloquer une usine, depuis l’app.',
-    factoryNotYet: 'Cette automatisation ne peut pas encore devenir une usine.',
     /** A run's work that did not land by itself (optimizers.ts offerLanding): one line and a button in For you. */
     landTitle: (t: string) => `« ${t} » attend ton feu vert`,
     landButton: 'Fusionner',
@@ -301,11 +296,6 @@ export default defineMessages({
     themesLive: (names: string[]) => names.length > 1 ? `new themes ${names.join(' and ')} are in your selector` : `new theme ${names[0]} is in your selector`,
     mergedLive: (t: string) => `"${t}" is live`,
     handedOver: 'continued by you',
-    /** From automation to factory (docs/automations/PROTOCOL.md): weevboss's one line, and the refusals of the unlock. */
-    factoryLine: (t: string, why: string) => `${t} can become a factory: ${why}.`,
-    factoryWhy: (runs: number, ok: number, of: number) => `${runs} runs, ${ok} of the last ${of} good`,
-    factoryUserOnly: 'Only the person can unlock a factory, from the app.',
-    factoryNotYet: 'This automation cannot become a factory yet.',
     landTitle: (t: string) => `"${t}" is waiting for your OK`,
     landButton: 'Land it',
     landBrief: 'Land this work: put it on the current main, run the checks, fix what fails, merge it into main and bring the running weevils up to date (rebuild the app; restart the server only if its code changed). Tell me in one sentence what changed.',

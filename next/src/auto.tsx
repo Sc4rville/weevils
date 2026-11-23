@@ -11,8 +11,6 @@ import { pageLink } from '../../shared/pages.ts'
 import { api } from '../../src/api.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
 import { AutoPage } from '../../src/ui/auto-page.tsx'
-import { PromotionLine, useSeen } from '../../src/ui/factory.tsx'
-import { FactoryPage } from '../../src/ui/factory-page.tsx'
 import { autoCondition } from '../../src/ui/auto-condition.ts'
 import { at, fromOptimizer, projectOfRepo, short, slotOf, triggerText } from '../../src/ui/auto-model.ts'
 import { durLong, plain } from '../../src/ui/format.ts'
@@ -64,12 +62,10 @@ export function NextAutoPage({ id }: { id: string }) {
   const flip = () => { swapPage(); setView((v) => (v === 'overview' ? 'talk' : 'overview')) }
   return (
     <div ref={box} className={`nx-autoview nx-auto-${view}`}>
-      {/* A factory opens on its own page (the panels its manifest declares, drawn by the app's FactoryPage); an
-          automation on its overview. Either way the small flip goes to its conversation and back. */}
-      {view === 'overview' ? (o.factory ? <FactoryPage id={id} heroName headAction={false} kicker="autonomous" onConversation={talk ? flip : undefined} /> : <Overview id={id} />) : session ? <PageView page={{ kind: 'session', id: session }} /> : <AutoPage id={id} standard />}
+      {view === 'overview' ? <Overview id={id} /> : session ? <PageView page={{ kind: 'session', id: session }} /> : <AutoPage id={id} />}
       {talk && (
         <Flip host={head} onClick={flip} label={view === 'overview' ? `Conversation of ${o.title}` : `Overview of ${o.title}`}>
-          {view === 'overview' ? <><Icon name="bubble" /><span>Conversation</span></> : <Icon name={o.factory ? 'factory' : 'cycle'} />}
+          {view === 'overview' ? <><Icon name="bubble" /><span>Conversation</span></> : <Icon name="cycle" />}
         </Flip>
       )}
     </div>
@@ -81,8 +77,6 @@ function Overview({ id }: { id: string }) {
   const o = snap.optimizers!.find((x) => x.id === id)!
   const x = fromOptimizer(o, projectOfRepo(snap.projects, o.repo), now)
   const { detail, newest } = useRuns(id, `${o.state}:${o.runCount}:${o.runs?.[0]?.at}`)
-  // An open of its page counts as the person's (one of the measured signals toward a factory).
-  useSeen(id, 'page')
   if (!x) return null
   const runs = detail?.runs?.length ? detail.runs : x.runs
   const last = runs[0]
@@ -126,8 +120,6 @@ function Overview({ id }: { id: string }) {
           </div>
         ))}
       </dl>
-      {/* The quiet line of an automation that earned it: it unfolds onto the unlock (docs/automations/PROTOCOL.md). */}
-      {o.promotion && <PromotionLine o={o} />}
     </Shell>
   )
 }

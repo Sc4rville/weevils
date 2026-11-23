@@ -1,9 +1,6 @@
 import { AutomationManifests, AutomationWorkspaces } from './automation-workspaces.ts'
 import { signAs } from './authors.ts'
-import { FactoryError, publishFactory, pushFactory, type Publication } from './factory.ts'
-import { ghOwner } from './github.ts'
-import { originOf } from './outbox-http.ts'
-import { FACTORY, USAGE_KINDS, countUsage, eligibility, pageRef, parseMetrics, parsePanels, scheduleMirror, uniqueName, usageTotals, type AutoSignals, type MetricRef, type UsageDay, type UsageKind } from '../shared/factory.ts'
+import { pageRef, parseMetrics, scheduleMirror, uniqueName } from '../shared/automation-manifest.ts'
 import { pageLink } from '../shared/pages.ts'
 import { autoMerge, restartWeevils, updateLive, type MergeResult, type Sandbox, type ScopeJudge } from './auto-merge.ts'
 import { preferredTool, providerReady } from './provider.ts'
@@ -103,12 +100,8 @@ export const isBlocked = (text: string | undefined): boolean => !!text && BLOCKE
 /** Finished tasks stay in the band this long. */
 export const KEEP_MS = 3 * 24 * 3600_000
 const TICK_MS = 60_000
-const DAY_MS = 86_400_000
 /** Manifests are brought up to date, and each source read back, this often (and at start). */
 const MANIFEST_SYNC_MS = 10 * 60_000
-const REQUESTS_CACHE_MS = 5 * 60_000
-/** Two opens of the same screen closer than this count once. */
-const SEEN_GAP_MS = 60_000
 /** A run card (PROTOCOL.md, section 6) larger than this is ignored. */
 const MAX_CARD_BYTES = 64 << 10
 const MAX_STORED = 200
@@ -449,14 +442,8 @@ type Stored = Optimizer & {
   supervision?: Supervision[]
   /** The question of the run in progress was sent to For you (once per run). */
   askedAt?: number
-  /** What the person did with it, per day (shared/factory.ts): opens of its pages, taps. Never sent to the app. */
-  usage?: Record<string, UsageDay>
-  /** The factory proposal: when weevboss said it, the last « not now » (and the run count then), how many of them. */
-  promo?: { proposedAt?: number; laterAt?: number; laterRuns?: number; laterCount?: number }
 }
 interface State {
-  /** The last factory proposal weevboss made, for any automation: one a week at most. */
-  factoryProposedAt?: number
   adoptionPaused?: boolean
   items: Stored[]
   lastRoundAt: number
@@ -481,12 +468,6 @@ export interface Proposal {
 
 /** What the runner reads about the machine (injected in tests). */
 export interface Sys {
-  /** The GitHub account a factory's repository goes to (null: GitHub is not connected). Real runner only. */
-  ghOwner?: () => Promise<string | null>
-  /** Creates a factory's private repository and pushes its history (server/factory.ts). Real runner only. */
-  publish?: (o: { dir: string; owner: string; name: string; description: string; topics: string[] }) => Promise<Publication>
-  /** Pushes a factory's later revision to its repository. Real runner only. */
-  pushSource?: (dir: string) => Promise<boolean>
   load: () => number
   cpus: () => number
   free: () => number
@@ -591,7 +572,7 @@ export function memGauge(platform: Platform = process.platform, read: () => Prom
 }
 /** The note of a queued task that waits for Claude on a Mac, in every language (a task keeps the one it was given). */
 const MAC_NOTES: string[] = [O.fr.noJailMac, O.en.noJailMac]
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), merge: (dir, box, judge) => autoMerge(dir, APP_DIR, box, undefined, undefined, judge), live: (commit, restart) => updateLive(APP_DIR, commit, undefined, undefined, restart ? () => restartWeevils() : undefined), jail: tryJail, head: headOf, ghOwner: () => ghOwner().catch(() => null), publish: (o) => publishFactory(o), pushSource: (dir) => pushFactory(dir) }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), merge: (dir, box, judge) => autoMerge(dir, APP_DIR, box, undefined, undefined, judge), live: (commit, restart) => updateLive(APP_DIR, commit, undefined, undefined, restart ? () => restartWeevils() : undefined), jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -893,15 +874,9 @@ export class Optimizers {
   private auto = false
   readonly software: AutomationWorkspaces
   readonly manifests: AutomationManifests
-  /** Read from each automation's source every MANIFEST_SYNC_MS: its commits beyond adoption and the results page its
-   *  manifest declares (signals, PROTOCOL.md section 8). */
-  private sourceFacts = new Map<string, { commits: number; page?: string }>()
+  /** Read from each automation's source every MANIFEST_SYNC_MS: the results page its manifest declares. */
+  private sourcePages = new Map<string, string>()
   private manifestsSyncedAt = 0
-  /** Requests of weevboss's ledger that touch an automation, counted at most every REQUESTS_CACHE_MS. */
-  private requestCounts = new Map<string, { at: number; n: number }>()
-  /** The last counted open of each kind, per automation: a screen that draws twice counts once. */
-  private seenAt = new Map<string, number>()
-  private publishing = new Set<string>()
   private adopting = false
   private adoptionErrors = new Map<string,string>()
   /** Tasks with an exchange turn in flight (one at a time each), and those waiting after a failed one. */
@@ -938,14 +913,15 @@ export class Optimizers {
       head: (repo, d) => (sys.head ?? realSys.head)(repo, d),
       // Landing on main and updating the running app: the real ones only for the real runner, never in a test that
       // injects its own machine without them.
-      // The same for a factory's repository: GitHub is reached by the real runner only.
-      ...(opts.sys ? { merge: sys.merge, live: sys.live, ghOwner: sys.ghOwner, publish: sys.publish, pushSource: sys.pushSource } : { merge: realSys.merge, live: realSys.live, ghOwner: realSys.ghOwner, publish: realSys.publish, pushSource: realSys.pushSource }),
+      ...(opts.sys ? { merge: sys.merge, live: sys.live } : { merge: realSys.merge, live: realSys.live }),
     }
     this.s = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
         const items = (Array.isArray(raw.items) ? raw.items : []).filter((o) => o && typeof o.id === 'string' && typeof o.title === 'string' && typeof o.state === 'string')
-        return { items, adoptionPaused:raw.adoptionPaused===true, factoryProposedAt: Number(raw.factoryProposedAt) || 0, lastRoundAt: Number(raw.lastRoundAt) || 0, lastEmpty: raw.lastEmpty === true, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0, refillAt: Number(raw.refillAt) || 0 }
+        // Left by the former automation-to-factory promotion: dropped.
+        for (const o of items) for (const k of ['factory', 'promo', 'usage']) delete (o as unknown as Record<string, unknown>)[k]
+        return { items, adoptionPaused:raw.adoptionPaused===true, lastRoundAt: Number(raw.lastRoundAt) || 0, lastEmpty: raw.lastEmpty === true, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0, refillAt: Number(raw.refillAt) || 0 }
       } catch {
         return { items: [], lastRoundAt: 0, fails: 0, failUntil: 0 }
       }
@@ -1025,7 +1001,7 @@ export class Optimizers {
 
   /**
    * Every MANIFEST_SYNC_MS: each automation's manifest brought to schema 2 and its mirror kept current, then what its
-   * source says read back (its commits, its declared results page, a factory's panels). Additive: the scheduler's own
+   * source says read back (its declared results page). Additive: the scheduler's own
    * fields (schedule, time zone, scope, pause, target, state, runs, talk) are read here, never written. A running
    * automation, a source with uncommitted work or one not adopted yet waits for a later pass.
    */
@@ -1046,7 +1022,7 @@ export class Optimizers {
             o.software = next
             if (named) o.name = named
             try { this.save(true) } catch (e) { o.software = previous; throw e }
-            if (named) this.manifests.register(o.id, { name: named, kind: o.factory ? 'factory' : 'automation' })
+            if (named) this.manifests.register(o.id, { name: named })
           }
           this.adoptionErrors.delete(o.id)
         } catch (e) {
@@ -1056,27 +1032,15 @@ export class Optimizers {
       this.readSource(o)
       await new Promise<void>((resolve) => setImmediate(resolve))
     }
-    for (const o of this.s.items) if (!o.deletedAt && o.factory?.remote === 'pending' && o.factory.note !== 'secret' && o.factory.note !== 'origin' && o.factory.note !== 'taken') void this.publish(o)
   }
 
-  /** What its committed, pinned source says: how much it grew, where its results live, and a factory's page. */
+  /** What its committed, pinned source says: where its results live. */
   private readSource(o: Stored) {
     if (!o.software) return
-    const manifest = this.manifests.read(o.software)
-    const results = manifest?.results as { page?: unknown } | undefined
-    this.sourceFacts.set(o.id, { commits: this.manifests.commits(o.software), ...(pageRef(results?.page) ? { page: pageRef(results?.page) } : {}) })
-    if (!o.factory) return
-    const panels = parsePanels(manifest?.page)
-    const metrics = (Array.isArray(manifest?.metrics) ? (manifest.metrics as unknown[]) : []).flatMap((m): MetricRef[] => {
-      const x = m as { key?: unknown; label?: unknown }
-      return typeof x?.key === 'string' && /^[a-z][a-z0-9_.-]{0,39}$/i.test(x.key) ? [{ key: x.key, ...(typeof x.label === 'string' || (x.label && typeof x.label === 'object') ? { label: x.label as MetricRef['label'] } : {}) }] : []
-    }).slice(0, 12)
-    const before = JSON.stringify([o.factory.panels, o.factory.metrics])
-    if (panels.length) o.factory.panels = panels
-    else delete o.factory.panels
-    if (metrics.length) o.factory.metrics = metrics
-    else delete o.factory.metrics
-    if (JSON.stringify([o.factory.panels, o.factory.metrics]) !== before) this.save()
+    const results = this.manifests.read(o.software)?.results as { page?: unknown } | undefined
+    const page = pageRef(results?.page)
+    if (page) this.sourcePages.set(o.id, page)
+    else this.sourcePages.delete(o.id)
   }
 
   /** The page the newest run that named one published (its run card, else a page link in its report). */
@@ -1086,200 +1050,9 @@ export class Optimizers {
 
   /** Where its results live: what its manifest declares, else what its runs published. */
   resultsPage(o: Stored): string | undefined {
-    return this.sourceFacts.get(o.id)?.page ?? this.runPage(o)
+    return this.sourcePages.get(o.id) ?? this.runPage(o)
   }
 
-  // ---------------------------------------------------------------- from automation to factory (PROTOCOL.md, 8 and 9)
-
-  /** Requests of weevboss's ledger, over the window, that name it or were sent to one of its runs' sessions. */
-  private requestsFor(o: Stored, now: number): number {
-    const cached = this.requestCounts.get(o.id)
-    if (cached && now - cached.at < REQUESTS_CACHE_MS) return cached.n
-    let n = 0
-    try {
-      const from = now - FACTORY.WINDOW_DAYS * DAY_MS
-      const title = o.title.trim().toLowerCase()
-      const sessions = new Set((o.runs ?? []).map((r) => r.sessionId).filter((x): x is string => !!x))
-      for (const a of this.w.ledger?.asks('all') ?? []) {
-        if (a.at < from) continue
-        const named = title.length >= 4 && a.text.toLowerCase().includes(title)
-        const sent = a.dispatches.some((d) => !!d.session && [...sessions].some((sid) => sid.startsWith(d.session) || d.session.startsWith(sid)))
-        if (named || sent) n++
-      }
-    } catch {
-      /* no ledger on this machine */
-    }
-    this.requestCounts.set(o.id, { at: now, n })
-    return n
-  }
-
-  /** The measured signals of an automation: numbers the scheduler, its counters, the ledger and its source hold. */
-  signals(o: Stored, now = Date.now()): AutoSignals {
-    const runs = o.runs ?? []
-    const last = runs.slice(-10)
-    const from = now - FACTORY.WINDOW_DAYS * DAY_MS
-    const u = usageTotals(o.usage, now)
-    const said = (o.talk ?? []).filter((l) => l.who === 'user' && l.at >= from && !!o.acceptedAt && l.at > o.acceptedAt).length
-    const taken = runs.filter((r) => (r.handedOver ?? 0) >= from).length
-    return {
-      accepted: this.isAutomation(o) && (o.state === 'queued' || o.state === 'running'),
-      recurring: !!(o.every || o.onSleep),
-      builtin: !!o.builtin,
-      paused: !!o.paused,
-      ready: o.software?.status === 'ready',
-      runs: o.runCount ?? runs.length,
-      lastOk: last.filter((r) => r.ok).length,
-      lastOf: last.length,
-      ageDays: o.acceptedAt ? Math.floor((now - o.acceptedAt) / DAY_MS) : 0,
-      consumed: u.consumed,
-      consumedDays: u.consumedDays,
-      pushes: u.now + said + taken,
-      requests: this.requestsFor(o, now),
-      commits: this.sourceFacts.get(o.id)?.commits ?? 0,
-      resultsPage: !!this.resultsPage(o),
-    }
-  }
-
-  /** « Not now » still holds: for LATER_DAYS, and until it has LATER_RUNS more runs. */
-  private putOff(o: Stored, now: number): boolean {
-    const p = o.promo
-    if (!p?.laterAt) return false
-    return now - p.laterAt < FACTORY.LATER_DAYS * DAY_MS || (o.runCount ?? 0) < (p.laterRuns ?? 0) + FACTORY.LATER_RUNS
-  }
-
-  /** Why it may become a factory, when it may and was not put off (the quiet line on its page). */
-  private promotion(o: Stored, now: number): Optimizer['promotion'] {
-    if (o.factory || !this.isAutomation(o) || this.putOff(o, now)) return undefined
-    const e = eligibility(this.signals(o, now))
-    return e.eligible ? { reasons: e.reasons } : undefined
-  }
-
-  /** GET /api/auto/:id/signals: the numbers and the verdict, for the curious and for weevboss. */
-  signalsOf(id: string, now = Date.now()) {
-    const o = this.get(id)
-    if (!o || o.deletedAt || o.state === 'refused') return null
-    const signals = this.signals(o, now)
-    return { id, name: o.name, factory: !!o.factory, signals, ...eligibility(signals), putOff: this.putOff(o, now), thresholds: FACTORY }
-  }
-
-  /** One consumption or one « run now », counted for the person only (the route checks who asks), once a minute per kind. */
-  seen(id: string, kind: UsageKind, now = Date.now()): boolean {
-    const o = this.get(id)
-    if (!o || o.deletedAt || !USAGE_KINDS.includes(kind)) return false
-    const key = `${id}:${kind}`
-    if (now - (this.seenAt.get(key) ?? 0) < SEEN_GAP_MS) return true
-    this.seenAt.set(key, now)
-    o.usage = countUsage(o.usage ?? {}, kind, now)
-    this.save()
-    return true
-  }
-
-  /** « Not now »: both places stay silent for it (putOff); weevboss's line leaves For you. */
-  notNow(id: string, now = Date.now()): Optimizer | null {
-    const o = this.get(id)
-    if (!o || o.deletedAt || o.factory) return null
-    o.promo = { ...o.promo, laterAt: now, laterRuns: o.runCount ?? 0, laterCount: (o.promo?.laterCount ?? 0) + 1 }
-    this.w.foryou?.dismiss?.(`factory:${id}`)
-    this.changed()
-    return this.view(o, now)
-  }
-
-  /**
-   * One line from weevboss when an automation earned it: one proposal at a time for the whole installation, one new
-   * one a week at most, never again for one put off three times (PROTOCOL.md, section 8). It opens the automation,
-   * where the unlock is. Nothing here unlocks anything.
-   */
-  private proposeFactory(now: number): boolean {
-    if (!this.w.foryou || now - (this.s.factoryProposedAt ?? 0) < FACTORY.PROPOSE_EVERY_DAYS * DAY_MS) return false
-    const said = (o: Stored) => !!o.promo?.proposedAt && o.promo.proposedAt > (o.promo.laterAt ?? 0)
-    const open = this.s.items.filter((o) => !!this.promotion(o, now))
-    if (open.some(said)) return false
-    const o = open.filter((x) => (x.promo?.laterCount ?? 0) < FACTORY.MAX_LATER).sort((a, b) => (b.runCount ?? 0) - (a.runCount ?? 0))[0]
-    if (!o) return false
-    const t = tr(O)
-    const s = this.signals(o, now)
-    const text = t.factoryLine(o.title, t.factoryWhy(s.runs, s.lastOk, s.lastOf))
-    this.w.foryou.add({ id: `factory:${o.id}`, kind: 'boss', tone: 'neutral', who: 'weevboss', text, open: { page: 'auto', id: o.id } })
-    o.promo = { ...o.promo, proposedAt: now }
-    this.s.factoryProposedAt = now
-    console.log(`[auto] factory proposed: ${o.title}`)
-    return true
-  }
-
-  /**
-   * The unlock: the person's own tap (the route refuses anyone else). The source gets its mark in one commit, the
-   * automation its factory rank at once (icon, page); its private GitHub repository follows in the background and can
-   * be tried again. Never touched: the schedule, the scope, the target, the pause, the runs, the entrypoint.
-   * null: no such automation; 'no': not eligible (or its source is not ready). Throws when its source has unsaved work.
-   */
-  unlock(id: string, now = Date.now()): Optimizer | null | 'no' {
-    const o = this.get(id)
-    if (!o || o.deletedAt || o.state === 'refused') return null
-    if (o.factory) {
-      if (o.factory.remote === 'pending') void this.publish(o)
-      return this.view(o, now)
-    }
-    if (!o.software || o.software.status !== 'ready' || !this.isAutomation(o) || !eligibility(this.signals(o, now)).eligible) return 'no'
-    const name = o.name ?? uniqueName(o.title, o.id, this.s.items.filter((x) => x !== o && x.name).map((x) => x.name!))
-    const previous = { software: o.software, name: o.name }
-    o.software = this.manifests.markFactory(o.software, name, now)
-    o.name = name
-    o.factory = { name, unlockedAt: now, remote: 'pending' }
-    try {
-      this.save(true)
-    } catch (e) {
-      o.software = previous.software
-      if (previous.name) o.name = previous.name
-      else delete o.name
-      delete o.factory
-      throw e
-    }
-    try {
-      this.manifests.register(o.id, { name, kind: 'factory' })
-    } catch (e) {
-      console.error(`[auto] registry of « ${o.title} »: ${(e as Error).message}`)
-    }
-    this.readSource(o)
-    this.w.foryou?.dismiss?.(`factory:${id}`)
-    console.log(`[auto] factory unlocked: ${o.title} (${name})`)
-    this.w.bump()
-    void this.publish(o)
-    return this.view(o, now)
-  }
-
-  /** A factory's own private repository, created and pushed with its history (server/factory.ts). Resumable. */
-  private async publish(o: Stored) {
-    if (!o.factory || !o.software || this.publishing.has(o.id)) return
-    const f = o.factory
-    if (!this.sys.publish || !this.sys.ghOwner) return
-    this.publishing.add(o.id)
-    try {
-      const owner = await this.sys.ghOwner()
-      if (!owner) {
-        f.note = 'github'
-        return
-      }
-      const pub = await this.sys.publish({ dir: o.software.repository, owner, name: f.name, description: o.scope || o.why || o.title, topics: ['weevils', 'factory', 'automation', ...(o.repo ? [o.repo] : [])] })
-      f.repository = pub.repository
-      f.remote = 'pushed'
-      delete f.note
-      delete f.detail
-      try {
-        this.manifests.register(o.id, { remote: pub.url })
-      } catch {
-        /* the registry line is a convenience: the factory is published */
-      }
-      console.log(`[auto] factory published: ${o.title} → ${pub.repository}`)
-    } catch (e) {
-      f.note = e instanceof FactoryError ? e.code : 'failed'
-      if (e instanceof FactoryError && e.detail) f.detail = e.detail
-      else delete f.detail
-      console.error(`[auto] factory « ${o.title} » not published: ${e instanceof FactoryError ? e.code : (e as Error).message}`)
-    } finally {
-      this.publishing.delete(o.id)
-      this.changed()
-    }
-  }
   adoptionStatus(){
     return {enabled:!this.s.adoptionPaused,total:this.s.items.length,ready:this.s.items.filter(o=>o.software?.status==='ready').length,pendingRunning:this.s.items.filter(o=>o.software?.status==='pending-running').length,errors:[...this.adoptionErrors].map(([id,error])=>({id,error})),items:this.s.items.map(o=>({id:o.id,state:o.state,deleted:!!o.deletedAt,software:o.software}))}
   }
@@ -1297,7 +1070,6 @@ export class Optimizers {
     o.software=this.software.select(previous,revision)
     try{this.save(true)}catch(e){o.software=previous;throw e}
     this.readSource(o)
-    if (o.factory?.remote === 'pushed') void this.sys.pushSource?.(o.software.repository)
     this.w.bump();return {ok:true,revision:o.software.revision}
   }
 
@@ -1359,7 +1131,7 @@ export class Optimizers {
   /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
    *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, proposalPreparation: _pp, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, sleepRunFor: _sf, relaunches: _rl, supervision: _sv, askedAt: _ak, usage: _us, promo: _pm, ...v } = o
+    const { prompt: _p, proposalPreparation: _pp, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, sleepRunFor: _sf, relaunches: _rl, supervision: _sv, askedAt: _ak, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     const recovery=o.lifecycle?.findLast(event=>event.action==='restore-draft')
@@ -1370,8 +1142,6 @@ export class Optimizers {
     if (o.runs) out.runs = newestFirst(o.runs)
     // Agreed while it runs, for its next run: shown under its row (the brief itself stays here).
     if (o.pending) out.next = { title: o.pending.title ?? o.title }
-    const promotion = this.promotion(o, now)
-    if (promotion) out.promotion = promotion
     const page = this.resultsPage(o)
     if (page) out.resultsPage = page
     return out
@@ -1929,7 +1699,6 @@ export class Optimizers {
       this.supervisedAt = now
       dirty = this.look(now) || dirty
     }
-    if (this.auto) dirty = this.proposeFactory(now) || dirty
     const snap = this.w.snapshot()
     const running = this.s.items.find((o) => o.state === 'running')
     const busy =
@@ -2714,14 +2483,6 @@ export interface H24Auto {
  */
 export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h24?: H24Auto): [string, RegExp, Handler][] {
   const isH24 = (id: string) => /^(timer|job):/.test(id)
-  /** The person themselves (a signed-in browser that is not a script): what counts as theirs, what only they decide. */
-  const person = (req: http.IncomingMessage, body?: { origin?: unknown } | null) => {
-    try {
-      return originOf(req, body) === 'user'
-    } catch {
-      return false
-    }
-  }
   const missing = (res: http.ServerResponse) => json(res, 404, { error: tr(O).notFound })
   // A malformed escape is no id (404, not a 500).
   const decode = (raw: string) => {
@@ -2737,37 +2498,6 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
     ['POST', /^\/api\/auto\/([\w-]+)\/source$/, async(req,res,_u,[id])=>{
       const body=await readBody(req);const result=o.promoteSoftware(id,String(body.revision??''))
       return result?json(res,200,result):missing(res)
-    }],
-    // From automation to factory (docs/automations/PROTOCOL.md): the measured signals, one consumption counted, the
-    // unlock and « not now ». Counting and deciding are the person's only: a signed-in browser, never a script, an
-    // agent or weevboss (originOf).
-    ['GET', /^\/api\/auto\/([\w-]+)\/signals$/, (_req, res, _u, [id]) => {
-      const s = o.signalsOf(id)
-      return s ? json(res, 200, s) : missing(res)
-    }],
-    ['POST', /^\/api\/auto\/([\w-]+)\/seen$/, async (req, res, _u, [id]) => {
-      const body = await readBody(req).catch(() => ({}))
-      const what = String(body?.what ?? '')
-      if (what !== 'page' && what !== 'run' && what !== 'results' && what !== 'card') return json(res, 400, { ok: false })
-      if (!person(req, body)) return json(res, 200, { ok: true, counted: false })
-      return o.seen(id, what) ? json(res, 200, { ok: true, counted: true }) : missing(res)
-    }],
-    ['POST', /^\/api\/auto\/([\w-]+)\/factory\/unlock$/, async (req, res, _u, [id]) => {
-      const body = await readBody(req).catch(() => ({}))
-      if (!person(req, body)) return json(res, 403, { error: tr(O).factoryUserOnly })
-      try {
-        const item = o.unlock(id)
-        if (item === null) return missing(res)
-        return item === 'no' ? json(res, 409, { error: tr(O).factoryNotYet }) : json(res, 200, { item })
-      } catch (e) {
-        return json(res, 409, { error: (e as Error).message })
-      }
-    }],
-    ['POST', /^\/api\/auto\/([\w-]+)\/factory\/later$/, async (req, res, _u, [id]) => {
-      const body = await readBody(req).catch(() => ({}))
-      if (!person(req, body)) return json(res, 403, { error: tr(O).factoryUserOnly })
-      const item = o.notNow(id)
-      return item ? json(res, 200, { item }) : missing(res)
     }],
     ['DELETE', /^\/api\/(?:auto|optimizers)\/([\w-]+)$/, (_req,res,_u,[id]) => {
       const result=o.remove(id)
@@ -2824,10 +2554,8 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
       const item = o.label(id, body)
       return item ? json(res, 200, { item }) : json(res, 400, { ok: false })
     }],
-    ['POST', /^\/api\/optimizers\/([\w-]+)\/run$/, (req, res, _u, [id]) => {
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/run$/, (_req, res, _u, [id]) => {
       const ok = o.runNow(id)
-      // The person's own « run now » is a push (a signal toward a factory); an agent's or a script's is not counted.
-      if (ok && person(req)) o.seen(id, 'now')
       json(res, ok ? 200 : 404, { ok })
     }],
     ['GET', /^\/api\/auto\/([^/]+)$/, async (_req, res, _u, [raw]) => {

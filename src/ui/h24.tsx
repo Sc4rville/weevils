@@ -5,7 +5,7 @@ import type { Optimizer } from '../../shared/api.ts'
 import { isSettled, stableOrder, useApp } from './app-context'
 import { selfRepo } from './recursive-identity'
 import { Collapse, Line, spring } from './bits'
-import { AutoMark, FactoryMark, Icon, type Dir, type IconName } from './icons'
+import { AutoMark, Icon, type Dir, type IconName } from './icons'
 import { useT } from '../i18n'
 import M from '../i18n/h24'
 import { nextTimeText, autoGroups, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, rowStatus, short, triggerText, type AutoGroup, type AutoItem } from './auto-model'
@@ -302,13 +302,11 @@ const drop = {
 // One band per automation: one tap opens its page. The fill behind it is the page's flow, in miniature.
 
 /** The glyph of an automation, by what it is doing; the name of the icon for the cross-fade. */
-export function glyphOf(x: Pick<AutoItem, 'state' | 'trigger' | 'lastRun' | 'factory'>): { name: IconName | 'mark' | 'factory-mark'; dir?: Dir; alert?: boolean } {
-  if (x.state === 'running') return { name: x.factory ? 'factory-mark' : 'mark' }
+export function glyphOf(x: Pick<AutoItem, 'state' | 'trigger' | 'lastRun'>): { name: IconName | 'mark'; dir?: Dir; alert?: boolean } {
+  if (x.state === 'running') return { name: 'mark' }
   if (x.state === 'paused') return { name: 'pause' }
   if (x.state === 'failed' || (x.lastRun && !x.lastRun.ok && x.state !== 'done')) return { name: 'close', alert: true }
   if (x.state === 'done') return { name: 'check' }
-  // A factory at rest is its own icon, whatever its trigger: the row's word already says when it runs next.
-  if (x.factory) return { name: 'factory' }
   if (x.state === 'waiting' || x.state === 'queued') return { name: 'idle' }
   if (x.trigger.kind === 'sleep') return { name: 'sleep' }
   if (x.trigger.kind === 'every') return { name: 'cycle' }
@@ -316,12 +314,12 @@ export function glyphOf(x: Pick<AutoItem, 'state' | 'trigger' | 'lastRun' | 'fac
 }
 
 /** A glyph that cross-fades when it changes (a proposal turning into an automation, a run starting). */
-export function Glyph({ name, dir, alert }: { name: IconName | 'mark' | 'factory-mark'; dir?: Dir; alert?: boolean }) {
+export function Glyph({ name, dir, alert }: { name: IconName | 'mark'; dir?: Dir; alert?: boolean }) {
   return (
     <span className="auto-glyph">
       <AnimatePresence initial={false}>
         <motion.span key={`${name}${dir ?? ''}`} className={alert ? 'alert' : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-          {name === 'mark' ? <AutoMark /> : name === 'factory-mark' ? <FactoryMark /> : <Icon name={name} dir={dir} />}
+          {name === 'mark' ? <AutoMark /> : <Icon name={name} dir={dir} />}
         </motion.span>
       </AnimatePresence>
     </span>
@@ -451,7 +449,7 @@ function AutoBand({ x, slot, proposal: o, nested }: { x: AutoItem; slot: string;
       {/* In a family, the fill and the glyph only while they say something the status word doesn't: a run going, a
           pause, a failure, sleep. A cadence icon and a bar toward « in 2h » on every row were the same thing twice. */}
       {(!nested || x.state === 'running') && <Fill x={x} />}
-      <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.factory ? t.factoryLabel(x.title) : x.title, right, meta)} />
+      <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, right, meta)} />
       <div className="in" aria-hidden>
         <span className="st">
           {(!nested || glyph.name !== 'cycle') && <Glyph {...glyph} />}

@@ -12,6 +12,7 @@ import './softwares.css'
 import { PreviewChat } from './preview-chat'
 import { useSteadyUrl } from './preview'
 import { GoneBack, useGoneTitle } from './gone'
+import { WeevilLoading } from './loading'
 
 // « Mes logiciels » : tout ce que l'utilisateur construit ou fait tourner, un rectangle de couleur par logiciel (même
 // grille que les repos). Dedans, son interface (capture) ou, sans capture, une phrase simple (jamais de sortie brute) ;
@@ -275,6 +276,7 @@ export function SoftwaresPage() {
   return (
     <Shell slot="agent" kicker="weevils" title={t.title} meta={list ? t.count(list.length) : '…'}>
       {err && <ErrorBand text={err} />}
+      {!list && !err && <WeevilLoading />}
       <div className="sw-grid">
         {list?.map((sw) => (
           <Tile key={sw.id} sw={sw} slot={slots.current.get(sw.id) ?? 0} onOpen={() => open(sw)} />
@@ -346,6 +348,7 @@ export function SoftwarePage({ id }: { id: string }) {
       <Shell slot="agent" kicker={t.kicker} title={missing ? gone : '…'}>
         {err && <ErrorBand text={err} />}
         {missing && <GoneBack />}
+        {!err && !missing && <WeevilLoading />}
       </Shell>
     )
   }

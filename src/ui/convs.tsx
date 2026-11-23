@@ -14,6 +14,7 @@ import { seedPending } from './pending'
 import { FootError, Shell, swapPage } from './shell'
 import { Icon } from './icons'
 import { GoneBack, useGoneTitle } from './gone'
+import { WeevilLoading } from './loading'
 
 const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
 /** The two agents, by their product names. */
@@ -153,7 +154,7 @@ export function ConversationPage({ id }: { id: string }) {
     }
   }, [id, snap.version])
 
-  if (!d) return <Shell slot="agent" kicker={t.conversations} title={missing ? gone : '…'}>{missing ? <GoneBack /> : null}</Shell>
+  if (!d) return <Shell slot="agent" kicker={t.conversations} title={missing ? gone : '…'}>{missing ? <GoneBack /> : <WeevilLoading />}</Shell>
   const c = d.conversation
 
   const accept = async () => {

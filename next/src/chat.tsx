@@ -12,7 +12,6 @@ import { AnimatePresence, motion } from 'motion/react'
 import type { Message } from '../../shared/api.ts'
 import { Composer as AppComposer, Messages, WorkingMark, spring, type Attachment } from '../../src/ui/bits.tsx'
 import { useFollow } from '../../src/ui/follow.ts'
-import { Icon } from '../../src/ui/icons.tsx'
 import { visible } from './data.ts'
 import { userCaption, userPhotos } from '../../src/ui/format.ts'
 import { stillPending, type Pending } from './pending.ts'
@@ -20,6 +19,7 @@ import { LabList, LabSwitch, useLab } from './lab.tsx'
 import { api } from '../../src/api.ts'
 import { useT } from '../../src/i18n/index.ts'
 import LM from '../../src/i18n/lab.ts'
+import { WeevilLoading } from '../../src/ui/loading.tsx'
 
 /** weevboss's setup buttons, as in the app's weevboss band (bands.tsx): on the last message that carries each one,
  *  in its sentence ([[setup:x]]) or under it; a secret asked for is always a button. */
@@ -103,7 +103,7 @@ export function Chat({ id, messages: thread, working: busy, author, placeholder,
     <>
       <div className="nx-scroll" ref={scroll}>
         <div className="nx-thread">
-          {loading && <p className="nx-empty"><span className="spin fluo"><Icon name="star" /></span></p>}
+          {loading && <WeevilLoading />}
           {!loading && shown.length === 0 && !pending.length && empty && <p className="nx-empty">{empty}</p>}
           {messages && <Messages messages={messages} author={author} working={working} {...(id === null ? bossChips(messages) : {})} />}
           {id === null && <SyncLine />}

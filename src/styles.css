@@ -3690,3 +3690,36 @@ main.stack {
 .md strong.win.win-shine { animation: win-shine 1.3s cubic-bezier(.45,.05,.25,1); }
 @keyframes win-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .md strong.win.win-shine { animation: none; } }
+
+/* A page on its way (src/ui/loading.tsx): the weevil, big and centred, doing little jumps from the first frame. Its
+   faces are the logo's; its shadow a flat block (no rounded corner) that narrows while it is up. Never a spinner. */
+.weevil-loading {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: min(60vh, 520px); padding: 32px 0; color: var(--ink); pointer-events: none;
+  animation: weevil-loading-in .12s ease-out both;
+}
+.weevil-loading.inline { min-height: 200px; }
+.weevil-loading-hop { display: block; width: 112px; height: 112px; transform-origin: 50% 100%; animation: weevil-hop .9s cubic-bezier(.3, 0, .3, 1) infinite; }
+.weevil-loading-logo.weevboss-logo { display: block; width: 100%; height: 100%; }
+.weevil-loading-shadow {
+  display: block; width: 72px; height: 8px; margin-top: 4px; border-radius: 0;
+  background: color-mix(in oklab, #000 28%, transparent); animation: weevil-hop-shadow .9s cubic-bezier(.3, 0, .3, 1) infinite;
+}
+.weevil-loading-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@keyframes weevil-loading-in { from { opacity: 0; } }
+@keyframes weevil-hop {
+  0%, 100% { transform: translateY(0) scale(1.08, .9); }
+  12% { transform: translateY(0) scale(1, 1); }
+  45% { transform: translateY(-38px) scale(.97, 1.04) rotate(-4deg); }
+  70% { transform: translateY(0) scale(1, 1); }
+  80% { transform: translateY(0) scale(1.1, .88); }
+  90% { transform: translateY(-6px) scale(.98, 1.02) rotate(3deg); }
+}
+@keyframes weevil-hop-shadow {
+  0%, 100%, 70%, 80% { transform: scaleX(1); opacity: 1; }
+  45% { transform: scaleX(.55); opacity: .55; }
+  90% { transform: scaleX(.9); opacity: .9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .weevil-loading-hop, .weevil-loading-shadow { animation: weevil-breathe 2.4s ease-in-out infinite; }
+}

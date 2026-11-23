@@ -20,6 +20,7 @@ import { projectSlug, threadsOn } from './threads-on'
 
 export { threadOf, threadsOn } from './threads-on'
 import { FootError, Shell } from './shell'
+import { WeevilLoading } from './loading'
 
 
 const STATE_CHAR: Record<ThreadState, string> = { working: '*', waiting: '·', paused: '‖' }
@@ -150,6 +151,7 @@ export function ThreadPage({ id, session }: { id: string; session?: Session }) {
     >
       <div className="ask-thread session-thread thread-view" data-thread={id}>
         {view && <Messages session plain messages={messages} author="" working={view.state === 'working'} />}
+        {!view && !missing && <WeevilLoading />}
       </div>
       {hold && (
         <div className="in thread-hold" role="status">

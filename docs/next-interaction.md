@@ -149,6 +149,11 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **The side bar's bands meet directly and run to the screen's edge** (2026-11-23): no scrollbar strip on a
   computer, no strip of a band's darker base under autonomous or pages, no line or gap at any boundary (weevils, the
   repos, autonomous, pages, your factory, settings). Depth comes from the bands' own tones only.
+- **A page on its way shows the weevil, never a blank screen** (2026-11-23): the weevil itself, big and centred,
+  doing little jumps from the very first frame (no delay before it shows), gone the moment the content is there; its
+  faces the logo's, its shadow a flat block; with reduced motion it only breathes. Requests, a session, a thread, a
+  conversation, a software, memory, repos, a chat's history. Big answers from the server come gzipped, and the list of
+  requests read once opens at once on the next page that shows it.
 - **Enter sends on a computer** (2026-11-23): in every box to write a message in (weevboss, a session, an automation's
   chat, a new page, the first run), a physical keyboard sends with Enter and adds a line with Shift+Enter; never while
   an input method is still composing a word. On a phone, the on-screen Return adds a line and the send button sends.

@@ -269,7 +269,7 @@
   "labels": [
    "Allow",
    "Always allow",
-   "Allow, and switch to auto mode",
+   "Allow, and stop asking for what’s safe",
    "Deny"
   ]
  },
@@ -592,7 +592,7 @@
   "labels": [
    "Allow",
    "Always allow",
-   "Allow, and switch to auto mode",
+   "Allow, and stop asking for what’s safe",
    "Deny"
   ]
  },

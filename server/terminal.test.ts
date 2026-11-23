@@ -182,6 +182,12 @@ describe('questions read right', () => {
     const s = read('claude-live-R4-dangerous-rm.txt').state
     expect(s.kind === 'question' && [s.question, s.detail]).toEqual(['Claude wants to run a command: remove build output', 'rm -rf build dist · Dangerous rm operation on a path outside the project'])
   })
+  it('an answer never says « auto mode »: it says what that does, in plain words', () => {
+    const s = read('claude-live-R6-bash-auto-mode-tip.txt').state
+    const labels = s.kind === 'question' ? s.choices.map((c) => c.label) : []
+    expect(labels).toContain('Allow, and stop asking for what’s safe')
+    expect(labels.join(' ')).not.toMatch(/auto mode/i)
+  })
   it('Codex approvals lose their key hints', () => {
     const s = read('codex-14-command-approval.txt').state
     expect(s.kind === 'question' && [s.question, s.choices.map((c) => c.label)]).toEqual(['Codex wants to run a command', ['Allow', 'Always allow', 'Deny']])

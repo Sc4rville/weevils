@@ -20,7 +20,8 @@ export default defineMessages({
     allow: 'Autoriser',
     allowSession: 'Autoriser pour cette session',
     allowAlways: 'Toujours autoriser',
-    allowAuto: 'Autoriser, et passer en mode auto',
+    // « Auto mode » de Claude Code : il approuve seul ce qui est sûr et demande encore le reste. Dit simplement.
+    allowAuto: 'Autoriser, et ne plus demander pour ce qui est sûr',
     deny: 'Refuser',
     denyAlways: 'Toujours refuser',
     // Plans
@@ -77,7 +78,8 @@ export default defineMessages({
     allow: 'Allow',
     allowSession: 'Allow for this session',
     allowAlways: 'Always allow',
-    allowAuto: 'Allow, and switch to auto mode',
+    // Claude Code's « auto mode »: it approves what is safe on its own and still asks for the rest. Said plainly.
+    allowAuto: 'Allow, and stop asking for what’s safe',
     deny: 'Deny',
     denyAlways: 'Always deny',
     planReady: (who: Who) => `${nameOf(who)}’s plan is ready. Go ahead?`,

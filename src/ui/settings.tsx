@@ -3,8 +3,6 @@ import { tr } from '../i18n'
 import M from '../i18n/settings'
 import { VoicePicker } from './voice'
 
-/** Effort dans la langue de l'app (« effort élevé », « high effort ») : lu à l'appel. */
-export const effortLabel = (e?: string) => (e ? tr(M).effortLabel(e) : undefined)
 /** A model and its effort on one short line, as a header shows them (« opus 5.5 · medium »): the level alone. */
 export const modelLine = (model?: string, effort?: string) => [modelLabel(model), effort ? tr(M).effortWord(effort) : undefined].filter(Boolean).join(' · ')
 

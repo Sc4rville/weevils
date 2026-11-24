@@ -14,7 +14,6 @@ import { AGENTS, GLOBAL_DEFAULT, HOURS, MAX_WAIT_MS, NEED_HOURS, REPO_DEFAULT, T
 
 const DAY = 86400_000
 const WEEK = 7 * DAY
-const GB = 1024 ** 3
 
 /** Defaults while the machine has not been measured: what a working agent takes with its tools (tests, builds). */
 export const DEFAULT_CORES_PER_AGENT = 0.5
@@ -288,5 +287,3 @@ export class TempoStore {
     this.set(this.c.global, null, now)
   }
 }
-
-export const toGb = (bytes: number) => bytes / GB

@@ -19,8 +19,9 @@ file too: a rule changed here applies from the next run.
 | H-8 | Every command, path, env var and link in the docs exists in the code. | Outdated docs cost newcomers the most. | Section 2, docs vs behavior. |
 | H-9 | No known high or critical vulnerability in dependencies stays unreported for more than one run. | Safety of everyone who installs weevils. | `npm audit`, every run including quiet ones. |
 | H-10 | Copies of this repository (mirrors in `~/projects/.mirrors`) are compared, never synced, by the automation. | Decision of 2026-11-12: one canonical source. | Section 2c. |
-| H-11 | Entry points are declared in `knip.json`; dead-code findings count only when knip runs with it and a plain text search agrees. | Without them knip called the server itself, the service worker, the `get/` scripts and a lazily imported dependency unused (13 false files, 2 false dependencies); with them, zero. | `npx knip` with `knip.json`, section 2. Introduced 2026-11-14. |
+| H-11 | Entry points are declared in `knip.json`, including every app (`src/`, `next/src/`) and every file another program starts by path (shell wrappers, shims, spawned scripts); dead-code findings count only when knip runs with it and a plain text search agrees. | Without them knip called the server itself, the service worker, the `get/` scripts and a lazily imported dependency unused (13 false files, 2 false dependencies); with them, zero. 2026-11-24: tightened, the `next/` app and three path-started files were missing (3 false files, 1 false dependency, 3 live components called unused). | `npx knip` with `knip.json`, section 2. Introduced 2026-11-14, tightened 2026-11-24. |
 | H-12 | The full check passes inside an automation's own session as it is (sandbox, push guard, young pid 1); a test that needs the host's process table, sandbox or push rights injects them, or says it skips. | 2026-11-21: 39 tests failed only because of the session they ran in (36 pushing to temporary local repos through the no-push guard, 2 probing the real sandbox, 1 assuming an old pid 1), which hid whether the code was green; 3 fixed here, the push helper is a proposal. | Section 4: run the check as is first and list the failures that disappear outside the session; until the push proposal lands, the run reruns with the guard's two local-path rules neutralised (network pushes stay blocked). Introduced 2026-11-21. |
+| H-13 | Every folder `npm run typecheck` covers is in knip's `project`, and every entry file `knip.json` names exists. | 2026-11-24: the `next/` app, the default UI, was typechecked but invisible to knip, so knip's dead-code list was wrong in both directions (live code called unused, dead code in `next/` never seen). | `test/knip-coverage.test.ts`, in `npm test`. Introduced 2026-11-24. |
 
 ## Accepted exceptions
 
@@ -47,6 +48,23 @@ None yet.
 
 Newest first, last 10 runs (older ones in `docs/hygiene/history.md`).
 
+- 2026-11-24 · main 8bc3f2a · full
+  - Cleaner: 61 local branches already merged into `main` are pruned (no worktree, no live session; names and tips
+    in the report); knip now sees the `next/` app and the three files started by path, so its false alarms (3 files,
+    1 dependency, 3 components) are gone; two helpers nothing read are removed. On top of `main`: lint and build green, 3,631 tests pass,
+    tests leave no file behind; the 7 that fail fail only inside an automation's session (H-12): 5 push to a
+    `git@github.com:` stand-in that the session's network push guard rewrites, 2 wait 10 s for a user bus the
+    sandbox hides. No secret, no known vulnerability, no real TODO.
+  - Invented: H-13, knip must look at every folder the typecheck covers, enforced by a guard test; H-11 tightened.
+  - Proposed: the night-lens and find-ux automations still commit on the pre-rewrite history (night lens wrote its
+    2026-11-24 report there), so none of it can reach `main`: replay their work and restart their worktrees from
+    `main`. The 146 old-history branches from the last run are unchanged (121 hold nothing `main` lacks, 25 hold
+    work). 15 merged branches still have a clean or dirty worktree attached. A push-guard-aware git helper for tests
+    (H-12, 78 failures inside the session this time); `server/install.sh` waits for systemd's user bus even when
+    `uname` says Darwin (only the launchd test notices; installer, so the owner's call). `SECRET_KEYS` still unused; `voiceBusy` is the only reader of a
+    set the voice logo keeps (both owner calls). motion and ws minor updates.
+  - Held: `useSession` in `next/src/data.ts` (unused export, file on the `next/tempo` and `next/request-column`
+    branches). Not run: the copy check (reading the mirror was refused in this session).
 - 2026-11-21 · main 9327369 · full
   - Context: `main`'s history was rewritten on 2026-11-20; this run's branch was still on the old line and was reset
     onto the new `main` (it had no commits of its own).
@@ -71,4 +89,4 @@ Newest first, last 10 runs (older ones in `docs/hygiene/history.md`).
   - Held: real home paths in two other test fixtures, both being edited by live work.
 - 2026-11-14 · set up · rules H-1 to H-10 written from the owner's brief; no run yet.
 
-<!-- hygiene:last-full main=6d4c2d9d4718ebdf012cb34de8cb2abde2de6678 branches=0ef7aac5ad84 at=2026-11-21T01:05:36.059Z -->
+<!-- hygiene:last-full main=8bc3f2ae71c6d8421e46721a2dfa9ca4f2c1e71c branches=121e9bd16b4f at=2026-11-24T01:00:55.360Z -->

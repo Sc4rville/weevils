@@ -4,6 +4,7 @@
 
 import { speedMode } from './request-handling.ts'
 import { wakeContext, type Waiting, type WakeEvent } from './boss-wakeups.ts'
+import { isSmallTalk } from './boss-live.ts'
 import fs from 'node:fs'
 import path from 'node:path'
 import { CLAUDE_DIR, DATA_DIR, ORCH_DIR } from './config.ts'
@@ -105,8 +106,23 @@ export interface PreparedTurn {
   recentTokens: number
   /** Size of the request ledger's digest joined to the message. */
   ledgerTokens?: number
+  /** Size of the live part (date, machines, sessions) joined to the message. */
+  liveTokens?: number
+  /** Small talk: run at low effort (server/boss-live.ts). */
+  fast?: boolean
   rebuilt: boolean
+  /** The whole message as the turn reads it (hidden block included), for a turn started ahead (server/boss-warm.ts). */
+  prompt: string
+  /** Claude and its flags, without the prompt. */
+  args: string[]
+  /** What a process started ahead must have been started with to take this message (undefined: a wake-up, never). */
+  key?: string
+  /** How the turn started: in a process started ahead, or a fresh one (and why). Set by the caller. */
+  start?: string
 }
+
+/** A turn's flags with its id left out: two turns with the same key can run in the same process started ahead. */
+export const turnKey = (args: readonly string[], id: string) => JSON.stringify(args.filter((a) => a !== id))
 
 export class BossTurns {
   readonly journal: BossJournal
@@ -224,21 +240,61 @@ export class BossTurns {
     return true
   }
 
-  /** Builds the view and the command of the next turn (the head of the queue). */
-  async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; instructions?: string; summaryMs?: number; now?: number; waiting?: readonly Waiting[] }): Promise<PreparedTurn> {
-    const q = this.s.queue[0]
-    if (!q) throw new Error('empty queue') // i18n-ignore : internal guard, never shown
+  /** The view of the next turn: the stable ladder (system prompt, cached) and the latest exchanges word for word. */
+  private async view(o: { memory: string; instructions?: string; summaryMs?: number; now?: number }) {
     const now = o.now ?? Date.now()
     this.journal.sync()
     const head = [this.handoff(now), o.memory ? `## What weevils remembers about the user (newest first; full list with ids: weevils memory)\n${o.memory}` : ''].filter(Boolean).join('\n\n')
     const instructions = o.instructions ?? readOr(path.join(ORCH_DIR, 'CLAUDE.md'))
-    const view = await buildView({ entries: this.journal.entries(), summaries: this.summaries, state: this.s.view, budget: this.budget, dataDir: this.dir, head, instructions, summaryMs: o.summaryMs ?? 20_000, now })
+    return buildView({ entries: this.journal.entries(), summaries: this.summaries, state: this.s.view, budget: this.budget, dataDir: this.dir, head, instructions, summaryMs: o.summaryMs ?? 20_000, now })
+  }
+
+  /** Claude and the flags of a turn, without its prompt. */
+  private turnArgs(claude: string[], id: string, stableFile: string, model: string, effort: string, proactive: boolean): string[] {
+    const [bin, ...flags] = claude
+    return [
+      bin, ...flags, '-p', '--session-id', id,
+      // Date, folder and git state out of the system prompt: the stable prefix stays byte for byte the same.
+      '--exclude-dynamic-system-prompt-sections',
+      '--append-system-prompt-file', stableFile,
+      // Lean by construction: its CLAUDE.md (and the same AGENTS.md for Codex) is already in the cached prefix, not loaded again uncached, no
+      // skill listing, and no MCP connectors (Bash, Read, weevils… are what it needs; WEEVILS_BOSS_MCP=1 brings them back).
+      // Its permission profile rides along: what it may do with nobody there to answer.
+      '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')], permissions: bossPermissions(ORCH_DIR, this.transcripts) }),
+      '--disable-slash-commands',
+      ...(BOSS_MCP ? [] : ['--strict-mcp-config']),
+      '--model', model,
+      '--effort', effort,
+      ...(proactive ? ['--max-turns', '12'] : []),
+    ]
+  }
+
+  /**
+   * A turn started ahead of its message (server/boss-warm.ts): the same view and flags the next message would get, so
+   * Claude Code has already started when it arrives. Its key says which messages it can take.
+   */
+  async ahead(o: { id: string; claude: string[]; memory: string; instructions?: string; summaryMs?: number; now?: number }): Promise<{ args: string[]; key: string }> {
+    const view = await this.view(o)
+    this.save()
+    const args = this.turnArgs(o.claude, o.id, view.stableFile, this.model, this.effort, false)
+    return { args, key: turnKey(args, o.id) }
+  }
+
+  /** Builds the view and the command of the next turn (the head of the queue). */
+  async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; live?: string; instructions?: string; summaryMs?: number; now?: number; waiting?: readonly Waiting[] }): Promise<PreparedTurn> {
+    const q = this.s.queue[0]
+    if (!q) throw new Error('empty queue') // i18n-ignore : internal guard, never shown
+    const view = await this.view(o)
     const { text, parts } = peelContext(q.text)
     const recent = view.recent ? `the latest exchanges of your thread before this message, word for word, oldest first (ids work with weevils recall):\n${view.recent}` : ''
     // The request ledger's digest (fixed budget): open requests, stale first, goals, the user's rules.
     const ledger = o.ledger?.trim() ? `your request ledger right now (this message is not in it yet):\n${o.ledger.trim()}` : ''
     const eventContext = q.events?.length ? wakeContext(q.events, speedMode(), o.waiting) : ''
-    const block = [...parts, eventContext, ledger, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
+    // Date, machines and sessions as they are now: what the turn used to fetch with a tool call first (server/boss-live.ts).
+    const live = o.live?.trim() ?? ''
+    const block = [...parts, eventContext, live, ledger, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
+    // Small talk from the user runs at low effort: same model, same context, no long deliberation.
+    const fast = !q.proactive && !q.events?.length && isSmallTalk(text)
     const prompt = block ? `${text} ⟦weevils — ${block}⟧` : text
     const turns = path.join(this.dir, 'turns')
     fs.mkdirSync(turns, { recursive: true })
@@ -248,26 +304,13 @@ export class BossTurns {
       const old = fs.readdirSync(turns).map((f) => path.join(turns, f))
       old.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs).slice(30).forEach((f) => fs.rmSync(f, { force: true }))
     } catch { /* nothing to tidy */ }
-    const [bin, ...flags] = o.claude
-    const args = [
-      ...flags, '-p', '--session-id', o.id,
-      // Date, folder and git state out of the system prompt: the stable prefix stays byte for byte the same.
-      '--exclude-dynamic-system-prompt-sections',
-      '--append-system-prompt-file', view.stableFile,
-      // Lean by construction: its CLAUDE.md (and the same AGENTS.md for Codex) is already in the cached prefix, not loaded again uncached, no
-      // skill listing, and no MCP connectors (Bash, Read, weevils… are what it needs; WEEVILS_BOSS_MCP=1 brings them back).
-      // Its permission profile rides along: what it may do with nobody there to answer.
-      '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')], permissions: bossPermissions(ORCH_DIR, this.transcripts) }),
-      '--disable-slash-commands',
-      ...(BOSS_MCP ? [] : ['--strict-mcp-config']),
-      '--model', q.proactive ? 'sonnet' : this.model,
-      '--effort', q.proactive ? 'low' : this.effort,
-      ...(q.proactive ? ['--max-turns', '12'] : []),
-    ]
+    const args = this.turnArgs(o.claude, o.id, view.stableFile, q.proactive ? 'sonnet' : this.model, q.proactive || fast ? 'low' : this.effort, !!q.proactive)
+    // A process started ahead runs at the chosen effort: small talk takes it as it is (a fresh start costs more).
+    const key = q.proactive ? undefined : turnKey(this.turnArgs(o.claude, o.id, view.stableFile, this.model, this.effort, false), o.id)
     // The prompt goes through a file (stdin): no tmux command-length limit, the whole message reaches the turn.
-    const command = ['env', ...(BOSS_MCP ? [] : ['ENABLE_CLAUDEAI_MCP_SERVERS=false']), 'bash', '-c', 'f=$1; shift; exec "$@" < "$f"', 'weevboss-turn', promptFile, bin, ...args]
+    const command = ['env', ...(BOSS_MCP ? [] : ['ENABLE_CLAUDEAI_MCP_SERVERS=false']), 'bash', '-c', 'f=$1; shift; exec "$@" < "$f"', 'weevboss-turn', promptFile, ...args]
     this.save()
-    return { id: o.id, command, stableTokens: view.stableTokens, recentTokens: view.recentTokens + tokensOf(text) + tokensOf(eventContext), ledgerTokens: tokensOf(ledger), rebuilt: view.rebuilt }
+    return { id: o.id, command, prompt, args, ...(key ? { key } : {}), stableTokens: view.stableTokens, recentTokens: view.recentTokens + tokensOf(text) + tokensOf(eventContext), ledgerTokens: tokensOf(ledger), liveTokens: tokensOf(live), ...(fast ? { fast } : {}), rebuilt: view.rebuilt }
   }
 
   /** The head turn is running: it leaves the queue (returned), its id joins the turns. */
@@ -275,7 +318,7 @@ export class BossTurns {
     const q = this.s.queue.shift()
     this.s.turns = [...this.s.turns, t.id].slice(-2000)
     this.save()
-    fs.appendFileSync(path.join(this.dir, 'metrics.jsonl'), JSON.stringify({ id: t.id, at: Date.now(), stable: t.stableTokens, recent: t.recentTokens, ledger: t.ledgerTokens ?? 0, proactive: !!q?.proactive, events: q?.events?.map((e) => e.key), rebuilt: t.rebuilt }) + '\n')
+    fs.appendFileSync(path.join(this.dir, 'metrics.jsonl'), JSON.stringify({ id: t.id, at: Date.now(), stable: t.stableTokens, recent: t.recentTokens, ledger: t.ledgerTokens ?? 0, live: t.liveTokens ?? 0, ...(t.fast ? { fast: true } : {}), ...(t.start ? { start: t.start } : {}), proactive: !!q?.proactive, events: q?.events?.map((e) => e.key), rebuilt: t.rebuilt }) + '\n')
     return q
   }
 

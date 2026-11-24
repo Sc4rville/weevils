@@ -9,6 +9,8 @@ vi.mock('./setup.ts', async (orig) => ({ ...await orig<typeof import('./setup.ts
 vi.mock('./provider.ts', async (orig) => ({ ...await orig<typeof import('./provider.ts')>(), preferredTool: () => 'claude' }))
 vi.mock('./voicepipe.ts', () => ({ keepWarm() {}, warmCues() {} }))
 process.env.WEEVILS_ORCHESTRATOR = '1'
+// These tests count launches: the turn started ahead (server/boss-warm.ts) has its own tests (boss-warm-core.test.ts).
+process.env.WEEVILS_BOSS_WARM = '0'
 const { Weevils } = await import('./core.ts')
 const { BOSS_DIR } = await import('./boss-turns.ts')
 const { QUIET_MS, SILENT_OUTCOME } = await import('./boss-wakeups.ts')

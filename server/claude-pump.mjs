@@ -19,6 +19,9 @@ fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
 const sockPath = path.join(dir, `${name}.sock`)
 const stateFile = path.join(dir, `${name}.json`)
 const sessionId = cmd[cmd.indexOf('--session-id') + 1] || cmd[cmd.indexOf('--resume') + 1] || ''
+/** WEEVILS_PUMP_ONESHOT=1: a single message, then claude ends (weevboss's turn started ahead, server/boss-warm.ts). */
+const ONESHOT = process.env.WEEVILS_PUMP_ONESHOT === '1'
+let sent = 0
 
 const state = { pid: process.pid, sessionId, ready: false, working: false, queued: 0, question: null, exited: null, at: Date.now() }
 function save() {
@@ -104,6 +107,9 @@ child.stdout.on('data', (d) => {
     } else if (m.type === 'result') {
       state.working = false; state.queued = 0; save()
       log(`· done${m.is_error ? ' (error)' : ''}`)
+      // One-shot (a weevboss turn started ahead of its message, server/boss-warm.ts): one message, one reply, then
+      // claude exits like a `claude -p` run and the pane closes.
+      if (ONESHOT) child.stdin.end()
     } else if (m.type === 'control_request' && m.request?.subtype === 'can_use_tool') ask(m)
     else if (m.type === 'control_cancel_request' && pending?.requestId === m.request_id) { pending = null; showQuestion() }
   }
@@ -111,6 +117,7 @@ child.stdout.on('data', (d) => {
 
 function send(text) {
   if (pending) return answer(undefined, text) // a message while a question is open is its answer
+  if (ONESHOT && sent++) throw new Error('one message only')
   if (state.working) state.queued++
   state.working = true
   save()

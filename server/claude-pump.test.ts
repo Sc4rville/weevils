@@ -16,7 +16,8 @@ process.stdin.on('data',d=>{buf+=d;let i;while((i=buf.indexOf('\\n'))>=0){const 
     if(m.message.content==='ask')out({type:'control_request',request_id:'r1',request:{subtype:'can_use_tool',tool_name:'AskUserQuestion',input:{questions:[{question:'Which?',options:[{label:'A'},{label:'B'}]}]}}})
     else if(m.message.content!=='hang'){out({type:'assistant',message:{content:[{type:'text',text:'echo '+m.message.content}]}});out({type:'result',subtype:'success'})}}
   else if(m.type==='control_response'){out({type:'assistant',message:{content:[{type:'text',text:'answer '+JSON.stringify(m.response.response.updatedInput.answers)}]}});out({type:'result',subtype:'success'})}
-}})`
+}})
+process.stdin.on('end',()=>process.exit(0))`
 
 let child: ChildProcess | undefined
 afterEach(() => child?.kill('SIGKILL'))
@@ -71,4 +72,20 @@ test('self-healing: files removed under a running pump come back, and it answers
   expect((await call(sock, { op: 'send', text: 'again' })).ok).toBe(true)
   await until(() => screen.includes('echo again'))
   fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('one-shot (weevboss turn started ahead): ready before any message, one message, one reply, then it exits', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pump-'))
+  fs.writeFileSync(path.join(dir, 'fake.mjs'), FAKE)
+  child = spawn(process.execPath, [path.join(import.meta.dirname, 'claude-pump.mjs'), dir, 'T1', '-', '--', process.execPath, path.join(dir, 'fake.mjs'), '--session-id', 'T1'], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, WEEVILS_PUMP_ONESHOT: '1' } })
+  let screen = ''
+  child.stdout!.on('data', (d) => { screen += d })
+  const state = () => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'T1.json'), 'utf8')) } catch { return {} } }
+  await until(() => state().ready && !state().working)
+  const exited = new Promise<number | null>((r) => child!.on('exit', (code) => r(code)))
+  const sock = path.join(dir, 'T1.sock')
+  expect((await call(sock, { op: 'send', text: 'yo' })).ok).toBe(true)
+  expect(await exited).toBe(0)
+  expect(screen).toContain('echo yo')
+  expect(state().exited).toMatchObject({ code: 0 })
 })

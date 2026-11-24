@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asksUser } from './asks.ts'
+import { ASK_MAX, asksUser, cleanAsk, clip } from './asks.ts'
 
 describe('une session qui attend l’utilisateur', () => {
   it('TUX : valider RunPod et coller une adresse → coller ; un lien à ouvrir → lien', () => {
@@ -46,4 +46,29 @@ it('technical or broken text is never a question (in doubt, no question mark)', 
   expect(asksUser('src/ui/app.tsx ?')).toBeNull()
   expect(asksUser('OK ?')).toBeNull()
   expect(asksUser('Je peux dépenser 2 $ de GPU sur RunPod ?')).toMatchObject({ kind: 'question' })
+})
+
+// 2026-11-24: the card showed « **Needs you :** je lance … import récent seulem », raw Markdown cut mid-word, no « ? ».
+const LONG = '**Oui, c’est le cas.** **Les projets :** weevils lit déjà le dossier de chaque conversation.\n\n' +
+  '**Needs you :** je lance la correction des projets (dossier → dépôt GitHub → bande) et celle du disque (plus de copie complète, images une seule fois, plafond, import récent seulement, réinstall propre) ?'
+
+describe('the question a card shows', () => {
+  it('a long Markdown question: whole, plain, without its « Needs you » label, ending on its « ? »', () => {
+    const ask = asksUser(LONG)!
+    expect(ask.kind).toBe('question')
+    expect(ask.text).toBe('Je lance la correction des projets (dossier → dépôt GitHub → bande) et celle du disque (plus de copie complète, images une seule fois, plafond, import récent seulement, réinstall propre) ?')
+    expect(ask.text).not.toMatch(/\*|Needs you/)
+  })
+  it('cleanAsk drops bold, code, links, bullets and a leading label', () => {
+    expect(cleanAsk('- **Your call:** merge `fix/x` into [main](https://github.com/o/r)?')).toBe('Merge fix/x into main?')
+    expect(cleanAsk('**À toi :** on garde *les deux* ?')).toBe('On garde les deux ?')
+    expect(cleanAsk('Should I deploy now?')).toBe('Should I deploy now?')
+  })
+  it('clip never cuts a word: past the limit it stops at a space, with « … »', () => {
+    const long = `Should I ${'rename every file '.repeat(40)}now?`
+    const c = clip(long, ASK_MAX)
+    expect(c.length).toBeLessThanOrEqual(ASK_MAX)
+    expect(c.endsWith('…') && long.startsWith(`${c.slice(0, -1)} `)).toBe(true)
+    expect(clip('short?', ASK_MAX)).toBe('short?')
+  })
 })

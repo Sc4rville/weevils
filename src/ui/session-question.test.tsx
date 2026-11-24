@@ -76,3 +76,17 @@ it('a translated terminal question shows what it is about in plain words, with n
   expect(host.textContent!.replace(fold.querySelector('.step-content')!.textContent!, '')).not.toMatch(/esc|enter|❯|›|\(y\)|1\.|rm -rf/i)
 })
 
+
+it('a long Markdown question shows whole and plain, the reworded question before the agent’s own words', async () => {
+  const raw = '**Needs you :** je lance la correction des projets (dossier → dépôt GitHub → bande) et celle du disque (plus de copie complète, images une seule fois, plafond, import récent seulement, réinstall propre) ?'
+  // Reworded by the server: shown as it is, never the agent's sentence already in the thread above.
+  const reworded = 'La session « Tracing the Mac install mess » peut-elle lancer les deux corrections : ranger les conversations par dépôt GitHub, et alléger le disque (plus de copie complète, images une seule fois, plafond, import récent seulement) ?'
+  await act(async () => root.render(<SessionQuestion session={session('claude', { attention: `**${reworded}**`, ask: { kind: 'question', text: raw }, choices: undefined })} onError={() => {}} />))
+  expect(host.querySelector('.ask .text')!.textContent).toBe(reworded)
+  // Only the agent's own sentence known: plain, its label gone, whole to its « ? ».
+  await act(async () => root.render(<SessionQuestion session={session('claude', { attention: undefined, ask: { kind: 'question', text: raw }, choices: undefined })} onError={() => {}} />))
+  const text = host.querySelector('.ask .text')!.textContent!
+  expect(text).toMatch(/^Je lance la correction/)
+  expect(text).toMatch(/réinstall propre\) \?$/)
+  expect(text).not.toMatch(/\*/)
+})

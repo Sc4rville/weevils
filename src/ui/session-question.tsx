@@ -3,6 +3,7 @@ import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
 import { useEffect, useState } from 'react'
 import type { Session } from '../../shared/api.ts'
+import { cleanAsk } from '../../shared/asks.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/pages'
@@ -27,7 +28,9 @@ export function SessionQuestion({ session: s, onError }: { session: Session; onE
     <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band tone ask">
       <div className="in">
         <span className="who">{t.asks(TOOL_NAME[s.tool] ?? s.tool)}</span>
-        <div className="text">{s.ask?.text ?? s.attention ?? t.waitingForYou}</div>
+        {/* The question reworded for you (the server's attention: one plain sentence ending on its « ? », not the agent's
+            own words already shown just above), whole and without Markdown; the agent's sentence only when it is all. */}
+        <div className="text">{cleanAsk(s.attention || s.ask?.text || '') || t.waitingForYou}</div>
         {!s.ask && s.attentionDetail && (
           <details className="step-detail ask-detail">
             <summary className="step-head meta">{t.askDetails}</summary>

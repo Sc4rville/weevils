@@ -35,6 +35,30 @@ function tail(text: string): string {
   return paras.slice(-2).join('\n')
 }
 
+/** A label the agent puts before its question (« **Needs you:** », « À toi : »): the card already says it asks. */
+const LABEL = /^(?:needs you|need(?:ed)? from you|your call|your turn|decision|question|à toi|a toi|besoin de toi|j['’]ai besoin de toi|ta décision|ton choix|décision)\s*:\s*/iu
+/** Words cut at the last space, never mid-word, with « … » when something was left out. */
+export function clip(text: string, max: number): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:—-]+$/, '')}…`
+}
+/** An agent's question as plain words: no Markdown (bold, code, links, bullets), no leading « Needs you: » label, one line. */
+export function cleanAsk(text: string): string {
+  const plain = text
+    .replace(/\[([^\]\n]+)\]\((?:https?:\/\/|\/)[^)\s]+\)/g, '$1')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/(^|\s)\*(\S[^*\n]*?\S|\S)\*(?=[\s.,;:!?)]|$)/g, '$1$2')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^(?:[-*•]|\d+[.)]|>)\s+/, '')
+  const bare = plain.replace(LABEL, '')
+  return bare === plain ? plain : bare.charAt(0).toLocaleUpperCase() + bare.slice(1)
+}
+/** The longest question a card, a notification or a band shows: whole in practice, never cut mid-word. */
+export const ASK_MAX = 400
+
 const sentences = (s: string) => s.split(/(?<=[.!?…])\s+|\n+/).map((x) => x.trim()).filter(Boolean)
 
 /** Le dernier message de l'agent demande-t-il quelque chose à l'utilisateur ? */
@@ -44,7 +68,7 @@ export function asksUser(text: string): Ask | null {
   const list = sentences(end)
   const asking = list.filter((s) => directQuestion(s) || directRequest(s))
   if (!asking.length) return null
-  const said = asking.at(-1)!.replace(/\s+/g, ' ').slice(0, 180)
+  const said = clip(cleanAsk(asking.at(-1)!), ASK_MAX)
   const url = [...end.matchAll(URL_RE)].map((m) => m[0].replace(/[.,;:!?»”’"')\]]+$/, '')).at(-1)
   const req = asking.join(' ')
   if (url && /\b(ouvre[sz]?|clique[sz]?|valide[sz]?|autorise[sz]?|approuve[sz]?|connecte|open|click|approve|visit|sign in|log in)\b/i.test(req)) return { kind: 'link', text: said, url }

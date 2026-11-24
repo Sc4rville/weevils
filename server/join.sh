@@ -60,6 +60,9 @@ main() {
     say "Réponse inattendue de weevils." "Unexpected answer from weevils."; exit 1 # i18n-ignore
   }
   [[ "$lang" =~ ^(en|fr)$ ]] || lang=en
+  # Its agents ask before acting, or not, as the main machine's do (one choice for the whole weevils).
+  local ask_flag=()
+  case "$(field ask)" in 0) ask_flag=(--no-ask-permissions) ;; 1) ask_flag=(--ask-permissions) ;; esac
   user=${target%@*}; host=${target#*@}
 
   # Where the main machine is: an alias of its own, this key only, its host keys as weevils gave them.
@@ -99,7 +102,7 @@ main() {
   {
     if [ -n "${WEEVILS_INSTALL_SH:-}" ]; then cat "$WEEVILS_INSTALL_SH"
     else curl -fsSL https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh; fi
-  } | WEEVILS_TUNNEL_PORT=$port WEEVILS_FAIL_FILE=$fail bash -s -- --yes --lang "$lang" --secondary "$alias" --machine "$id" || rc=$?
+  } | WEEVILS_TUNNEL_PORT=$port WEEVILS_FAIL_FILE=$fail bash -s -- --yes --lang "$lang" --secondary "$alias" --machine "$id" ${ask_flag[@]+"${ask_flag[@]}"} || rc=$?
   if [ "$rc" != 0 ]; then
     local why fix
     why=$(sed -n 1p "$fail" 2>/dev/null); fix=$(sed -n 2p "$fail" 2>/dev/null)

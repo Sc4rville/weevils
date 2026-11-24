@@ -239,6 +239,8 @@ export interface JoinRouteCtx {
   /** The main machine's id (the ssh alias the other computer writes: weevils-<id>). */
   machine: string
   lang: string
+  /** The main machine's permission choice (server/ask-follow.ts): the new machine's agents start the same way. */
+  ask?: boolean
   /** sshd's host keys, for the other computer's known_hosts. */
   hostKeys?: (host: string) => string[]
   /** Its key is in: it is shown at once (connecting), on its tunnel port. */
@@ -287,7 +289,7 @@ export async function joinRoute(req: http.IncomingMessage, res: http.ServerRespo
   const host = r.target.slice(r.target.indexOf('@') + 1)
   console.log(`[join] ${r.id}: key authorized, tunnel port ${r.port}`)
   ctx.onJoined(r.id, r.port)
-  const lines = [`id=${r.id}`, `port=${r.port}`, `target=${r.target}`, `alias=weevils-${slugId(ctx.machine) || 'main'}`, `lang=${ctx.lang === 'fr' ? 'fr' : 'en'}`, ...(ctx.hostKeys ?? knownHosts)(host).map((k) => `known=${k}`)]
+  const lines = [`id=${r.id}`, `port=${r.port}`, `target=${r.target}`, `alias=weevils-${slugId(ctx.machine) || 'main'}`, `lang=${ctx.lang === 'fr' ? 'fr' : 'en'}`, ...(ctx.ask === undefined ? [] : [`ask=${ctx.ask ? 1 : 0}`]), ...(ctx.hostKeys ?? knownHosts)(host).map((k) => `known=${k}`)]
   // The vault, when there is one: never a reason for the join to fail.
   const pub = (form.get('vault') ?? '').trim()
   if (ctx.vault && KEY_RE.test(pub)) {

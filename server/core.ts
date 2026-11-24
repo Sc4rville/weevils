@@ -4,7 +4,7 @@ import LivingResults from './i18n/living-results.ts'
 import { InstallationIdentity } from './recursive-identity.ts'
 import { isScratchDir } from './scratch.ts'
 import AgentMessages from './i18n/agent-messages.ts'
-import { askPermissions, CLAUDE, CODEX_FLAGS, projectClaude, projectCodexFlags } from './agent-launch.ts'
+import { askPermissions, bossClaude, bossCodexFlags, projectClaude, projectCodexFlags } from './agent-launch.ts'
 import { trustInClaudeJson } from './claude-json.ts'
 import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
@@ -861,7 +861,7 @@ export class Weevils {
       }
       try {
         const screen = await capture(p.name)
-        const reading = readScreen(screen, p.tool, { trustedFolder: insideRoots(p.cwd) })
+        const reading = readScreen(screen, p.tool, { trustedFolder: insideRoots(p.cwd), allowAll: !askPermissions() })
         const state = this.stuckOr(p, screen, reading)
         if (state.kind === 'question') {
           dialog = { question: state.question, ...(state.detail ? { detail: state.detail } : {}), options: state.choices, selected: state.menu?.selected ?? -1 }
@@ -1934,7 +1934,7 @@ export class Weevils {
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
     // A project session gets the plain-voice rule back on every relaunch; a weevboss conversation never does.
     const boss = internalCwd(cwd) || this.isBossThread(s.id)
-    const command = s.tool === 'claude' ? [...(boss ? CLAUDE : projectClaude()), '--resume', s.id, text] : ['codex', 'resume', ...(boss ? CODEX_FLAGS : projectCodexFlags()), s.id, text]
+    const command = s.tool === 'claude' ? [...(boss ? bossClaude() : projectClaude()), '--resume', s.id, text] : ['codex', 'resume', ...(boss ? bossCodexFlags() : projectCodexFlags()), s.id, text]
     const at = Date.now()
     await this.spawn(s.tool, cwd, s.title, command, s.id)
     // Rouverte : une coupure d'avant est réglée (une nouvelle, plus tard, comptera).
@@ -2440,7 +2440,7 @@ export class Weevils {
    *  may answer folder trust (insideRoots). */
   private readPane = (screen: string, pane: string, tool?: Tool) => {
     const p = this.panes.find((x) => x.name === pane)
-    return readScreen(screen, tool ?? p?.tool, { trustedFolder: insideRoots(p?.cwd) })
+    return readScreen(screen, tool ?? p?.tool, { trustedFolder: insideRoots(p?.cwd), allowAll: !askPermissions() })
   }
 
   /**
@@ -2719,7 +2719,7 @@ export class Weevils {
     const known = this.orchestratorId && this.store.get(this.orchestratorId)
     if (!this.orchestratorId || !known) this.orchestratorId = crypto.randomUUID()
     const id = this.orchestratorId
-    const command = known ? [...CLAUDE, '--resume', id, text] : [...CLAUDE, '--session-id', id, text]
+    const command = known ? [...bossClaude(), '--resume', id, text] : [...bossClaude(), '--session-id', id, text]
     await this.spawn('claude', ORCH_DIR, 'weevboss', command, id)
     this.relay?.takeBossBack()
     this.persist()
@@ -2799,7 +2799,7 @@ export class Weevils {
       turns.preferUser()
       const head = turns.queue[0]
       if (head?.proactive && !canWake()) return
-      const turn = await turns.prepare({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', live: this.bossLive(now), ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
+      const turn = await turns.prepare({ id, claude: bossClaude(), memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', live: this.bossLive(now), ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
       // Preparation can await summaries. A user who spoke in the meantime takes the next turn.
       if (head?.proactive && (turns.preferUser() || !canWake() || !wakeups!.canLaunch(Date.now(), id))) return
       // The previous turn is over: its message can be read into the ledger.
@@ -3051,7 +3051,7 @@ export class Weevils {
     const until = e?.until ? t.until(clockOf(e.until, Date.now(), e.tz)) : ''
     const first = (text + joinContext(context, preferredTool() === 'codex' ? this.threadDigest(this.orchestratorMessages().slice(-12)) : t.bossIn(t[`bossWhy_${e?.kind ?? 'limit'}`], until, this.threadDigest(this.orchestratorMessages().slice(-12)), unanswered))).trim()
     const known = boss?.id && boss.t ? boss.id : undefined
-    const command = known ? ['codex', 'resume', ...CODEX_FLAGS, known, first] : ['codex', ...CODEX_FLAGS, first]
+    const command = known ? ['codex', 'resume', ...bossCodexFlags(), known, first] : ['codex', ...bossCodexFlags(), first]
     const name = await this.spawn('codex', ORCH_DIR, 'weevboss', command, known)
     void this.acceptTrust(name)
     const registered = { pane: name, sessionId: known, since: boss?.since ?? Date.now() }

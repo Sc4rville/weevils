@@ -13,9 +13,10 @@ process.stdin.on('data',d=>{buf+=d;let i;while((i=buf.indexOf('\\n'))>=0){const 
   if(m.type==='control_request'&&m.request.subtype==='initialize')out({type:'control_response',response:{subtype:'success',request_id:m.request_id}})
   else if(m.type==='control_request'&&m.request.subtype==='interrupt')out({type:'result',subtype:'error_during_execution',is_error:true})
   else if(m.type==='user'){out({type:'system',subtype:'init'})
-    if(m.message.content==='ask')out({type:'control_request',request_id:'r1',request:{subtype:'can_use_tool',tool_name:'AskUserQuestion',input:{questions:[{question:'Which?',options:[{label:'A'},{label:'B'}]}]}}})
+    if(m.message.content==='bash')out({type:'control_request',request_id:'r2',request:{subtype:'can_use_tool',tool_name:'Bash',input:{command:'find . -name x'}}})
+    else if(m.message.content==='ask')out({type:'control_request',request_id:'r1',request:{subtype:'can_use_tool',tool_name:'AskUserQuestion',input:{questions:[{question:'Which?',options:[{label:'A'},{label:'B'}]}]}}})
     else if(m.message.content!=='hang'){out({type:'assistant',message:{content:[{type:'text',text:'echo '+m.message.content}]}});out({type:'result',subtype:'success'})}}
-  else if(m.type==='control_response'){out({type:'assistant',message:{content:[{type:'text',text:'answer '+JSON.stringify(m.response.response.updatedInput.answers)}]}});out({type:'result',subtype:'success'})}
+  else if(m.type==='control_response'){out({type:'assistant',message:{content:[{type:'text',text:'answer '+JSON.stringify(m.response.response.updatedInput.answers??m.response.response.behavior)}]}});out({type:'result',subtype:'success'})}
 }})
 process.stdin.on('end',()=>process.exit(0))`
 
@@ -88,4 +89,35 @@ test('one-shot (weevboss turn started ahead): ready before any message, one mess
   expect(await exited).toBe(0)
   expect(screen).toContain('echo yo')
   expect(state().exited).toMatchObject({ code: 0 })
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('started without permission prompts: a tool Claude asks about anyway is allowed by the pump, its own questions still reach the person', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pump-'))
+  fs.writeFileSync(path.join(dir, 'fake.mjs'), FAKE)
+  child = spawn(process.execPath, [path.join(import.meta.dirname, 'claude-pump.mjs'), dir, 'wv-a', '-', '--', process.execPath, path.join(dir, 'fake.mjs'), '--dangerously-skip-permissions', '--session-id', 'S3'], { stdio: ['ignore', 'pipe', 'inherit'] })
+  let screen = ''
+  child.stdout!.on('data', (d) => { screen += d })
+  const state = () => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'wv-a.json'), 'utf8')) } catch { return {} } }
+  await until(() => !!state().ready)
+  const sock = path.join(dir, 'wv-a.sock')
+  await call(sock, { op: 'send', text: 'bash' })
+  await until(() => screen.includes('answer "allow"') && !state().working)
+  expect(state().question).toBeNull()
+  expect(screen).toContain('Bash allowed')
+  await call(sock, { op: 'send', text: 'ask' })
+  await until(() => state().question?.question === 'Which?')
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('asking (no skip flag): a tool request is the person\'s question', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pump-'))
+  fs.writeFileSync(path.join(dir, 'fake.mjs'), FAKE)
+  child = spawn(process.execPath, [path.join(import.meta.dirname, 'claude-pump.mjs'), dir, 'wv-q', '-', '--', process.execPath, path.join(dir, 'fake.mjs'), '--permission-mode', 'default', '--session-id', 'S4'], { stdio: ['ignore', 'pipe', 'inherit'] })
+  const state = () => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'wv-q.json'), 'utf8')) } catch { return {} } }
+  await until(() => !!state().ready)
+  await call(path.join(dir, 'wv-q.sock'), { op: 'send', text: 'bash' })
+  await until(() => state().question?.name === 'permission')
+  expect(state().question.detail).toBe('find . -name x')
+  fs.rmSync(dir, { recursive: true, force: true })
 })

@@ -27,7 +27,8 @@ vi.mock('./titles.ts', async (orig) => ({ ...(await orig<typeof import('./titles
 const { Weevils, joinContext } = await import('./core.ts')
 const { DATA_DIR, HOME, ORCH_DIR, INBOX_DIR } = await import('./config.ts')
 const { setLang, withLang } = await import('./i18n.ts')
-const { CLAUDE, projectCodexFlags } = await import('./agent-launch.ts')
+const { bossClaude, projectCodexFlags } = await import('./agent-launch.ts')
+const CLAUDE = bossClaude()
 type Transcript = import('./transcripts.ts').Transcript
 
 const NOW = Date.parse('2026-11-10T14:00:00Z')

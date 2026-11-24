@@ -34,9 +34,19 @@ const userMessage = (text) => write({ type: 'user', message: { role: 'user', con
 
 /** Pending permission/question: the claude request, and for AskUserQuestion the answers collected so far. */
 let pending = null
+/** Started without permission prompts (the person's choice, server/agent-launch.ts): a tool Claude asks about anyway is
+ *  allowed here, never left waiting for a tap. Its own questions (AskUserQuestion) and a plan to approve still go to
+ *  the person. */
+const allowAll = cmd.includes('--dangerously-skip-permissions')
+const PERSON_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 function ask(m) {
   const input = m.request.input ?? {}
   const tool = m.request.tool_name
+  if (allowAll && !PERSON_TOOLS.has(tool)) {
+    log(`· ${tool} allowed (permission prompts are off)`)
+    write({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { behavior: 'allow', updatedInput: input } } })
+    return
+  }
   if (tool === 'AskUserQuestion' && Array.isArray(input.questions) && input.questions.length) {
     pending = { requestId: m.request_id, input, tool, index: 0, answers: {} }
   } else pending = { requestId: m.request_id, input, tool }

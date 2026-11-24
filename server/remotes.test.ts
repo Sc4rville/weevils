@@ -169,3 +169,52 @@ it('a machine just plugged in says installing, then why its install stopped; a f
   r.stop()
   fs.rmSync(dataDir, { recursive: true, force: true })
 })
+
+// One permission choice for the whole weevils (server/ask-follow.ts): the main machine tells the others over the link.
+it('tells a secondary machine the main one\'s permission choice: at once, again when it changes, again after it comes back', async () => {
+  vi.useFakeTimers()
+  const asks: unknown[] = []
+  let up = true
+  let oldWeevils = true
+  vi.stubGlobal('fetch', vi.fn(async (u: string, init?: RequestInit) => {
+    if (!up) throw Object.assign(new Error('refused'), { cause: { code: 'ECONNREFUSED' } })
+    if (String(u).endsWith('/api/machine/ask')) {
+      if (oldWeevils) return Response.json({ error: 'not found' }, { status: 404 })
+      asks.push(JSON.parse(String(init?.body)).ask)
+      return Response.json({ ok: true })
+    }
+    return Response.json({ version: 1, machines: [{ id: 'kusaila' }], sessions: [], h24: [] })
+  }))
+  let ask = false
+  const r = new Remote('kusaila', 'http://127.0.0.1:4193', vi.fn(), { askChoice: () => ask })
+  r.start()
+  await vi.advanceTimersByTimeAsync(10)
+  expect(asks).toEqual([]) // an older weevils there: no route yet…
+  oldWeevils = false
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(asks).toEqual([]) // …tried again a minute later, not on every look
+  await vi.advanceTimersByTimeAsync(31_000)
+  expect(asks).toEqual([false]) // updated there: it takes it, without a line pasted again
+  await vi.advanceTimersByTimeAsync(5 * 60_000)
+  expect(asks).toEqual([false])
+  ask = true
+  await vi.advanceTimersByTimeAsync(61_000)
+  expect(asks).toEqual([false, true])
+  up = false
+  await vi.advanceTimersByTimeAsync(4_000)
+  up = true
+  await vi.advanceTimersByTimeAsync(61_000)
+  expect(asks).toEqual([false, true, true]) // back from a restart: told again
+  r.stop()
+})
+
+it('a machine that is not the main one sends no permission choice', async () => {
+  vi.useFakeTimers()
+  const urls: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (u: string) => { urls.push(String(u)); return Response.json({ version: 1, machines: [{ id: 'pc' }], sessions: [], h24: [] }) }))
+  const r = new Remote('pc', 'http://127.0.0.1:4192', vi.fn(), { askChoice: () => undefined })
+  r.start()
+  await vi.advanceTimersByTimeAsync(20_000)
+  expect(urls.some((u) => u.endsWith('/api/machine/ask'))).toBe(false)
+  r.stop()
+})

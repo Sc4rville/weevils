@@ -2,9 +2,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CLAUDE, CODEX_FLAGS, plainVoice, projectInstructions, projectClaude, projectCodexFlags } from './agent-launch.ts'
+import { bossClaude, bossCodexFlags, plainVoice, projectInstructions, projectClaude, projectCodexFlags } from './agent-launch.ts'
 import PlainVoice from './i18n/plain-voice.ts'
 
+const CLAUDE = bossClaude()
+const CODEX_FLAGS = bossCodexFlags()
 const src = (f: string) => fs.readFileSync(path.join(import.meta.dirname, f), 'utf8')
 
 describe('the plain-voice rule', () => {
@@ -55,7 +57,7 @@ describe('the plain-voice rule', () => {
     for (const l of bossSpawns) expect(l).not.toMatch(/project(Claude|CodexFlags)/)
     // ... and the commands they spawn (resumed or new, Claude or Codex) are built from the bare ones.
     for (const l of core.split('\n').filter((x) => /const command = known \?/.test(x))) expect(l).not.toMatch(/project(Claude|CodexFlags)/)
-    expect(core).toContain('turns.prepare({ id, claude: [...CLAUDE]')
+    expect(core).toContain('turns.prepare({ id, claude: bossClaude()')
   })
 })
 
@@ -84,6 +86,21 @@ describe('permission prompts', () => {
     expect(codexFlags(false)).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
     expect(claudeCommand(true)).toEqual([...CLAUDE])
     expect(codexFlags(true)).toEqual([...CODEX_FLAGS])
+  })
+  it('read at each launch: a machine that follows the main one switches without a restart', () => {
+    const before = process.env.WEEVILS_SAFE
+    try {
+      process.env.WEEVILS_SAFE = '0'
+      expect(bossClaude()).toEqual(['claude', '--dangerously-skip-permissions'])
+      expect(bossCodexFlags()).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
+      expect(projectClaude('en').slice(0, 2)).toEqual(['claude', '--dangerously-skip-permissions'])
+      expect(projectCodexFlags('en')[0]).toBe('--dangerously-bypass-approvals-and-sandbox')
+      process.env.WEEVILS_SAFE = '1'
+      expect(bossClaude()).toEqual(['claude', '--permission-mode', 'default'])
+    } finally {
+      if (before === undefined) delete process.env.WEEVILS_SAFE
+      else process.env.WEEVILS_SAFE = before
+    }
   })
   it('wv, the terminal launcher, asks the same way', () => {
     const wv = src('wv')

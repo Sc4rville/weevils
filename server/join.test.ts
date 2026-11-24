@@ -297,7 +297,7 @@ describe('the join carries the vault', async () => {
   const T1 = '01M7HSBBM02XDK5FKDXG64FE62'
 
   /** The main machine: a weevbook with one thread, `gh` signed in as alex (or not), and a vault on « GitHub » when asked. */
-  async function world(o: { vault: boolean; signedIn?: boolean }) {
+  async function world(o: { vault: boolean; signedIn?: boolean; ask?: boolean }) {
     const root = tmp()
     // git reaches github.com's repositories in a folder of the test.
     const github = path.join(root, 'github')
@@ -347,7 +347,7 @@ esac
     }
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url ?? '/', 'http://x')
-      const ctx = { join, machine: 'Box', lang: 'en', hostKeys: (h: string) => [`${h} ssh-ed25519 KEY`], onJoined: () => undefined, vault: (id: string, pub: string) => shareVault({ remote: remote(), keyFile: path.join(cfg, 'vault.key'), id, pub, gh: ghRunner(gh, 10_000), notes }) }
+      const ctx = { join, machine: 'Box', lang: 'en', ...(o.ask === undefined ? {} : { ask: o.ask }), hostKeys: (h: string) => [`${h} ssh-ed25519 KEY`], onJoined: () => undefined, vault: (id: string, pub: string) => shareVault({ remote: remote(), keyFile: path.join(cfg, 'vault.key'), id, pub, gh: ghRunner(gh, 10_000), notes }) }
       if (!(await joinRoute(req, res, url.pathname, ctx))) {
         res.writeHead(418)
         res.end()
@@ -424,6 +424,22 @@ esac
       expect(fs.readFileSync(w.keys, 'utf8').trim().split('\n')).toHaveLength(1)
     } finally {
       w.close()
+    }
+  }, 60_000)
+
+  it.skipIf(!tools)('the new machine\'s agents ask before acting, or not, as the main machine\'s do', async () => {
+    for (const [ask, flag] of [[false, '--no-ask-permissions'], [true, '--ask-permissions']] as const) {
+      const w = await world({ vault: false, ask })
+      try {
+        const laptop = path.join(w.root, 'laptop')
+        fs.mkdirSync(laptop)
+        expect((await w.paste(laptop, w.join.create('user@weevils.example.com'))).code).toBe(0)
+        const args = installed(laptop)
+        expect(args.slice(0, 5)).toEqual(['--yes', '--lang', 'en', '--secondary', 'weevils-box'])
+        expect(args.at(-1)).toBe(flag)
+      } finally {
+        w.close()
+      }
     }
   }, 60_000)
 

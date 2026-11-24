@@ -243,3 +243,27 @@ describe('fallbacks', () => {
     expect(screenId(`old\n${'x\n'.repeat(40)}`)).toBe(screenId(`older\n${'x\n'.repeat(40)}`))
   })
 })
+
+describe('permission prompts turned off (allowAll): weevils allows, never leaves the dialog on screen', () => {
+  const perms = files.filter((f) => expected[f]?.name === 'permission')
+  const allowIn = (f: string) => readScreen(fs.readFileSync(path.join(DIR, f), 'utf8'), agentOf(f), { allowAll: true }).state
+  it('every Claude and Codex permission dialog is allowed once, by its plain « yes » answer', () => {
+    expect(perms.length).toBeGreaterThan(20)
+    for (const f of perms) {
+      const fresh = fs.readFileSync(path.join(DIR, f), 'utf8')
+      if (/\bdangerous\b|outside the project/i.test(fresh.split('\n').slice(-14).join(' '))) continue
+      const s = allowIn(f)
+      expect(s.kind === 'auto' && s.name, f).toBe('permission')
+      if (s.kind !== 'auto' || s.pick === 'enter') throw new Error(f)
+      const label = s.menu!.options[s.pick].raw
+      expect(label, f).toMatch(/^(?:yes|allow|approve)\b/i)
+      expect(label, f).not.toMatch(/don.?t ask|always|session|future|auto mode|accept edits/i)
+    }
+  })
+  it('a check Claude Code keeps even without prompts (dangerous rm outside the project) stays the person\'s question', () => {
+    for (const f of ['claude-04-dangerous-rm-bypass-immune-safety-check.txt', 'claude-live-R4-dangerous-rm.txt']) expect(allowIn(f).kind, f).toBe('question')
+  })
+  it('nothing else changes: the bypass warning, plans and questions are still the person\'s', () => {
+    for (const f of files.filter((x) => expected[x]?.kind === 'question' && expected[x]?.name !== 'permission')) expect(allowIn(f).kind, f).toBe('question')
+  })
+})

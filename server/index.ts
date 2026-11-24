@@ -66,6 +66,8 @@ import type { InfraDetail, MachineBrief, MachineFacts, Reach, TokenRate, UsageTo
 import { facts } from './discover.ts'
 import { applyKeys, factoryRoutes, keysOff, talkContext, type FactoryDeps } from './your-factory.ts'
 import { Setup, installPlan, shellEnv, which, writeConfig } from './setup.ts'
+import { followAsk } from './ask-follow.ts'
+import { askPermissions } from './agent-launch.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
 import { ledgerRoutes } from './boss-ledger-http.ts'
@@ -888,6 +890,20 @@ const routes: [string, RegExp, Handler][] = [
     if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang, chosen }).catch(() => undefined)
     json(res, 200, { ok: true })
   }],
+  // A secondary machine follows the main one's permission choice (server/ask-follow.ts): only the main machine sends it,
+  // through the tunnel with this machine's local token; never a jailed process. The main machine keeps its own.
+  ['POST', /^\/api\/machine\/ask$/, async (req, res) => {
+    if (!isLocal(req) || jailedPeer(req.socket)) return json(res, 403, { error: tr(PM).localOnly })
+    if (ORCHESTRATOR) return json(res, 409, { error: 'main machine' }) // i18n-ignore: machine-to-machine answer
+    const b = await readBody(req)
+    if (typeof b?.ask !== 'boolean') return json(res, 400, { error: 'bad request' }) // i18n-ignore: machine-to-machine answer
+    const r = followAsk(b.ask, { writeConfig })
+    if (r.changed) {
+      console.log(`[machine] permission prompts ${r.ask ? 'on' : 'off'}, as on the main machine`)
+      w.bump()
+    }
+    json(res, 200, r)
+  }],
   // Updates by itself (server/weevils-update, every 20 to 30 minutes when nothing is working): on unless turned off here.
   ['POST', /^\/api\/updates$/, async (req, res) => {
     const b = await readBody(req)
@@ -1533,7 +1549,7 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     // A computer bringing its conversations: its one-time code is its key, not the access code (server/bring.ts).
     if (url.pathname.startsWith('/api/bring') && (url.pathname === '/api/bring.sh' || url.pathname.startsWith('/api/bring/pc/')) && (await bring.pcRoute(req, res, url.pathname))) return
     // Another computer joining from its line: the one-time code is its key (server/join.ts).
-    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: machineJoined, onFailed: machineJoinFailed, vault: joinVault }))) return
+    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), ask: askPermissions(), onJoined: machineJoined, onFailed: machineJoinFailed, vault: joinVault }))) return
     const site = SITE_RE.exec(url.pathname)
     if (site && req.method === 'GET') return serveSite(res, site[1], site[2], site[3])
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.

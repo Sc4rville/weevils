@@ -222,6 +222,10 @@ interface Ctx {
   agent: Agent
   /** The session runs in a folder inside the user's project roots (PROJECT_ROOTS): only there is folder trust answered. */
   trustedFolder: boolean
+  /** The person turned permission prompts off (WEEVILS_SAFE=0, or the main machine's choice followed here): a
+   *  permission dialog that still shows (a session started before the switch, a tool Claude Code asks about anyway)
+   *  is allowed once by weevils, never left on the screen. */
+  allowAll: boolean
   menu: Menu
   head: string
   labels: string[]
@@ -355,6 +359,11 @@ const isPermissionMenu = (c: Ctx) =>
   (/Do you want to proceed\?|Do you want to (?:create|make this edit|edit|overwrite|delete) |allow Claude to fetch|Would you like to (?:run|make the following edits|grant)|approve network access|tool call\?|send input/i.test(c.head) ||
     PERMISSION_TITLE.test(c.menu.heading[0] ?? '') || c.labels.some((l) => PERMISSION_ANSWER.test(l)))
 
+/** The answer that allows this one request and nothing more (« Yes », « Yes, proceed », « Allow once »); -1 for a check
+ *  Claude Code keeps even without prompts (« Dangerous rm operation on a path outside the project »): that one stays
+ *  the person's question, in the app. */
+const allowOnce = (c: Ctx) => (/\bdangerous\b|outside the project|safety check/i.test(c.head + ' ' + c.lines.join(' ')) ? -1 : c.labels.findIndex((l) => answerLabel(l) === tr(M).allow))
+
 /** Folder trust, known by its question in its place: the dialog's first line, or right under its title (Claude
  *  « Accessing workspace: », Codex « Folder access » or « > You are in … », the folder between them). Never a line
  *  further down, where another dialog can quote an agent's words. */
@@ -398,8 +407,10 @@ function classifyMenu(c: Ctx, rawRegion: string[]): TerminalState {
   const lastLine = menu.heading.at(-1) ?? ''
 
   // ---- permissions first (Claude tools, Codex approvals), from the dialog itself: what, and why. Never answered by
-  // weevils, whatever the agent wrote in them (a description that quotes another dialog's question).
+  // weevils, whatever the agent wrote in them (a description that quotes another dialog's question), unless the person
+  // turned permission prompts off: then allowed once, as the flags they chose would have.
   if (isPermissionMenu(c)) {
+    if (c.allowAll && (i = allowOnce(c)) >= 0) return { kind: 'auto', name: 'permission', menu, pick: i }
     const p = permission(c, rawRegion)
     if (p) return question(c, 'permission', p.question, (raw) => answerLabel(raw), p.detail)
     return question(c, 'permission', titleOf(c), (raw) => answerLabel(raw))
@@ -518,7 +529,9 @@ function holdOf(lines: string[], agent: Agent): Hold | undefined {
 // ---------------------------------------------------------------- entry point
 
 /** opts.trustedFolder: the session's folder is inside the user's project roots (insideRoots in server/config.ts). */
-export function readScreen(text: string, agent?: Agent, opts: { trustedFolder?: boolean } = {}): Reading {
+/** opts.allowAll: permission prompts are off for this person (askPermissions() false): a permission dialog is answered
+ *  « allow » by weevils. */
+export function readScreen(text: string, agent?: Agent, opts: { trustedFolder?: boolean; allowAll?: boolean } = {}): Reading {
   const who = nameFor(agent)
   const lines = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').split('\n').map(clean)
   while (lines.length && blank(lines[lines.length - 1])) lines.pop()
@@ -547,7 +560,7 @@ export function readScreen(text: string, agent?: Agent, opts: { trustedFolder?: 
     let start = end
     while (start > 0 && end - start < 40 && !RULE.test(lines[start - 1])) start--
     const region = lines.slice(start, end)
-    return done(classifyMenu({ agent: who, trustedFolder: opts.trustedFolder === true, menu, head, labels: menu.options.map((o) => o.raw), lines: lines.slice(-12) }, region))
+    return done(classifyMenu({ agent: who, trustedFolder: opts.trustedFolder === true, allowAll: opts.allowAll === true, menu, head, labels: menu.options.map((o) => o.raw), lines: lines.slice(-12) }, region))
   }
 
   // Settings slider without a cursor line (/effort), a Claude panel (/usage, /config, /fast: a "▔" top rule, an

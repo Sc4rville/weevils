@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { CONFIG_DIR, DATA_DIR, MACHINE, WEEVBOOK_DIR } from './config.ts'
+import { CONFIG_DIR, DATA_DIR, MACHINE, ORCHESTRATOR, WEEVBOOK_DIR } from './config.ts'
+import { askPermissions } from './agent-launch.ts'
 import { KeptRows, offlineRow, weevbookRows } from './offline-machines.ts'
 import { machinePart } from './weevbook/sync.ts'
 import { LOCAL_TOKEN_HEADER, parseLocalToken } from './http.ts'
@@ -40,12 +41,18 @@ export class Remote {
   private joinFile: string
   private join: { at: number; failed?: { why: string; fix: string } } | null = null
   private timer: NodeJS.Timeout | null = null
+  /** The main machine's permission choice (server/ask-follow.ts): what it wants the agents there to do (undefined: this
+   *  machine is not the main one, it sends nothing), what that machine took, and when it was last sent. */
+  private askChoice: () => boolean | undefined
+  private askSent: boolean | undefined
+  private askAt = 0
 
-  constructor(id: string, url: string, onChange: () => void, o: { dataDir?: string; weevbookDir?: string } = {}) {
+  constructor(id: string, url: string, onChange: () => void, o: { dataDir?: string; weevbookDir?: string; askChoice?: () => boolean | undefined } = {}) {
     this.id = id
     this.url = url.replace(/\/$/, '')
     this.onChange = onChange
     this.tokenFile = remoteTokenFile(id)
+    this.askChoice = o.askChoice ?? (() => (ORCHESTRATOR ? askPermissions() : undefined))
     this.kept = new KeptRows(path.join(o.dataDir ?? DATA_DIR, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.rows.json`))
     this.keptRows = this.kept.load()
     this.gitDir = path.join(o.weevbookDir ?? WEEVBOOK_DIR, '.git')
@@ -184,6 +191,7 @@ export class Remote {
       if (!this.online) this.seenSaved = 0
       this.seen()
       this.online = true
+      void this.followAsk()
       if (changed) {
         this.keptRows = sessions
         this.kept.save(sessions)
@@ -199,10 +207,26 @@ export class Remote {
           this.seen(this.seenAt)
         }
         this.online = false
+        this.askSent = undefined // back after a restart or an update: told again
         this.why = why
         this.onChange()
       }
       await this.refreshBook().catch(() => undefined)
+    }
+  }
+
+  /** The main machine's permission choice, to that machine: when it changes or the machine comes back (a minute apart
+   *  at most while it does not take it: an older weevils there, until its update), and every 10 minutes anyway. */
+  async followAsk(now = Date.now()) {
+    const want = this.askChoice()
+    if (want === undefined || !this.online) return
+    if (this.askSent === want ? now - this.askAt < 10 * 60_000 : now - this.askAt < 60_000) return
+    this.askAt = now
+    try {
+      await this.call('POST', '/api/machine/ask', { ask: want })
+      this.askSent = want
+    } catch {
+      this.askSent = undefined
     }
   }
 

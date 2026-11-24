@@ -2,17 +2,21 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
     "src/main.tsx",
+    "next/src/main.tsx",
     "server/index.ts",
     "server/agent-coordinate.mjs",
     "server/claude-pump.mjs",
+    "server/capture.mjs",
+    "server/heavy/cli.ts",
     "server/weevbook/vault-worker.ts",
     "server/i18n/api.ts",
     "public/sw.js",
     "get/*.{mjs,js}",
     "scripts/*.{mjs,ts}",
+    "scripts/lab/*.mjs",
     "test/**/*.{ts,mjs}"
   ],
-  "project": ["src/**/*.{ts,tsx}", "server/**/*.{ts,mjs}", "shared/**/*.ts", "get/**/*.{mjs,js}", "scripts/**/*.{mjs,ts}"],
+  "project": ["src/**/*.{ts,tsx}", "next/src/**/*.{ts,tsx}", "server/**/*.{ts,mjs}", "shared/**/*.ts", "get/**/*.{mjs,js}", "scripts/**/*.{mjs,ts}"],
   "ignore": ["harness-interface-kit/**"],
   "ignoreDependencies": ["web-push", "@types/web-push"],
   "ignoreBinaries": ["shellcheck"]

@@ -1,6 +1,6 @@
 // A session's screen gives the thread the room (2026-11-22, docs/next-interaction.md): one compact head row, no second
-// status-bar gap under weevboss's strip, a box to write in one line tall while empty with its buttons on its row, only
-// the phone's own bottom inset under it, and a quiet « new below » mark rather than a dark block over the text.
+// status-bar gap under weevboss's strip, and a quiet « new below » mark rather than a dark block over the text. Its box to
+// write in is weevboss's own since 2026-11-24 (test/next-composer-look.test.ts).
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'vitest'
@@ -22,13 +22,12 @@ it('both apps: « new below » is a quiet tone of the page, never an ink block',
   expect(b).toMatch(/color:\s*var\(--ink\)/)
 })
 
-it('next: no second top gap, a one-line box on its buttons’ row, only the real bottom inset', () => {
+it("next: no second top gap; the box to write in is weevboss's, standing above the bottom inset", () => {
   const css = read('next/src/next.css')
   expect(body(css, '.nx-session-host > .page > .page-head')).toMatch(/padding-top:\s*0/)
-  expect(body(css, '.session-page .page-foot')).toMatch(/padding-bottom:\s*0/)
-  expect(body(css, '.session-page .page-foot .composer')).toMatch(/padding-bottom:\s*var\(--safe-b\)/)
-  expect(body(css, '.session-page .composer > .in')).toMatch(/flex-wrap:\s*nowrap/)
-  expect(body(css, '.session-page .composer > .in > textarea')).toMatch(/min-height:\s*0/)
+  expect(css).toMatch(/:is\(\.nx-composer, \.nx-stage \.page-foot\) \{[^}]*/)
+  expect(body(css, ':is(.nx-composer')).toMatch(/padding:\s*0 0 calc\(var\(--safe-b\) \+ 10px\)/)
+  expect(css).not.toMatch(/\.session-page \.(composer|page-foot)/)
 })
 
 it('both apps: a session head drops the repo name and the logo; the chevron, the title and the model share the row', () => {

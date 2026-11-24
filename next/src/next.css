@@ -53,21 +53,23 @@ body { overflow: hidden; }
 
 /* The box to write in: the app's composer (a `.tone` sub-band, its bare send arrow, + and mic as `.tool-btn`), in its
    roomy form. The text takes the whole width; the buttons sit on one row under it: files on the left, mic and send on
-   the right. */
+   the right. One look and one place for every chat (2026-11-24): weevboss's thread (.nx-composer) and the foot of any
+   other page that talks (a session, an automation, a thread, a factory talk: the app's Shell `.page-foot`), the box
+   a band from edge to edge, standing the phone's bottom inset plus 10px above the screen's edge, never pressed on it. */
 .nx-boss { --c: var(--agent); }
-.nx-composer { flex: none; padding: 6px 10px calc(var(--safe-b) + 10px); }
-:is(.nx-composer, .session-page) .composer { max-width: 760px; margin: 0 auto; }
-:is(.nx-composer, .session-page) .composer > .in { flex-wrap: wrap; align-items: center; gap: 0 2px; padding: 4px 8px 2px 14px; min-height: 0; }
-:is(.nx-composer, .session-page) .composer textarea {
+:is(.nx-composer, .nx-stage .page-foot) { flex: none; padding: 0 0 calc(var(--safe-b) + 10px); }
+:is(.nx-composer, .nx-stage .page-foot) .composer { max-width: none; margin: 0 auto; }
+:is(.nx-composer, .nx-stage .page-foot) .composer > .in { flex-wrap: wrap; align-items: center; gap: 0 2px; padding: 4px 8px 2px 14px; min-height: 0; }
+:is(.nx-composer, .nx-stage .page-foot) .composer textarea {
   flex: 1 1 100%; order: -1; min-height: 4.4em; max-height: 45dvh; padding: 12px 2px 4px; line-height: 1.4;
   background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 1.0625rem;
 }
-:is(.nx-composer, .session-page) .composer textarea::placeholder { color: var(--ink); opacity: .5; }
-:is(.nx-composer, .session-page) .composer .prompt { order: 0; }
-:is(.nx-composer, .session-page) .composer .tool-btn[aria-pressed] { margin-left: auto; }
-:is(.nx-composer, .session-page) .composer .send { margin-left: auto; }
-:is(.nx-composer, .session-page) .composer .tool-btn[aria-pressed] ~ .send { margin-left: 0; }
-:is(.nx-composer, .session-page) .attach-line { padding: 8px 14px 0; }
+:is(.nx-composer, .nx-stage .page-foot) .composer textarea::placeholder { color: var(--ink); opacity: .5; }
+:is(.nx-composer, .nx-stage .page-foot) .composer .prompt { order: 0; }
+:is(.nx-composer, .nx-stage .page-foot) .composer .tool-btn[aria-pressed] { margin-left: auto; }
+:is(.nx-composer, .nx-stage .page-foot) .composer .send { margin-left: auto; }
+:is(.nx-composer, .nx-stage .page-foot) .composer .tool-btn[aria-pressed] ~ .send { margin-left: 0; }
+:is(.nx-composer, .nx-stage .page-foot) .attach-line { padding: 8px 14px 0; }
 .nx-send {
   flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center;
   background: none; color: var(--ink); border: 0;
@@ -179,17 +181,9 @@ body { overflow: hidden; }
 .nx-session-host { position: absolute; inset: 0; }
 .nx-session-host > .page { position: absolute; top: var(--strip, 0px); bottom: 0; height: auto; z-index: auto; }
 /* A session's screen gives the thread the room (docs/next-interaction.md, 2026-11-22). weevboss's strip above already
-   covers the status bar: the head adds no second gap. The box to write in is one line while empty, on the row of its
-   +, mic and send, and grows as you type; under it, only the phone's own bottom inset, in the box's colour. */
+   covers the status bar: the head adds no second gap. Its box to write in is weevboss's own (« The box to write in »
+   above, 2026-11-24). */
 .nx-session-host > .page > .page-head { padding-top: 0; }
-.session-page .page-foot { padding-bottom: 0; }
-.session-page .page-foot .composer { padding-bottom: var(--safe-b); }
-.session-page .composer > .in { flex-wrap: nowrap; align-items: flex-end; padding: 0 4px 0 2px; }
-.session-page .composer > .in > textarea { order: 0; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 11px 4px; }
-.session-page .composer > .in > .prompt { order: -2; align-self: center; }
-.session-page .composer > .in > .tool-btn:not([aria-pressed]) { order: -1; }
-.session-page .composer > .in > .tool-btn[aria-pressed], .session-page .composer > .in > .send { margin-left: 0; }
-
 
 /* « weevboss · for you »: the app's two words (foryou-top.tsx TopWords), in the middle of the thin band. */
 .nx-words { position: absolute; left: 50%; transform: translateX(-50%); height: 52px; display: flex; align-items: center; }
@@ -226,8 +220,6 @@ body { overflow: hidden; }
 .session-page .session-thread .msg .who { opacity: 1; }
 
 /* weevboss's box to write in: a band from one edge to the other, no frame, like the lines of a thread. */
-.nx-composer { padding-left: 0; padding-right: 0; padding-top: 0; }
-:is(.nx-composer, .session-page) .composer { max-width: none; }
 
 /* Your messages on weevboss's screen reach the right edge; its replies keep their margin on the left. */
 .nx-boss .nx-thread { padding-right: 0; }

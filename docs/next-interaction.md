@@ -168,8 +168,12 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **A conversation wears its repo's colour**, the one of its band in the side bar (weevils' own repo: its gradient).
   Tapping it is one motion in from the right, weevboss's strip travelling with it.
 - **A session's screen gives the thread the room** (2026-11-22): its head is one compact row (the back chevron, the
-  title, the model; no repo name, no logo: its colour says the repo) with no second gap under weevboss's strip; the box to write in is one line while
-  empty, on the row of its +, mic and send, and grows as you type; under it, only the phone's own bottom inset.
+  title, the model; no repo name, no logo: its colour says the repo) with no second gap under weevboss's strip.
+- **Every chat's box to write in is weevboss's own** (2026-11-24, replaces « one line while empty » of 2026-11-22):
+  weevboss's thread, a session, an automation's chat, a thread, a talk in your factory. The same roomy box, a band
+  from edge to edge, the text on top and its +, mic and send on a row under it, standing the phone's bottom inset
+  plus a small gap above the screen's edge, never pressed on it. One rule draws it for all (next.css « The box to
+  write in »), so no chat drifts from weevboss again.
   Whatever shows under the page (that inset, the bounce) wears the page's own colour, never another band's
   (weevils' repo: its gradient's base). The
   « new below » mark (a « ? » when a question waits) is a quiet tone of the page, never a dark block over the text.

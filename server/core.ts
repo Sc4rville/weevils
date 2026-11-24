@@ -46,7 +46,9 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
-import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir } from './boss-turns.ts'
+import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir, type PreparedTurn } from './boss-turns.ts'
+import { liveDigest } from './boss-live.ts'
+import { aheadCommand, BOSS_WARM, SPARE_MAX_AGE_MS, spareWaiting, type Spare } from './boss-warm.ts'
 import { commitChanges, LandedCache } from './ledger-evidence.ts'
 
 /** What a Claude Code session can switch to from the app's header (one tap, applied before its next turn). */
@@ -148,6 +150,8 @@ interface Persisted {
   titles?: [string, Titled][]
   /** Id de la session Claude de l'orchestrateur (stable : on la reprend après un redémarrage). */
   orchestratorId?: string
+  /** weevboss's next turn started ahead (server/boss-warm.ts). */
+  bossSpare?: Spare
   pinnedRepos?: string[]
   voiceId?: string
   /** Coupures vues au passage, reprises ou laissées, coupures déjà annoncées. */
@@ -395,6 +399,11 @@ export class Weevils {
     }
   }
   private turnStarting = false
+  /** weevboss's next turn, started ahead and waiting for its message (server/boss-warm.ts). */
+  private spare: Spare | null = null
+  private spareStarting = false
+  /** A turn started ahead that died young waits before the next one (1 min, doubling, at most 30 min). */
+  private spareBackoff = { at: 0, n: 0 }
   /** The commits that landed where a session's work ships, for the request ledger (server/ledger-evidence.ts). */
   private landed = new LandedCache()
   /** weevboss's request ledger, goals, work trace and knowledge (server/boss-ledger.ts); on the main machine only. */
@@ -638,6 +647,7 @@ export class Weevils {
       // from the session's real subject.
       this.titles = new Map((p.titles ?? []).filter(([, v]: [string, Titled]) => realTitle(v?.title)))
       this.orchestratorId = p.orchestratorId ?? null
+      this.spare = p.bossSpare ?? null
       this.pinnedRepos = p.pinnedRepos ?? []
       this.factory = { ...freshFactory(), ...(p.factory ?? {}) }
       this.voiceId = p.voiceId
@@ -766,6 +776,7 @@ export class Weevils {
         directCodexBoss: this.directCodexBoss,
         titles,
         orchestratorId: this.orchestratorId ?? undefined,
+        bossSpare: this.spare ?? undefined,
         pinnedRepos: this.pinnedRepos,
         voiceId: this.voiceId,
         cuts: [...this.cuts].filter(([, c]) => recent(c.at)),
@@ -798,6 +809,9 @@ export class Weevils {
       clearTimeout(this.retitleSoon)
       this.retitleSoon = setTimeout(() => void this.retitle(), 8000)
     }
+    // The conversation is read now rather than at the next pass of the 1.5 s loop: a reply (or the line weevboss says
+    // before its tools) reaches the app ~0.75 s sooner on average (measured 2026-11-23). The loop stays as the safety net.
+    if (['Stop', 'PreToolUse', 'PostToolUse', 'SubagentStop'].includes(body.hook_event_name)) this.scanSoon()
     this.bump()
     // Écriture groupée : PostToolUse peut tomber plusieurs fois par seconde.
     if (!this.persistTimer) {
@@ -806,6 +820,16 @@ export class Weevils {
         this.persist()
       }, 2000)
     }
+  }
+
+  private scanTimer: NodeJS.Timeout | null = null
+  /** One extra read of the transcripts shortly after a hook (grouped: hooks can come several per second). */
+  private scanSoon() {
+    if (this.scanTimer) return
+    this.scanTimer = setTimeout(() => {
+      this.scanTimer = null
+      if (this.store.scan(Date.now())) this.bump()
+    }, 40)
   }
 
   // ---------------------------------------------------------------- panes pilotées
@@ -914,7 +938,7 @@ export class Weevils {
     if (this.driving.has(p.name) || Date.now() - since < STUCK_AFTER_MS || Date.now() - p.createdAt < STUCK_AFTER_MS) return state
     const t = p.sessionId ? this.store.get(p.sessionId) : undefined
     if (t && Date.now() - t.lastActivityAt < STUCK_AFTER_MS) return state
-    if (this.isOrchestratorPane(p) && this.bossTurns?.isTurn(p.sessionId)) return state
+    if (this.isOrchestratorPane(p) && (this.bossTurns?.isTurn(p.sessionId) || p.sessionId === this.spare?.id)) return state
     return stuckQuestion(screen, p.tool)
   }
 
@@ -2261,6 +2285,7 @@ export class Weevils {
       let selected = { model: b.model, effort: b.effort }
       if (selection !== undefined) {
         try { selected = b.choose(String(selection.model), String(selection.effort)) } catch { throw new Error(tr(ModelM).invalid) }
+        void this.dropSpare('model or effort changed')
         this.bump()
       }
       return { threadId: '__main', tool: 'claude', models: BOSS_MODELS, selected, active: true, appliesTo: 'next-turn' }
@@ -2365,7 +2390,7 @@ export class Weevils {
     if (isModelControl(command)) return {ok:true,control:'model'}
     if(owner && this.store.get(owner)?.tool==='codex' && /^\/(?:model|effort)\s/.test(command.trim()))return this.command(owner,command)
     // Turn mode: no conversation to type into; the setting applies to the next turns.
-    if (this.bossTurns && this.bossTool() === 'claude' && this.bossTurns.command(checkCommand(command))) { this.bump(); return { ok: true } }
+    if (this.bossTurns && this.bossTool() === 'claude' && this.bossTurns.command(checkCommand(command))) { void this.dropSpare('model, effort or view changed'); this.bump(); return { ok: true } }
     const pane = this.orchestratorPane()
     if (!pane) throw new Error(tr(M).orchNotRunning)
     await this.runCommand(pane.name, checkCommand(command))
@@ -2706,7 +2731,7 @@ export class Weevils {
    */
   private async pumpTurns() {
     const turns = this.bossTurns
-    if (!turns || this.turnStarting) return
+    if (!turns || this.turnStarting || this.spareStarting) return
     const now = Date.now()
     const wakeups = this.wakeups
     const canWake = () => !!wakeups && (wakeups.allowed(speedMode()) || wakeups.intakeAllowed(speedMode())) && claudeLogged() && preferredTool() !== 'codex'
@@ -2734,11 +2759,14 @@ export class Weevils {
       this.tellOutcomes(now)
     }
     turns.preferUser()
-    if (!turns.queue.length && (!canWake() || !wakeups!.ready(speedMode(), now))) return
+    if (!turns.queue.length && (!canWake() || !wakeups!.ready(speedMode(), now))) return void this.keepSpare(now)
     if (turns.queue[0]?.proactive && (!canWake() || !wakeups!.canLaunch(now))) return
     const pane = this.claudeBossPane()
-    if (pane) {
-      if (turns.isTurn(pane.sessionId) || !turns.queue.length || turns.queue[0]?.proactive) return
+    // A turn that has said its last word (Stop hook after its last activity) no longer holds the next one while its
+    // process exits: ~2 s saved on each message that waited behind it.
+    if (pane && turns.isTurn(pane.sessionId) && !this.turnOver(pane.sessionId!)) return
+    if (pane && !turns.isTurn(pane.sessionId)) {
+      if (!turns.queue.length || turns.queue[0]?.proactive) return
       const t = pane.sessionId ? this.store.get(pane.sessionId) : undefined
       if (this.bossWorking('claude') || (t && (t.queued.length || this.toSession(t, now).background > 0))) return
       if (pane.sessionId) this.closedByUs.set(pane.sessionId, now)
@@ -2751,7 +2779,9 @@ export class Weevils {
     this.bump()
     let reserved = false
     try {
-      const id = crypto.randomUUID()
+      // A message from the user takes the turn started ahead, if one waits (its id becomes the turn's).
+      const spare = turns.queue.length && !turns.queue[0].proactive && this.spare ? this.spare : null
+      const id = spare?.id ?? crypto.randomUUID()
       if (!turns.queue.length) {
         const events = wakeups!.claim(id, true, now, speedMode())
         if (!events.length) return
@@ -2768,7 +2798,7 @@ export class Weevils {
       turns.preferUser()
       const head = turns.queue[0]
       if (head?.proactive && !canWake()) return
-      const turn = await turns.prepare({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
+      const turn = await turns.prepare({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', live: this.bossLive(now), ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
       // Preparation can await summaries. A user who spoke in the meantime takes the next turn.
       if (head?.proactive && (turns.preferUser() || !canWake() || !wakeups!.canLaunch(Date.now(), id))) return
       // The previous turn is over: its message can be read into the ledger.
@@ -2778,11 +2808,11 @@ export class Weevils {
       if (head?.proactive && !wakeups!.reserveLaunch(id)) return
       const claimed = head?.proactive ? turns.started(turn) : undefined
       reserved = !!claimed
-      await this.spawn('claude', ORCH_DIR, 'weevboss', turn.command, id)
+      if (!(spare && await this.takeSpare(spare, turn))) await this.spawn('claude', ORCH_DIR, 'weevboss', turn.command, id)
       const q = reserved ? claimed : turns.started(turn)
       if (q?.cid) this.ledger?.attach(q.cid, id)
       this.persist()
-      console.log(`[weevboss] tour ${id.slice(0, 8)} · vue ${turn.stableTokens} + ${turn.recentTokens} + registre ${turn.ledgerTokens ?? 0} tokens${turn.rebuilt ? ' · paliers reconstruits' : ''}`)
+      console.log(`[weevboss] tour ${id.slice(0, 8)} · vue ${turn.stableTokens} + ${turn.recentTokens} + registre ${turn.ledgerTokens ?? 0} tokens${turn.rebuilt ? ' · paliers reconstruits' : ''} · ${turn.start ?? 'fresh'}`)
       void turns.prewarm(5 * 60_000).catch(() => undefined)
     } catch (e) {
       if (!reserved) turns.failed(e as Error)
@@ -2790,6 +2820,112 @@ export class Weevils {
     } finally {
       this.turnStarting = false
       this.bump()
+    }
+  }
+
+  /** A turn whose Stop hook came after its last activity: its reply is written, its process is only exiting. */
+  private turnOver(id: string): boolean {
+    const t = this.store.get(id)
+    const hook = this.hooks.get(id)
+    return !!t && !!hook && hook.event === 'Stop' && hook.at >= t.lastActivityAt - 2000 && !t.queued.length
+  }
+
+  /** What a turn started ahead must share with the message's turn besides its flags: the Claude account. */
+  private spareAccount(): string {
+    const acc = accounts()?.on() ? accounts() : null
+    return acc ? JSON.stringify(acc.spawnEnv()) : ''
+  }
+
+  /**
+   * Between messages: the next turn started ahead (server/boss-warm.ts), once the previous one is over, with the view
+   * and flags the next message will get. Replaced when too old or gone; nothing while Claude is not the one answering.
+   */
+  private async keepSpare(now: number) {
+    const turns = this.bossTurns
+    if (!turns || !BOSS_WARM || this.spareStarting || this.turnStarting || turns.queue.length) return
+    if (this.spare) {
+      if (spareWaiting(this.spare) && now - this.spare.at < SPARE_MAX_AGE_MS) return
+      // Just launched: its pump may not have written its state yet.
+      if (now - this.spare.at < 20_000 && !pumpState(this.spare.id)?.exited) return
+      if (now - this.spare.at < 120_000) this.spareBackoff = { n: this.spareBackoff.n + 1, at: now + Math.min(30 * 60_000, 60_000 * 2 ** this.spareBackoff.n) }
+      this.spareStarting = true
+      try { await this.dropSpare(now - this.spare.at >= SPARE_MAX_AGE_MS ? 'replaced after 2 h' : 'its process is gone') } finally { this.spareStarting = false }
+    }
+    if (now < this.spareBackoff.at) return
+    if (this.bossTool() !== 'claude' || !claudeLogged() || preferredTool() === 'codex' || this.relay?.episode?.() || this.relay?.providerReady?.('claude') === false) return
+    const pane = this.claudeBossPane()
+    if (pane && (!turns.isTurn(pane.sessionId) || !this.turnOver(pane.sessionId!))) return
+    this.spareStarting = true
+    try {
+      const id = crypto.randomUUID()
+      const { args, key } = await turns.ahead({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '' })
+      const name = await this.spawn('claude', ORCH_DIR, 'weevboss', aheadCommand(id, args), id)
+      this.spare = { id, pane: name, key: key + this.spareAccount(), at: Date.now() }
+      this.persist()
+      console.log(`[weevboss] tour ${id.slice(0, 8)} démarré d'avance, attend le prochain message`)
+    } catch (e) {
+      console.error(`[weevboss] tour d'avance : ${(e as Error).message}`)
+    } finally {
+      this.spareStarting = false
+    }
+  }
+
+  /** Waiting for its message; one launched a moment ago gets a few seconds to come up. */
+  private async spareUp(s: Spare): Promise<boolean> {
+    for (let end = Date.now() + 4000; ; await new Promise((r) => setTimeout(r, 200))) {
+      if (spareWaiting(s)) return true
+      if (Date.now() > end || Date.now() - s.at > 30_000 || pumpState(s.id)?.exited) return false
+    }
+  }
+
+  /** The turn started ahead is closed (its pane, then its pump's files once it has exited). */
+  private async dropSpare(reason: string) {
+    const s = this.spare
+    if (!s) return
+    this.spare = null
+    this.persist()
+    await killWv(s.pane).catch(() => undefined)
+    this.panes = this.panes.filter((p) => p.name !== s.pane)
+    setTimeout(() => pumpForget(s.id), 5000).unref()
+    console.log(`[weevboss] tour d'avance ${s.id.slice(0, 8)} fermé : ${reason}`)
+  }
+
+  /**
+   * The message goes to the turn started ahead when it was started with the same flags (view, model, effort, account);
+   * otherwise it is closed and the turn starts fresh under the same id (it wrote nothing yet: Claude Code starts its
+   * transcript with the first message). Returns whether the message went in.
+   */
+  private async takeSpare(s: Spare, turn: PreparedTurn): Promise<boolean> {
+    let why: string
+    if (!turn.key || turn.key + this.spareAccount() !== s.key) why = 'view, model or effort changed'
+    else if (!(await this.spareUp(s))) why = 'its process is gone'
+    else {
+      try {
+        await pumpCall(s.id, { op: 'send', text: turn.prompt }, 5000)
+        if (this.spare?.id === s.id) this.spare = null
+        this.spareBackoff = { at: 0, n: 0 }
+        turn.start = 'ahead'
+        // The pumps of earlier turns taken ahead leave their state file behind when they exit.
+        const last = this.bossTurns?.lastTurn()
+        if (last && pumpState(last)?.exited) pumpForget(last)
+        return true
+      } catch (e) {
+        why = `not reached (${(e as Error).message})`
+      }
+    }
+    turn.start = `fresh: ${why}`
+    if (this.spare?.id === s.id) await this.dropSpare(why)
+    return false
+  }
+
+  /** The live part of a turn's hidden block: date and time, machines, sessions and their state (server/boss-live.ts). */
+  private bossLive(now: number): string {
+    try {
+      const turns = this.bossTurns
+      return liveDigest(this.snapshot(), now, (s) => !!turns?.isTurn(s.id) || s.id === this.orchestratorId || isScratchDir(s.cwd) || isTestBrief(this.store.get(s.id)?.firstPrompt))
+    } catch (e) {
+      console.error(`[weevboss] live digest: ${(e as Error).message}`)
+      return ''
     }
   }
 

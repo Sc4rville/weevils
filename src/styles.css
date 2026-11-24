@@ -424,6 +424,106 @@
   --texture-opacity: 0.1;
 }
 
+/* Papier carbone (carbon) : le carnet de bons en plusieurs feuillets, tapé à la machine. Le texte n'est pas noir mais
+   du bleu-violet d'un double au carbone, en chasse fixe ; la bande du haut est l'original blanc, le 24/7 le feuillet
+   jaune canari, le diable le feuillet rose, la réponse le feuillet vert. Les projets prennent les teintes des
+   feuillets (bouton d'or → canari → vert → bleu → lilas → rose), quatre crans. Ce qui travaille est rouge tampon,
+   ce qui tourne tout seul est vert registre. Texture : la fibre du papier et le voile du carbone. */
+:root[data-theme='carbon'] {
+  color-scheme: light;
+  --font: ui-monospace, 'SF Mono', Menlo, 'Cascadia Mono', 'Roboto Mono', 'DejaVu Sans Mono', monospace;
+  --ink: #1d2470;
+  --logo-filter: grayscale(1) sepia(.5) hue-rotate(190deg) saturate(2.4) brightness(.38);
+  --agent: #E2F7FF;
+  --devil: oklch(0.86 0.07 0);
+  --devil-reply: oklch(0.92 0.045 150);
+  --h24: oklch(0.93 0.07 100);
+  --calm: oklch(0.97 0.025 95);
+  --calm-soft: 0.02;
+  --fluo: oklch(0.49 0.19 32);
+  /* Les 16 emplacements : les feuillets d'un carnet de bons, bouton d'or → canari → vert → bleu → lilas → rose. */
+  --p0: oklch(0.935 0.055 75.0);
+  --p1: oklch(0.895 0.055 93.7);
+  --p2: oklch(0.855 0.055 112.3);
+  --p3: oklch(0.815 0.055 131.0);
+  --p4: oklch(0.935 0.055 149.7);
+  --p5: oklch(0.895 0.055 168.3);
+  --p6: oklch(0.855 0.055 187.0);
+  --p7: oklch(0.815 0.055 205.7);
+  --p8: oklch(0.935 0.055 224.3);
+  --p9: oklch(0.895 0.055 243.0);
+  --p10: oklch(0.855 0.055 261.7);
+  --p11: oklch(0.815 0.055 280.3);
+  --p12: oklch(0.935 0.055 299.0);
+  --p13: oklch(0.895 0.055 317.7);
+  --p14: oklch(0.855 0.055 336.3);
+  --p15: oklch(0.815 0.055 355.0);
+  /* Logo vocal : tampon rouge, carbone, canari. */
+  --anim-rec: oklch(0.55 0.2 28);
+  --anim-wait: oklch(0.49 0.19 32);
+  --anim-ready: oklch(0.49 0.19 32);
+  --anim-1: oklch(0.42 0.15 272);
+  --anim-2: oklch(0.55 0.18 25);
+  --anim-3: oklch(0.7 0.13 95);
+  --mix: 10%;
+  --dl: -0.05;
+  /* Texture : la fibre couchée du papier, teintée du bleu du carbone, et deux voiles là où la main a appuyé. */
+  --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.05 .85' numOctaves='2' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .12 0 0 0 0 .14 0 0 0 0 .45 0 0 0 2.2 -.95'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"), radial-gradient(ellipse 34% 22% at 30% 38%, rgba(38, 44, 140, 0.55), transparent 70%), radial-gradient(ellipse 26% 30% at 74% 72%, rgba(38, 44, 140, 0.4), transparent 70%);
+  --texture-size: 180px 180px, 620px 460px, 620px 460px;
+  --texture-blend: multiply;
+  --texture-opacity: 0.12;
+}
+
+/* Tableau noir (chalkboard) : l'ardoise d'une salle de classe, essuyée à la hâte. Bande du haut ardoise vert-noir,
+   24/7 bois de la rainure à craies, bande calme ardoise profonde ; encre blanc craie, et la police du tableau
+   (Chalkboard SE sur iPhone et Mac, arrondie ailleurs). Projets en craies de couleur estompées sur l'ardoise, tout le
+   cercle, quatre crans. Ce qui travaille est craie jaune, ce qui tourne tout seul craie bleue, le titre 24/7 craie
+   rose. Texture : la poussière de craie et les traces de chiffon. */
+:root[data-theme='chalkboard'] {
+  color-scheme: dark;
+  --font: 'Chalkboard SE', Chalkboard, 'Marker Felt', ui-rounded, 'SF Pro Rounded', 'Comic Neue', system-ui, sans-serif;
+  --ink: #fbf9f2;
+  --logo-filter: grayscale(1) brightness(.3) invert(1);
+  --agent: oklch(0.27 0.03 165);
+  --devil: oklch(0.32 0.08 25);
+  --devil-reply: oklch(0.3 0.04 140);
+  --h24: oklch(0.31 0.05 60);
+  --calm: oklch(0.21 0.025 170);
+  --calm-soft: -0.03;
+  --fluo: oklch(0.92 0.15 100);
+  /* Les 16 emplacements : les craies de couleur, tout le cercle, estompées sur l'ardoise, quatre crans. */
+  --p0: oklch(0.265 0.055 10.0);
+  --p1: oklch(0.31 0.055 32.5);
+  --p2: oklch(0.355 0.055 55.0);
+  --p3: oklch(0.4 0.055 77.5);
+  --p4: oklch(0.265 0.055 100.0);
+  --p5: oklch(0.31 0.055 122.5);
+  --p6: oklch(0.355 0.055 145.0);
+  --p7: oklch(0.4 0.055 167.5);
+  --p8: oklch(0.265 0.055 190.0);
+  --p9: oklch(0.31 0.055 212.5);
+  --p10: oklch(0.355 0.055 235.0);
+  --p11: oklch(0.4 0.055 257.5);
+  --p12: oklch(0.265 0.055 280.0);
+  --p13: oklch(0.31 0.055 302.5);
+  --p14: oklch(0.355 0.055 325.0);
+  --p15: oklch(0.4 0.055 347.5);
+  /* Logo vocal : craie jaune, bleue, rose. */
+  --anim-rec: oklch(0.7 0.2 25);
+  --anim-wait: oklch(0.92 0.15 100);
+  --anim-ready: oklch(0.92 0.15 100);
+  --anim-1: oklch(0.83 0.09 230);
+  --anim-2: oklch(0.85 0.08 350);
+  --anim-3: oklch(0.95 0.02 95);
+  --mix: 10%;
+  --dl: 0.06;
+  /* Texture : la poussière de craie, et les grandes traces claires d'un chiffon passé trop vite. */
+  --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='d'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 3.2 -1.55'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23d)'/%3E%3C/svg%3E"), radial-gradient(ellipse 42% 16% at 28% 30%, rgba(255, 255, 255, 0.5), transparent 72%), radial-gradient(ellipse 30% 12% at 70% 74%, rgba(255, 255, 255, 0.38), transparent 72%);
+  --texture-size: 200px 200px, 760px 540px, 760px 540px;
+  --texture-blend: screen;
+  --texture-opacity: 0.12;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1553,6 +1653,15 @@ button.copy.done {
   --auto-fluo: oklch(0.85 0.09 175);
 }
 
+/* Papier carbone : vert registre. Tableau noir : craie bleue. */
+:root[data-theme='carbon'] {
+  --auto-fluo: oklch(0.45 0.12 155);
+}
+
+:root[data-theme='chalkboard'] {
+  --auto-fluo: oklch(0.83 0.09 230);
+}
+
 .auto-mark {
   color: var(--auto-fluo);
 }
@@ -1788,6 +1897,7 @@ button.copy.done {
 [data-theme='dark'] .msg.orch.ext,
 [data-theme='vaporwave'] .msg.orch.ext,
 [data-theme='deco'] .msg.orch.ext,
+[data-theme='chalkboard'] .msg.orch.ext,
 [data-theme='synthwave'] .msg.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
   /* Keep the external bubble dark enough for its white text and living links. */
@@ -2593,6 +2703,7 @@ button.copy.done {
 [data-theme='dark'] .peek-item.orch.ext,
 [data-theme='vaporwave'] .peek-item.orch.ext,
 [data-theme='deco'] .peek-item.orch.ext,
+[data-theme='chalkboard'] .peek-item.orch.ext,
 [data-theme='synthwave'] .peek-item.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
 }
@@ -2747,6 +2858,14 @@ button.copy.done {
   --destroy: #d92d20;
 }
 
+:root[data-theme='carbon'] {
+  --alert: oklch(0.5 0.19 25);
+}
+
+:root[data-theme='chalkboard'] {
+  --alert: #f5333f;
+}
+
 .alert {
   color: inherit;
 }
@@ -2865,6 +2984,7 @@ button.copy.done {
 [data-theme='dark'] .wv-flash,
 [data-theme='vaporwave'] .wv-flash,
 [data-theme='deco'] .wv-flash,
+[data-theme='chalkboard'] .wv-flash,
 [data-theme='synthwave'] .wv-flash,
 [data-theme='graphite'] .wv-flash {
   animation-name: wv-flash-dark;

@@ -3,7 +3,7 @@ import { expect, it } from 'vitest'
 import { THEMES } from '../src/ui/app-context'
 // Themes added by the nightly theme runs (docs/themes.md): every one is held to the same measured bar. The four
 // original themes have their own hand-checked notes in src/styles.css (light's star relies on a halo, for instance).
-const ADDED = ['desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco'] as const
+const ADDED = ['desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco', 'carbon', 'chalkboard'] as const
 const css = ['src/styles.css', 'src/ui/h24.css'].map((f) => fs.readFileSync(f, 'utf8')).join('\n')
 type Lab = [number, number, number]
 const linear = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)

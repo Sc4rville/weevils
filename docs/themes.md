@@ -21,6 +21,8 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
   themes it knows;
 - `shared/link-colors.ts`: the theme's grounds (agent band, 16 slots, h24, devil, calm) so living links get a shade
   that reads on it; a dark theme also goes in `LIGHT_TEXT`;
+- `next/src/next.css`: a light theme belongs in the `.nx-fx-busy` list; outside the theme kinds, so a nightly run
+  leaves it to the person (it would stop the run landing by itself);
 - tests: add the id to the theme lists in the tests (`grep -rn "'graphite'" src test`) and to `ADDED` in
   `test/theme-contrast.test.ts` (ink ≥ 6:1, working star, AutoMark and 24/7 title ≥ 3:1 on every band and sub-band,
   white on alert ≥ 3.5:1, project slots ≥ 2 apart at ΔOK ≥ 0.05); `test/logo-palette.test.ts` checks the logo and the
@@ -68,6 +70,8 @@ everything the themes need, and the checks decide.
 | `coastal` | littoral / coastal | light | a day at the seaside: surf-blue top, sand 24/7, sea-spray calm band, navy ink; **texture** wet-sand grain and tide ripples | **blues** sea foam → turquoise → azure → cornflower → lavender (160° arc centred on blue, chroma 0.07), 4 steps: the first light theme centred on blues | buoy-red star, kelp-green AutoMark, harbour-blue 24/7 title |
 | `deco` | art déco / art deco | dark | black lacquer and gold leaf: gilded-black top, emerald 24/7, oxblood devil band, cream ink; **texture** gold fan scales | **metals and patinas** verdigris → malachite → brass → gold → bronze → copper (140° arc, chroma 0.085), 4 steps | gold-leaf star, jade AutoMark, champagne 24/7 title |
 | `vaporwave` | vaporwave / vaporwave | dark | pastel dusk of an empty mall: dusk-teal top, powder-pink 24/7, deep indigo calm band, lavender-white ink | **muted pastels** teal → cyan → periwinkle → lavender → orchid → pink (180° cool-to-pink arc, chroma 0.075: dusty, not neon), 4 steps | mint star, bubblegum-pink AutoMark, peach 24/7 title |
+| `carbon` | papier carbone / carbon copy | light | a multi-part order pad typed on a machine: white original top, canary-copy 24/7, pink-copy devil band, green-copy reply, cream calm band; **ink in carbon blue-violet** `#1d2470`, not black; **typeface** monospace (`ui-monospace`, Menlo…); **texture** paper fibre tinted carbon blue and two soft carbon smudges (multiply, 0.12) | **the copies of a form pad** goldenrod → canary → green → blue → lilac → pink (280° arc, chroma 0.055), 4 steps | rubber-stamp red star, ledger-green AutoMark, stamp-red 24/7 title |
+| `chalkboard` | tableau noir / chalkboard | dark | a classroom slate wiped in a hurry: slate green-black top, chalk-tray wood 24/7, red-chalk devil band, deep slate calm band, chalk-white ink; **typeface** Chalkboard SE on iPhone and Mac (rounded, then the system sans elsewhere); **texture** chalk dust and two eraser smears (screen, 0.12) | **coloured chalks smudged on slate**, the whole circle at low chroma (0.055), 4 depths | yellow-chalk star, blue-chalk AutoMark, pink-chalk 24/7 title |
 
 ## Log
 
@@ -216,6 +220,35 @@ the coastal/deco run did not land by itself: a `shots-tmp/` folder an earlier ru
 uncommitted work (`server/auto-merge.ts` now looks at tracked files only), and the push of the branch, refused as
 non-fast-forward, hid the « Land it » line (now offered either way).
 
+### 2026-11-24 — carbon, chalkboard
+
+Eighth nightly run, the first under the bolder bar: both themes change the typeface, both carry a texture, and the
+first one colours the text itself.
+
+- **carbon** (papier carbone): the order pad with its carbon copies. The bold moves: the text is the blue-violet of a
+  carbon copy (`#1d2470`), the first theme whose ink is a colour rather than a near-black; the whole app is set in the
+  phone's monospace (the first theme with its own `--font`); a texture of paper fibre (stretched `feTurbulence`,
+  horizontal) tinted carbon blue, with two large soft carbon smudges. The bands are the sheets of the pad (white
+  original, canary, pink, green copies); projects take the copies' tints over a 280° arc, four steps. Rubber-stamp red
+  star, ledger-green AutoMark. First try put the weevboss band at `#ebf7ff` (chroma 0.019): the composer, derived from
+  it, turned pink in Chrome (the low-chroma lesson again); `#e2f7ff` (chroma 0.03) fixed it.
+- **chalkboard** (tableau noir): the classroom slate. Bold moves: the typeface `Chalkboard SE` on Apple devices (a
+  chalk hand; elsewhere the rounded or system sans, no download), and chalk dust over everything (white
+  `feTurbulence` speckles, screen) with two pale eraser smears. Slate green-black bands, chalk-tray wood 24/7, chalk
+  white ink; projects are coloured chalks smudged into the slate, the whole circle at low chroma, four depths. Yellow
+  chalk star, blue chalk AutoMark, pink chalk 24/7 title. Joins every dark-theme rule.
+
+Left for the person: the next interface has one theme list of its own in `next/src/next.css` (`.nx-fx-busy`, a
+darker hue for a busy machine's icon on light themes). carbon belongs in it, but a file outside the theme kinds keeps a
+run from landing by itself (`server/auto-merge.ts`), so it is not in this run: there carbon's busy icon stays at the
+default, lighter hue. Checked: contrast, logo and link-colour tests (passed at the first values), whole front-end suite (failures
+only in `server/` git-heavy tests and `test/macos-launchd`, as on the untouched branch), typecheck, i18n; screenshots of
+weevboss, For you, the menu and the classic screen in en and fr at 1280×900 and 390×844, plus slot swatches, from a
+throwaway server (`env -i`, empty home, own ports, a few fake Claude Code projects so the bands have colours). Not
+seen: Chalkboard SE itself (the run's browser is Linux; iPhone and Mac have it). Tooling note: this worktree's
+`node_modules` had fallen behind (`modern-screenshot` missing, typecheck failing): `NODE_ENV=production` is set here,
+so reinstall with `npm ci --include=dev`. The next interface builds apart: `vite build -c next/vite.config.ts`.
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.
@@ -225,9 +258,11 @@ non-fast-forward, hid the « Land it » line (now offered either way).
 - **Glacier / arctic**: a near-white icy light theme with one aurora accent (coastal is warm-sand and blues; this would
   be cold and almost monochrome).
 - **Lacquer red / ukiyo-e**: a dark vermilion-and-indigo woodblock theme (deco is black and gold).
-- **Thermal receipt**: off-white paper with a faint fibre, monospace type, everything in one faded grey-violet ink.
-- **Chalkboard**: slate green-black, dusty chalk grain, a hand-ish serif; slots as coloured chalks.
+- **Thermal receipt**: carbon took monospace and coloured ink; a true one-ink receipt (16 slots in one faded hue) does
+  not pass the slots ≥ 2 apart rule at low chroma: it needs a hue arc of 200° or more.
 - **Topographic**: contour lines as the texture, slots as altitude tints from sea to snow.
 - **Terrazzo**: speckled stone chips (radial-gradient dots) on warm plaster, a loud clashing palette.
-- **CRT terminal**: scanlines (repeating-linear-gradient) and monospace over phosphor green, a slight vignette.
+- **CRT terminal**: scanlines (repeating-linear-gradient) over phosphor green, a slight vignette (carbon already uses
+  monospace: pick another typeface or keep the system one).
+- **Serif worlds**: no theme uses `ui-serif` yet (newsprint, a library card catalogue, an old atlas).
 - **Seasonal / time of day**: a theme that follows the clock (dawn → noon → dusk → night) needs a product decision first.

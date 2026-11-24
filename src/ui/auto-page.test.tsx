@@ -409,7 +409,7 @@ it('a failed proposal validation stays on the page with its error until a succes
 })
 
 describe('draft navigation preserves the original automation', () => {
-  for (const lang of ['en', 'fr'] as const) for (const theme of ['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco'] as const) {
+  for (const lang of ['en', 'fr'] as const) for (const theme of ['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard'] as const) {
     it(`keeps history across close/reopen and remount in ${lang}/${theme}`, async () => {
       setLang(lang)
       const draft = opt({ id: 'original-draft', state: 'proposed', draft: true, userCreated: true, title: 'Improve interaction quality', talk: [{ who: 'user', text: 'Keep this original request', at: NOW }, { who: 'auto', text: 'Which interaction?', at: NOW + 1 }] })

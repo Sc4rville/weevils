@@ -68,6 +68,27 @@
   --fy-g4: var(--p15);
 }
 
+/* Chalkboard: dark bands; outside authors brought down to the slate; the gradient walks the coloured chalks, far apart. */
+:root[data-theme='chalkboard'] {
+  --fy-ok: oklch(from var(--fluo) 0.38 calc(c * 0.45) h);
+  --fy-who-lm: 0;
+  --fy-who-la: 0.36;
+  --fy-who-k: 0.6;
+  --fy-g1: var(--p2);
+  --fy-g2: var(--p6);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p14);
+}
+
+/* Carbon: the gradient walks the form's copies, canary → green → blue → pink. */
+:root[data-theme='carbon'] {
+  --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
+  --fy-g1: var(--p1);
+  --fy-g2: var(--p5);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p15);
+}
+
 /* Coastal: the gradient walks the shore, sea foam → turquoise → azure → lavender. */
 :root[data-theme='coastal'] {
   --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
@@ -1649,7 +1670,8 @@ button.fy-hit {
 [data-theme='dark'] .fy-sheet-back,
 [data-theme='synthwave'] .fy-sheet-back,
 [data-theme='vaporwave'] .fy-sheet-back,
-[data-theme='deco'] .fy-sheet-back {
+[data-theme='deco'] .fy-sheet-back,
+[data-theme='chalkboard'] .fy-sheet-back {
   background: rgb(0 0 0 / 0.45);
 }
 

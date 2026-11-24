@@ -21,7 +21,8 @@
 [data-theme='dark'] .hint,
 [data-theme='synthwave'] .hint,
 [data-theme='vaporwave'] .hint,
-[data-theme='deco'] .hint {
+[data-theme='deco'] .hint,
+[data-theme='chalkboard'] .hint {
   background: #fff;
   color: #000;
 }

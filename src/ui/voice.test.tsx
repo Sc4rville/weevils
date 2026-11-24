@@ -42,7 +42,7 @@ const stream=()=>({getTracks:()=>[{stop:stopTrack}]} as unknown as MediaStream)
 const render=()=>act(async()=>root.render(<VoiceLogo take={()=>''} onText={onText} onSend={onSend} working={false}/>))
 const click=()=>act(async()=>host.querySelector<HTMLButtonElement>('.voice-logo')!.click())
 const coloured=()=>!!host.querySelector('feFlood[result="recordingColour"]')
-it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco'])('uses recording colour only after microphone acceptance and clears it on stop in %s',async theme=>{
+it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard'])('uses recording colour only after microphone acceptance and clears it on stop in %s',async theme=>{
  document.documentElement.dataset.theme=theme
  let accept!:(stream:MediaStream)=>void
  permission.mockReturnValue(new Promise(resolve=>{accept=resolve}))

@@ -4,9 +4,9 @@
 #   test/docker/run.sh            all scenarios
 #   test/docker/run.sh systemd    VPS with systemd: install from a clone, service + linger, login over http, the
 #                                 end screen without a domain, idempotent re-run, --domain with Caddy, a port change
-#                                 that moves the Caddy site, a --secondary machine, a third one from weevboss's npx
-#                                 line (npm/ + join.sh), a fourth from its curl line, survives a reboot, --uninstall
-#                                 then a new install
+#                                 that moves the Caddy site, a --secondary machine, a third one from weevboss's first
+#                                 line (npx with npm/ once published), a fourth from its curl line, survives a reboot,
+#                                 --uninstall then a new install
 #   test/docker/run.sh plain      container without systemd, as root: curl | bash style (piped), Claude Code from its
 #                                 official installer, WEEVILS_SAFE=1, background fallback, re-run, --uninstall --purge
 #   test/docker/run.sh edge       the hard cases: truncated download, no terminal without --yes, no sudo, node 20
@@ -221,9 +221,12 @@ run_systemd() {
   as_3() { docker exec -u test -w /home/test -e XDG_RUNTIME_DIR=/run/user/1000 -e WEEVILS_REPO=/srv/weevils.git -e WEEVILS_INSTALL_SH=/srv/install.sh -e NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/weevils-test.crt "$c3" bash -c "$1"; }
   # What weevboss runs when asked (its CLI is in ~/.local/bin, which a docker exec shell has no PATH entry for).
   check "main: weevboss's 'weevils setup ask machine' posts one line to paste" as_test '~/.local/bin/weevils setup ask machine && jq -r ".log[-1].text" ~/.local/share/weevils/setup.json | grep -q "^On your other computer"'
-  # npx first, then the curl line with the same code for a computer without Node.js.
-  line=$(as_test 'jq -r ".log[-1].text" ~/.local/share/weevils/setup.json 2>/dev/null' | grep -oE 'npx weevils join weevils\.test [A-Za-z0-9_-]{20,}' | head -1 || true)
-  check "  … npx first, the curl line under it, the same code" as_test "jq -r '.log[-1].text' ~/.local/share/weevils/setup.json | tr '\n' ' ' | grep -qE '\`$line\`.*\`curl -fsSL https://weevils\.test/api/join\.sh \| bash -s ${line##* }\`'"
+  # npx first once the npm package is published (shared/paste-line.ts), then the curl line with the same code for a
+  # computer without Node.js; before that, the curl line alone. This desktop runs the first line, whichever it is.
+  line=$(as_test 'jq -r ".log[-1].text" ~/.local/share/weevils/setup.json 2>/dev/null' | grep -oE 'npx weevils join weevils\.test [A-Za-z0-9_-]{20,}|curl -fsSL https://weevils\.test/api/join\.sh \| bash -s [A-Za-z0-9_-]{20,}' | head -1 || true)
+  if grep -q '^export const NPX_PUBLISHED = true' "$root/shared/paste-line.ts"; then
+    check "  … npx first, the curl line under it, the same code" as_test "jq -r '.log[-1].text' ~/.local/share/weevils/setup.json | tr '\n' ' ' | grep -qE '\`npx weevils join weevils\.test ${line##* }\`.*\`curl -fsSL https://weevils\.test/api/join\.sh \| bash -s ${line##* }\`'"
+  else check "  … the curl line alone (the npm package is not published yet)" as_test "jq -r '.log[-1].text' ~/.local/share/weevils/setup.json | grep -q 'curl -fsSL https://weevils.test/api/join.sh' && ! jq -r '.log[-1].text' ~/.local/share/weevils/setup.json | grep -q npx"; fi
   if [ -z "$line" ]; then
     fails=$((fails + 1)); echo "  FAIL no join line in weevboss's thread: the rest of this scenario cannot run"
     as_test 'tail -5 ~/.local/share/weevils/setup.json 2>&1; journalctl --user -u weevilsd -n 30 --no-pager 2>&1' | tail -30
@@ -232,7 +235,7 @@ run_systemd() {
     check "  … only the code's hash is kept on the main machine" as_test "test -s ~/.local/share/weevils/join.json && ! grep -qF -- '${line##* }' ~/.local/share/weevils/join.json"
     echo "  \$ $line"
     if as_3 "$line" >"$work/join.log" 2>&1; then
-      passes=$((passes + 1)); echo "  ok   the npx line ran on the third machine"; sed 's/^/  │ /' "$work/join.log" | tail -15
+      passes=$((passes + 1)); echo "  ok   the line ran on the third machine"; sed 's/^/  │ /' "$work/join.log" | tail -15
     else fails=$((fails + 1)); echo "  FAIL the line"; tail -30 "$work/join.log"; fi
     check "third: a secondary named after its host, its tunnel on the next free port" as_3 'systemctl --user is-active weevilsd weevils-tunnel && grep -qx WEEVILS_MACHINE=desk ~/.config/weevils/env && grep -qx "WEEVILS_TUNNEL_PORT=4193" ~/.config/weevils/service.conf'
     check "third: its own key, an ssh alias for the main machine, the main machine's host key known" as_3 'test -f ~/.ssh/weevils_ed25519 && grep -qx "Host weevils-testbox" ~/.ssh/config && grep -q "^weevils.test ssh-ed25519 " ~/.ssh/known_hosts'
@@ -271,7 +274,7 @@ run_systemd() {
     check "main: desk's link is up but weevils there is stopped: why=stopped, since a time" away_desk stopped
     as_3 'systemctl --user start weevilsd'
     check "main: desk online again once weevils runs there" online_desk
-    check "main: a fresh line to paste on desk, from its card" as_test 'curl -sf -H @$HOME/.local/share/weevils/local-token -H content-type:application/json -d "{\"machine\":\"desk\"}" http://127.0.0.1:4179/api/factory/rejoin | jq -er .line | grep -qE "^npx weevils join weevils.test [A-Za-z0-9_-]{20,}$"'
+    check "main: a fresh line to paste on desk, from its card" as_test 'curl -sf -H @$HOME/.local/share/weevils/local-token -H content-type:application/json -d "{\"machine\":\"desk\"}" http://127.0.0.1:4179/api/factory/rejoin | jq -er .line | grep -qE "^(npx weevils join weevils.test|curl -fsSL https://weevils.test/api/join.sh [|] bash -s) [A-Za-z0-9_-]{20,}$"'
 
     say "systemd: a machine that lost its role before the fix (an update made it a main machine of its own) comes back at its next update"
     # What the update without the fix did: server/install.sh as a main machine, its tunnel removed, its role main.
@@ -321,7 +324,7 @@ run_systemd() {
     fake_claude "$c4" /home/test
     as_4() { docker exec -u test -w /home/test -e XDG_RUNTIME_DIR=/run/user/1000 -e WEEVILS_REPO=/srv/weevils.git -e WEEVILS_INSTALL_SH=/srv/install.sh "$c4" bash -c "$1"; }
     as_test '~/.local/bin/weevils setup ask machine >/dev/null'
-    # No Node.js on this one: the curl line under the npx one.
+    # No Node.js on this one: the curl line (under the npx one once the package is published).
     line4=$(as_test 'jq -r ".log[-1].text" ~/.local/share/weevils/setup.json 2>/dev/null' | grep -oE 'curl -fsSL https://weevils\.test/api/join\.sh \| bash -s [A-Za-z0-9_-]{20,}' | head -1 || true)
     port4=$(as_test 'jq -r "[.codes[] | select(.used == null)] | last | .port" ~/.local/share/weevils/join.json')
     check "main: a line for the fourth machine, its port reserved ($port4)" test -n "$line4" -a -n "$port4"

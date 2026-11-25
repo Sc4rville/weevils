@@ -141,8 +141,8 @@ export default defineMessages({
       `Pour connecter Codex à ton compte ChatGPT : ouvre [cette page](${url}), connecte-toi et tape le code ${code} (valable 15 minutes). Je te fais signe dès que c’est bon.`,
     codexFail: (why: string): string => `La connexion de Codex n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
     // ---- Un autre ordinateur, d'une ligne (server/join.ts) ; le connecteur ; un travail confié à une session.
-    joinLine: (npx: string, curl: string): string =>
-      `Sur ton autre ordinateur, ouvre un terminal et colle cette ligne :\n\n\`${npx}\`\n\nPas de Node.js dessus (un Mac ou un serveur tout neuf) ? Celle-ci fait la même chose : \`${curl}\`\n\nElle marche une fois, pendant une heure. Je te dis ici quand il est branché.`,
+    joinLine: (npx: string | null, curl: string): string =>
+      `Sur ton autre ordinateur, ouvre un terminal et colle cette ligne :\n\n\`${npx ?? curl}\`\n\n${npx ? `Pas de Node.js dessus (un Mac ou un serveur tout neuf) ? Celle-ci fait la même chose : \`${curl}\`\n\n` : ''}Elle marche une fois, pendant une heure. Je te dis ici quand il est branché.`,
     joinKey: (id: string): string => `${id} se branche : weevils s’installe dessus, quelques minutes.`,
     joinOnline: (name: string): string => `[[win]]**${name} est branché** : je peux y lancer des agents.`,
     linkDown: (name: string): string => `${name} ne répond plus depuis 10 minutes. S’il est allumé, lance \`weevils-service restart\` dessus.`,
@@ -391,8 +391,8 @@ export default defineMessages({
     codexCode: (url: string, code: string): string =>
       `To sign Codex in to your ChatGPT account: open [this page](${url}), sign in and type the code ${code} (valid 15 minutes). I’ll let you know as soon as it’s done.`,
     codexFail: (why: string): string => `Codex didn’t sign in (${why}). Tell me when you want to try again.`,
-    joinLine: (npx: string, curl: string): string =>
-      `On your other computer, open a terminal and paste this line:\n\n\`${npx}\`\n\nNo Node.js on it (a brand-new Mac or server)? This one does the same: \`${curl}\`\n\nIt works once, for an hour. I’ll tell you here when that computer is plugged in.`,
+    joinLine: (npx: string | null, curl: string): string =>
+      `On your other computer, open a terminal and paste this line:\n\n\`${npx ?? curl}\`\n\n${npx ? `No Node.js on it (a brand-new Mac or server)? This one does the same: \`${curl}\`\n\n` : ''}It works once, for an hour. I’ll tell you here when that computer is plugged in.`,
     joinKey: (id: string): string => `${id} is plugging in: weevils is installing there, a few minutes.`,
     joinOnline: (name: string): string => `[[win]]**${name} is plugged in**: I can run agents there now.`,
     linkDown: (name: string): string => `${name} has not answered for 10 minutes. If it is on, run \`weevils-service restart\` on it.`,

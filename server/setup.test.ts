@@ -268,6 +268,8 @@ describe('never a command for the user to type', () => {
       // npx first; the curl line under it for a machine without Node.js.
       const join = t.joinLine('npx weevils join weevils.example.com CODE', 'curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE')
       expect(join.match(/`[^`]+`/g)).toEqual(['`npx weevils join weevils.example.com CODE`', '`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
+      // Before the npm package is published: the curl line alone.
+      expect(t.joinLine(null, 'curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE').match(/`[^`]+`/g)).toEqual(['`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
       expect(t.claudeTerminal('no answer', 'claude').match(/`[^`]+`/g)).toEqual(['`claude`'])
       expect(t.codexTerminal('no answer', 'codex login').match(/`[^`]+`/g)).toEqual(['`codex login`'])
       // Another computer that did not install, or that stopped answering: the one command to run on it.

@@ -30,6 +30,9 @@ import { fileURLToPath } from 'node:url'
 import { SIZES } from './hetzner.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
+/** The npm package `weevils` is published: the page shows `npx weevils <setup id>` first (same switch as
+ *  shared/paste-line.ts). Never before: an unpublished name could be taken by anyone. */
+export const NPX_PUBLISHED = false
 
 export function config(env = process.env) {
   return {
@@ -61,6 +64,8 @@ export function config(env = process.env) {
     allowTargets: (env.GET_ALLOW_TARGETS || '').split(',').map((s) => s.trim()).filter(Boolean),
     targetUrls: Object.fromEntries((env.GET_TARGET_URLS || '').split(',').filter((s) => s.includes('=')).map((s) => s.split('=').map((x) => x.trim()))),
     installer: env.GET_INSTALLER || path.join(HERE, '..', 'install.sh'),
+    /** Tests only: the npx line on (1) or off (0) whatever NPX_PUBLISHED says. */
+    npx: env.GET_NPX ? env.GET_NPX === '1' : undefined,
     trustProxy: env.GET_TRUST_PROXY !== '0',
     /** Where a stopping service hands its setups in progress to the next one: a RAM file ('' : none). */
     handoff: env.GET_HANDOFF ?? (fs.existsSync('/dev/shm') ? path.join('/dev/shm', `weevils-get-${process.getuid?.() ?? 'user'}.jobs`) : ''),
@@ -733,10 +738,11 @@ export function createServer(cfg = config(), deps = {}) {
   // A computer's command: bash on Linux, a Mac or inside WSL; PowerShell on Windows (any of its terminals: cmd and Git
   // Bash run it too), which hands the same install to Ubuntu in WSL.
   // npx first where Node.js may be there (the npm package `weevils`, npm/: it downloads this same script and runs it
-  // with bash, nothing else); the curl line for a computer without it (a brand-new Mac). A test service names itself.
+  // with bash, nothing else), once it is published (NPX_PUBLISHED); the curl line for a computer without it (a
+  // brand-new Mac). A test service names itself.
   const commands = (j) => ({
     command: `curl -fsSL ${cfg.base}/install.sh | bash -s ${j.sid}`,
-    npx: `${cfg.base === 'https://get.scarville.tech' ? '' : `WEEVILS_SITE=${cfg.base} `}npx weevils ${j.sid}`,
+    ...((cfg.npx ?? NPX_PUBLISHED) && { npx: `${cfg.base === 'https://get.scarville.tech' ? '' : `WEEVILS_SITE=${cfg.base} `}npx weevils ${j.sid}` }),
     win: `powershell -c "irm ${cfg.base}/w/${j.sid} | iex"`,
   })
   /** What the page needs to start a setup: a computer's commands; a VPS's command to paste on it; the cloud-init of a

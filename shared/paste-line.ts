@@ -4,6 +4,16 @@
 
 export type PasteKind = 'join' | 'bring'
 
+/** Whether the npm package `weevils` is published (by its owner): until then the npx line is never shown, only the
+ *  curl one (an unpublished name could be taken by anyone, and the line would run their code). get/server.mjs has the
+ *  same switch; test/npx-weevils.test.ts keeps them equal. */
+export const NPX_PUBLISHED = false
+
+/** The lines to show for one code: the npx one first when the package is published, always the curl one. */
+export function pasteLines(kind: PasteKind, url: string, code: string, extra = ''): { npx: string | null; curl: string } {
+  return { npx: NPX_PUBLISHED ? npxLine(kind, url, code, extra) : null, curl: curlLine(kind, url, code, extra) }
+}
+
 /** A weevils' address as the npx line shows it: https is the default there, so only its host; http stays whole. */
 export function lineAddress(url: string): string {
   const u = url.replace(/\/+$/, '')

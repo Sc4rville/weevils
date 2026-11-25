@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { BringItem, BringView } from '../../shared/bring.ts'
-import { curlLine, npxLine } from '../../shared/paste-line.ts'
+import { pasteLines } from '../../shared/paste-line.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/setup'
@@ -30,9 +30,10 @@ export function Bring() {
       window.clearInterval(id)
     }
   }, [])
-  // npx first (short, readable); the curl line for a computer without Node.js.
-  const line = code ? npxLine('bring', location.origin, code) : ''
-  const plain = code ? curlLine('bring', location.origin, code) : ''
+  // npx first (short, readable) once the package is published; the curl line for a computer without Node.js.
+  const lines = code ? pasteLines('bring', location.origin, code) : null
+  const line = lines ? (lines.npx ?? lines.curl) : ''
+  const plain = lines?.npx ? lines.curl : ''
   const sources = view?.sources ?? []
   const tap = (source: string, it: BringItem, live: boolean) => {
     if (it.state === 'here' && it.sessionId) return push({ kind: 'session', id: it.sessionId })
@@ -51,8 +52,8 @@ export function Bring() {
             <Icon name={copied ? 'check' : 'copy'} /> {copied ? t.bringCopied : t.bringCopy}
           </button>
           {!sources.some((s) => s.id.startsWith('pc:')) && copied && <span className="meta">{t.bringWaiting}</span>}
-          <span className="meta">{t.bringNoNode}</span>
-          <code>{plain}</code>
+          {plain && <span className="meta">{t.bringNoNode}</span>}
+          {plain && <code>{plain}</code>}
         </div>
       )}
       {sources.map((s) => (

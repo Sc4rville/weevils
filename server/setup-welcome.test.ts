@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, expect, it, vi, describe } from 'vitest'
 import type { SetupDeps, SetupState } from './setup.ts'
+import { NPX_PUBLISHED } from '../shared/paste-line.ts'
 
 // The first run is a conversation with weevboss (server/setup.ts): it speaks first, from what weevils detected, with no
 // button; the subscription's sign-in, another computer and the connector all come as sentences in the chat; what
@@ -242,9 +243,11 @@ describe('another computer, by talking', () => {
     expect(await s.ask('machine')).toBe(false)
     const line = /`(curl -fsSL https:\/\/weevils\.example\.com\/api\/join\.sh \| bash -s ([A-Za-z0-9_-]+))`/.exec(texts().at(-1)!)
     expect(line).not.toBeNull()
-    // npx first, the same code; the curl line under it for a machine without Node.js.
-    expect(texts().at(-1)).toContain(`\`npx weevils join weevils.example.com ${line![2]}\``)
-    expect(texts().at(-1)!.indexOf('npx weevils')).toBeLessThan(texts().at(-1)!.indexOf('curl -fsSL'))
+    // npx first, the same code, once the npm package is published; the curl line under it for a machine without Node.js.
+    if (NPX_PUBLISHED) {
+      expect(texts().at(-1)).toContain(`\`npx weevils join weevils.example.com ${line![2]}\``)
+      expect(texts().at(-1)!.indexOf('npx weevils')).toBeLessThan(texts().at(-1)!.indexOf('curl -fsSL'))
+    } else expect(texts().at(-1)).not.toContain('npx')
     expect(texts().at(-1)).toMatch(/^On your other computer, open a terminal and paste this line:/)
     expect(join.open(line![2])?.target).toBe('user@weevils.example.com')
     expect(s.contextFor()).not.toContain(line![2])
@@ -273,10 +276,10 @@ describe('another computer, by talking', () => {
     const { it: s, texts } = make({ join, sshd: async () => true })
     await s.ask('machine', undefined, false, { since: '2026-10-01' })
     expect(texts().at(-1)).toMatch(/`curl -fsSL https:\/\/weevils\.example\.com\/api\/join\.sh \| bash -s [A-Za-z0-9_-]+ --since 2026-10-01`/)
-    expect(texts().at(-1)).toMatch(/`npx weevils join weevils\.example\.com [A-Za-z0-9_-]+ --since 2026-10-01`/)
+    if (NPX_PUBLISHED) expect(texts().at(-1)).toMatch(/`npx weevils join weevils\.example\.com [A-Za-z0-9_-]+ --since 2026-10-01`/)
     const context = s.contextFor()
     expect(context).toContain('bash -s •••• --since 2026-10-01')
-    expect(context).toContain('npx weevils join weevils.example.com •••• --since 2026-10-01')
+    if (NPX_PUBLISHED) expect(context).toContain('npx weevils join weevils.example.com •••• --since 2026-10-01')
   })
 
   it('only from a public https address; SSH to that name, or to a VPS’s public IP behind a tunnel', () => {

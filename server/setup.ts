@@ -55,7 +55,7 @@ import { VAULT_REPO, withoutVault } from './weevbook/vault-github.ts'
 import { discoveryHint, isTry, mayOffer, nextStep, stepDone, STEPS, tryBrief, type JourneyFacts, type Step } from './journey.ts'
 import J from './i18n/journey.ts'
 import { openaiKey } from './transcribe.ts'
-import { curlLine, maskPasteCode, npxLine } from '../shared/paste-line.ts'
+import { maskPasteCode, pasteLines } from '../shared/paste-line.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
 const LAB_ON = !!process.env.WEEVILS_LAB_DIR?.trim()
@@ -895,17 +895,18 @@ export class Setup {
   /** The one line that plugs a computer in, with a new one-time code; null when other computers cannot reach this one
    *  over SSH. The same computer pasting it again keeps its name (server/join.ts): it is also how one that lost its
    *  link comes back (Your factory, a machine that does not answer: « Copy the line »). */
-  private async joinCommand(s: SetupState, extra = ''): Promise<{ npx: string; curl: string } | null> {
+  private async joinCommand(s: SetupState, extra = ''): Promise<{ npx: string | null; curl: string } | null> {
     const host = this.deps.join ? joinHost(s) : null
     if (!host || !(await (this.deps.sshd ?? sshdUp)())) return null
     const code = this.deps.join!.create(`${s.machine.user}@${host}`)
-    return { npx: npxLine('join', s.url, code, extra), curl: curlLine('join', s.url, code, extra) }
+    return pasteLines('join', s.url, code, extra)
   }
 
   /** A fresh line for a machine of yours that does not answer any more (Your factory). It ran weevils, so it has
-   *  Node.js (install.sh puts Node 22 there): the npx line. */
+   *  Node.js (install.sh puts Node 22 there): the npx line, once the package is published. */
   async rejoinLine(): Promise<string | null> {
-    return (await this.joinCommand(await this.detect()))?.npx ?? null
+    const lines = await this.joinCommand(await this.detect())
+    return lines ? (lines.npx ?? lines.curl) : null
   }
 
   /** Another computer's key came in through its line (server/join.ts): weevilsd says it, then says when it shows up. */

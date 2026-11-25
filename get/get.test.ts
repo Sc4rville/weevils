@@ -13,7 +13,7 @@ import { Window } from 'happy-dom'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JavaScript module, no types
 import * as HZ from './hetzner.js'
-import { config, createServer, publicAddress, sslip, stepTitles, loadJobs, saveJobs, createStore, describeStats } from './server.mjs'
+import { config, createServer, publicAddress, sslip, stepTitles, loadJobs, saveJobs, createStore, describeStats, NPX_PUBLISHED } from './server.mjs'
 import { claimSetup } from '../server/get-claim.ts'
 
 const listen = (s: http.Server) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as AddressInfo).port)))
@@ -236,8 +236,9 @@ describe('an install, end to end through the API', () => {
   it('reports a failure without anything that looks like a login link', async () => {
     const job = (await post('/api/job', { kind: 'pc', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
     expect(job.command).toBe(`curl -fsSL https://get.example/install.sh | bash -s ${job.sid}`)
-    // npx first on the page (npm/: the same script, run by bash); a test service names itself.
-    expect(job.npx).toBe(`WEEVILS_SITE=https://get.example npx weevils ${job.sid}`)
+    // npx first on the page (npm/: the same script, run by bash) once the package is published; a test service
+    // names itself.
+    expect(job.npx).toBe(NPX_PUBLISHED ? `WEEVILS_SITE=https://get.example npx weevils ${job.sid}` : undefined)
     await fetch(`${base}/i/${job.sid}.env`)
     await report(job.sid, { event: 'failed', error: 'oops https://x/#k=abc' })
     const st = (await post('/api/status', { sid: job.sid, view: job.view })).data
@@ -788,6 +789,26 @@ describe('Windows', () => {
     // Git Bash: the bootstrap goes to WSL itself, or says what is missing.
     expect(bootstrap).toMatch(/MINGW\* \| MSYS\* \| CYGWIN\*\)/)
     expect(page).toContain("os === 'windows' && job.win ? job.win : job.npx || job.command")
+  })
+})
+
+describe('the npx line', () => {
+  it('shown first only once the npm package is published, or when a test turns it on', async () => {
+    for (const [npx, want] of [['1', true], ['0', false]] as const) {
+      const made = createServer(config({ GET_BASE: 'https://get.example', GET_HANDOFF: '', GET_TRUST_PROXY: '0', GET_NPX: npx }), { notifier: null })
+      const port = await listen(made.server)
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/api/job`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'pc', lang: 'en', pub: pubB64(keyPair().publicKey) }) })
+        const job = await r.json()
+        expect(job.npx).toBe(want ? `WEEVILS_SITE=https://get.example npx weevils ${job.sid}` : undefined)
+        expect(job.command).toBe(`curl -fsSL https://get.example/install.sh | bash -s ${job.sid}`)
+      } finally {
+        made.server.close()
+      }
+    }
+  })
+  it('the same switch as the app’s (shared/paste-line.ts)', async () => {
+    expect(NPX_PUBLISHED).toBe((await import('../shared/paste-line.ts')).NPX_PUBLISHED)
   })
 })
 

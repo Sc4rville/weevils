@@ -2,15 +2,6 @@
 
 A short summary of what changed after the first working version.
 
-## 2026-11-25
-
-### Install
-- `npx weevils` installs weevils, `npx weevils <setup id>` runs the setup site's install, and weevboss's line for
-  another computer is `npx weevils join <your weevils> <code>`. The `weevils` npm package (npm/) is one file with no
-  dependencies: it downloads the same script from the same address and runs it with bash, so the behaviour is the
-  curl line's, unchanged. The curl line stays under each npx one, for a machine without Node.js (a brand-new Mac or
-  server); the site's VPS step shows only curl.
-
 ## 2026-11-23
 
 ### Tests and builds

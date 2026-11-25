@@ -1,10 +1,11 @@
 // npm/ (the `weevils` npm package): `npx weevils …` picks the script the curl line would run, downloads it whole and
 // hands it to bash on its standard input, with the same arguments. Nothing else.
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createRequire } from 'node:module'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { curlLine as joinCurl, maskPasteCode, npxLine } from '../shared/paste-line.ts'
@@ -92,6 +93,20 @@ describe('the real package, against a real server', () => {
       } finally {
         srv.close()
       }
+    }
+  })
+
+  it('without curl, says so before running a script that needs it', async () => {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'npx-nocurl-'))
+    try {
+      for (const t of ['sh', 'bash']) fs.symlinkSync(execFileSync('sh', ['-c', `command -v ${t}`], { encoding: 'utf8' }).trim(), path.join(bin, t))
+      const r = await new Promise<{ code: number; err: string }>((resolve) => {
+        execFile(process.execPath, [BIN, 'join', 'w.example', CODE], { env: { PATH: bin, LANG: 'C' } }, (e, _out, err) => resolve({ code: e ? Number(e.code) : 0, err }))
+      })
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('curl is missing on this computer')
+    } finally {
+      fs.rmSync(bin, { recursive: true, force: true })
     }
   })
 

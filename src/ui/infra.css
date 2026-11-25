@@ -10,7 +10,8 @@
 :root[data-theme='synthwave'],
 :root[data-theme='vaporwave'],
 :root[data-theme='deco'],
-:root[data-theme='chalkboard'] {
+:root[data-theme='chalkboard'],
+:root[data-theme='crt'] {
   --warn: #ffa347;
   --crit: #ffc27a;
 }

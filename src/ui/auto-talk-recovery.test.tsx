@@ -52,7 +52,7 @@ it('never accepts or refuses a draft from a new client', async () => {
 it('keeps a recovered original visible after reload, locale and theme changes', async () => {
   const recovered = item({ draft: true, recoveredAt: 100 })
   await render(recovered)
-  for (const lang of ['en', 'fr'] as const) for (const theme of ['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard']) {
+  for (const lang of ['en', 'fr'] as const) for (const theme of ['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard','atlas','crt']) {
     await act(async () => { setLang(lang); document.documentElement.dataset.theme = theme })
     await act(async () => root.unmount()); root = createRoot(host)
     await render(JSON.parse(JSON.stringify(recovered)))

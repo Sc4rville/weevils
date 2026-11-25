@@ -210,7 +210,7 @@ describe('bande projet', () => {
   })
 })
 
-it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard'])('keeps the recursive signature static until verified work and stops it again in %s', async theme=>{
+it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard','atlas','crt'])('keeps the recursive signature static until verified work and stops it again in %s', async theme=>{
  const identity={kind:'self-improvement' as const,installationId:'own',target:{machineId:'vps',projectId:'p',repo:'weevils'},evidence:'repository-identity' as const}
  project.workstream=identity
  document.documentElement.dataset.theme=theme

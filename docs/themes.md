@@ -72,6 +72,8 @@ everything the themes need, and the checks decide.
 | `vaporwave` | vaporwave / vaporwave | dark | pastel dusk of an empty mall: dusk-teal top, powder-pink 24/7, deep indigo calm band, lavender-white ink | **muted pastels** teal → cyan → periwinkle → lavender → orchid → pink (180° cool-to-pink arc, chroma 0.075: dusty, not neon), 4 steps | mint star, bubblegum-pink AutoMark, peach 24/7 title |
 | `carbon` | papier carbone / carbon copy | light | a multi-part order pad typed on a machine: white original top, canary-copy 24/7, pink-copy devil band, green-copy reply, cream calm band; **ink in carbon blue-violet** `#1d2470`, not black; **typeface** monospace (`ui-monospace`, Menlo…); **texture** paper fibre tinted carbon blue and two soft carbon smudges (multiply, 0.12) | **the copies of a form pad** goldenrod → canary → green → blue → lilac → pink (280° arc, chroma 0.055), 4 steps | rubber-stamp red star, ledger-green AutoMark, stamp-red 24/7 title |
 | `chalkboard` | tableau noir / chalkboard | dark | a classroom slate wiped in a hurry: slate green-black top, chalk-tray wood 24/7, red-chalk devil band, deep slate calm band, chalk-white ink; **typeface** Chalkboard SE on iPhone and Mac (rounded, then the system sans elsewhere); **texture** chalk dust and two eraser smears (screen, 0.12) | **coloured chalks smudged on slate**, the whole circle at low chroma (0.055), 4 depths | yellow-chalk star, blue-chalk AutoMark, pink-chalk 24/7 title |
+| `atlas` | atlas / atlas | light | a hand-coloured plate from an old atlas: vellum top, sea-green 24/7, boundary-rose devil band, lowland-green reply, pale vellum calm band, sepia ink; **typeface** the phone's serif (`ui-serif`: New York on iPhone and Mac, Georgia elsewhere), the first serif theme; **texture** contour lines of four hills on two tiles of different sizes, and the graticule of meridians and parallels (multiply, 0.12) | **hypsometric tints**, sea → plains → hills → mountains → peaks: cyan-green → green → straw → ochre → brown → rose-mauve (210° arc descending, chroma 0.06), 4 steps | route-carmine star, Prussian-blue AutoMark, burnt-sienna 24/7 title |
+| `crt` | cathodique / CRT | dark | an amber monochrome monitor in a dark room: warm near-black bands, amber-glow 24/7, red devil band; **ink in P3 amber** `#ffdca0`, the first dark theme whose text is a colour; **texture** scanlines (one line in three), the red-green-blue phosphor grille and the tube's dark corners (normal, 0.12) | **a badly tuned screen**, amber → red → violet → blue → cyan (280° arc, chroma 0.075), 4 dim depths | phosphor-green star (the one scream), cyan AutoMark, hot-amber 24/7 title |
 
 ## Log
 
@@ -249,6 +251,38 @@ seen: Chalkboard SE itself (the run's browser is Linux; iPhone and Mac have it).
 `node_modules` had fallen behind (`modern-screenshot` missing, typecheck failing): `NODE_ENV=production` is set here,
 so reinstall with `npm ci --include=dev`. The next interface builds apart: `vite build -c next/vite.config.ts`.
 
+### 2026-11-25 — atlas, crt
+
+Ninth nightly run. One light, one dark, each with more than one bold move.
+
+- **atlas**: an old atlas plate, engraved then coloured by hand. Bold moves: the first serif theme (`ui-serif`, so New
+  York on Apple devices, Georgia or Noto Serif elsewhere, nothing downloaded); a texture that makes the window a map,
+  contour lines of four hills in sepia over the graticule (meridians and parallels every 132px); and slots that are
+  the **hypsometric tints** of a relief map, ordered by altitude from the sea to the peaks, so a project's slot reads
+  as a height. Vellum top band, sea-green 24/7, sepia ink `#1c1206`. Route-carmine star, Prussian-blue AutoMark,
+  burnt-sienna 24/7 title (coastal's buoy-red / kelp / harbour-blue trio avoided on purpose). First try used one
+  360px contour tile: on desktop it repeated like wallpaper; now two tiles of different sizes (560×500, 430×610,
+  offset), each drawn wrapping across its edges with `<use>` so it stays one 8 KB `data:` SVG.
+- **crt** (cathodique): an amber monochrome monitor. Bold moves: amber text on warm black (the first dark theme with
+  a coloured ink; carbon did it on light); a three-layer texture, scanlines, the RGB phosphor grille as 1px vertical
+  stripes, and a vignette for the tube's corners; a palette of dim, slightly wrong colours walking amber → red →
+  violet → blue → cyan, with phosphor green kept for the working star alone. System sans kept: carbon owns
+  monospace. Joins every dark-theme rule. The slots are darker than other dark themes' (L 0.2–0.35): amber ink is
+  less bright than white and needs them to clear 6:1.
+
+Checked: contrast, slot, texture, logo and link-colour tests (passed at the first values), typecheck, i18n, the
+front-end suite (src, test, shared: only `test/macos-launchd` fails, as before); `server/` git-heavy tests fail inside
+the automation worktree as on the untouched branch. Screenshots of weevboss, For you, the menu and slot swatches in en
+and fr at 1280×900 and 390×844 from a throwaway server (`env -i`, empty home, own ports 4391/4392, six fake Claude
+Code projects). Not seen: New York itself (Linux browser; it falls back to the system serif). For you stays empty in a
+blank home: its cards' colours come from the slots, seen in the swatches.
+
+Note for the person: carbon and chalkboard (2026-11-24) had not reached main when this run started; this branch
+carries them too. A theme that touches `shared/link-colors.ts` makes the landing run the whole test suite
+(`touchesServer`), and that suite's git-heavy `server/` tests fail inside the automation worktree: if this run does
+not land either, that is the likely reason. Like carbon, atlas belongs in the `.nx-fx-busy` list of
+`next/src/next.css` (a light theme), left to the person for the same reason.
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.
@@ -260,9 +294,7 @@ so reinstall with `npm ci --include=dev`. The next interface builds apart: `vite
 - **Lacquer red / ukiyo-e**: a dark vermilion-and-indigo woodblock theme (deco is black and gold).
 - **Thermal receipt**: carbon took monospace and coloured ink; a true one-ink receipt (16 slots in one faded hue) does
   not pass the slots ≥ 2 apart rule at low chroma: it needs a hue arc of 200° or more.
-- **Topographic**: contour lines as the texture, slots as altitude tints from sea to snow.
 - **Terrazzo**: speckled stone chips (radial-gradient dots) on warm plaster, a loud clashing palette.
-- **CRT terminal**: scanlines (repeating-linear-gradient) over phosphor green, a slight vignette (carbon already uses
-  monospace: pick another typeface or keep the system one).
-- **Serif worlds**: no theme uses `ui-serif` yet (newsprint, a library card catalogue, an old atlas).
+- **Serif worlds**: atlas took `ui-serif` for a map; newsprint or a library card catalogue could take it for print.
+- **Rounded / condensed typefaces**: `ui-rounded` (SF Pro Rounded) for a soft toy-like world; nobody uses it yet.
 - **Seasonal / time of day**: a theme that follows the clock (dawn → noon → dusk → night) needs a product decision first.

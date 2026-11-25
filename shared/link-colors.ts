@@ -17,7 +17,7 @@ export const LINK_HUES: Record<PageKind, [number, number]> = {
   render: [15, 350],
 }
 
-const APP_THEMES = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco', 'carbon', 'chalkboard'] as const
+const APP_THEMES = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco', 'carbon', 'chalkboard', 'atlas', 'crt'] as const
 export type LinkTheme = (typeof APP_THEMES)[number] | `${(typeof APP_THEMES)[number]}-bubble` | 'page-light' | 'page-dark'
 export const LINK_THEMES: LinkTheme[] = [...APP_THEMES, ...APP_THEMES.map((t) => `${t}-bubble` as const), 'page-light', 'page-dark']
 
@@ -96,6 +96,8 @@ const AGENT: Record<(typeof APP_THEMES)[number], { agent: Rgb; dl: number }> = {
   deco: { agent: ok(0.2, 0.028, 85), dl: 0.06 },
   carbon: { agent: hexToRgb('#e2f7ff'), dl: -0.05 },
   chalkboard: { agent: ok(0.27, 0.03, 165), dl: 0.06 },
+  atlas: { agent: ok(0.9, 0.055, 85), dl: -0.05 },
+  crt: { agent: ok(0.19, 0.03, 65), dl: 0.05 },
 }
 /** Every background a living link can sit on: in a theme, the page, the weevboss band, the project bands (--p0…--p15),
  *  the h24, devil and calm bands; in a « -bubble » row, weevboss's message inside a session thread (.msg.orch: its band
@@ -130,6 +132,10 @@ function grounds(theme: LinkTheme): Rgb[] {
       return [AGENT.carbon.agent, ...arc(75, 355, [0.935, 0.895, 0.855, 0.815], 0.055), ok(0.93, 0.07, 100), ok(0.86, 0.07, 0), ok(0.92, 0.045, 150), ok(0.97, 0.025, 95)]
     case 'chalkboard':
       return [AGENT.chalkboard.agent, ...arc(10, 347.5, [0.265, 0.31, 0.355, 0.4], 0.055), ok(0.31, 0.05, 60), ok(0.32, 0.08, 25), ok(0.3, 0.04, 140), ok(0.21, 0.025, 170)]
+    case 'atlas':
+      return [AGENT.atlas.agent, ...arc(205, -5, [0.91, 0.86, 0.81, 0.76], 0.06), ok(0.87, 0.04, 185), ok(0.83, 0.07, 25), ok(0.9, 0.05, 135), ok(0.955, 0.03, 88)]
+    case 'crt':
+      return [AGENT.crt.agent, ...arc(100, -180, [0.2, 0.25, 0.3, 0.35], 0.075), ok(0.29, 0.06, 60), ok(0.29, 0.09, 25), ok(0.28, 0.05, 150), ok(0.15, 0.025, 65)]
     case 'page-light':
       return [hexToRgb('#ffffff')]
     default:
@@ -138,7 +144,7 @@ function grounds(theme: LinkTheme): Rgb[] {
 }
 export const LINK_GROUNDS: Record<LinkTheme, Rgb[]> = Object.fromEntries(LINK_THEMES.map((t) => [t, grounds(t)])) as Record<LinkTheme, Rgb[]>
 /** Rows whose grounds are dark: their links are lighter than the grounds, the others darker. */
-const LIGHT_TEXT = new Set<LinkTheme>(['dark', 'dark-bubble', 'synthwave', 'synthwave-bubble', 'vaporwave', 'vaporwave-bubble', 'deco', 'deco-bubble', 'chalkboard', 'chalkboard-bubble', 'page-dark'])
+const LIGHT_TEXT = new Set<LinkTheme>(['dark', 'dark-bubble', 'synthwave', 'synthwave-bubble', 'vaporwave', 'vaporwave-bubble', 'deco', 'deco-bubble', 'chalkboard', 'chalkboard-bubble', 'crt', 'crt-bubble', 'page-dark'])
 
 // ---------------------------------------------------------------- the shade of each hue
 

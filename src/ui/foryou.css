@@ -80,6 +80,27 @@
   --fy-g4: var(--p14);
 }
 
+/* Atlas: the gradient climbs the relief, sea → plains → hills → peaks. */
+:root[data-theme='atlas'] {
+  --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
+  --fy-g1: var(--p0);
+  --fy-g2: var(--p5);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p15);
+}
+
+/* CRT: dark bands; outside authors brought down to the tube; the gradient walks the badly tuned screen, amber → cyan. */
+:root[data-theme='crt'] {
+  --fy-ok: oklch(from var(--fluo) 0.38 calc(c * 0.45) h);
+  --fy-who-lm: 0;
+  --fy-who-la: 0.34;
+  --fy-who-k: 0.6;
+  --fy-g1: var(--p3);
+  --fy-g2: var(--p6);
+  --fy-g3: var(--p11);
+  --fy-g4: var(--p15);
+}
+
 /* Carbon: the gradient walks the form's copies, canary → green → blue → pink. */
 :root[data-theme='carbon'] {
   --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
@@ -1671,7 +1692,8 @@ button.fy-hit {
 [data-theme='synthwave'] .fy-sheet-back,
 [data-theme='vaporwave'] .fy-sheet-back,
 [data-theme='deco'] .fy-sheet-back,
-[data-theme='chalkboard'] .fy-sheet-back {
+[data-theme='chalkboard'] .fy-sheet-back,
+[data-theme='crt'] .fy-sheet-back {
   background: rgb(0 0 0 / 0.45);
 }
 

@@ -524,6 +524,108 @@
   --texture-opacity: 0.12;
 }
 
+/* Atlas (atlas) : une planche d'atlas ancien, gravée puis coloriée à la main. Bande du haut vélin, 24/7 vert d'eau
+   des mers, bande calme vélin pâle ; encre sépia, et tout le texte en romain (la police à empattements du téléphone,
+   New York sur iPhone, Georgia ailleurs). Projets en teintes hypsométriques, de la mer aux sommets : bleu-vert, vert
+   des plaines, jaune, ocre, brun des montagnes, mauve des cimes, quatre crans. Ce qui travaille est le carmin d'un
+   itinéraire, ce qui tourne tout seul le bleu de Prusse, le titre 24/7 terre de Sienne. Texture : des courbes de
+   niveau et le quadrillage des méridiens et des parallèles. */
+:root[data-theme='atlas'] {
+  color-scheme: light;
+  --font: ui-serif, 'New York', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Noto Serif', serif;
+  --ink: #1c1206;
+  --logo-filter: grayscale(1) sepia(.6) brightness(.34);
+  --agent: oklch(0.9 0.055 85);
+  --devil: oklch(0.83 0.07 25);
+  --devil-reply: oklch(0.9 0.05 135);
+  --h24: oklch(0.87 0.04 185);
+  --calm: oklch(0.955 0.03 88);
+  --calm-soft: 0.02;
+  --fluo: oklch(0.43 0.17 15);
+  /* Les 16 emplacements : les teintes hypsométriques, mer → plaines → collines → montagnes → cimes, quatre crans. */
+  --p0: oklch(0.91 0.06 205.0);
+  --p1: oklch(0.86 0.06 191.0);
+  --p2: oklch(0.81 0.06 177.0);
+  --p3: oklch(0.76 0.06 163.0);
+  --p4: oklch(0.91 0.06 149.0);
+  --p5: oklch(0.86 0.06 135.0);
+  --p6: oklch(0.81 0.06 121.0);
+  --p7: oklch(0.76 0.06 107.0);
+  --p8: oklch(0.91 0.06 93.0);
+  --p9: oklch(0.86 0.06 79.0);
+  --p10: oklch(0.81 0.06 65.0);
+  --p11: oklch(0.76 0.06 51.0);
+  --p12: oklch(0.91 0.06 37.0);
+  --p13: oklch(0.86 0.06 23.0);
+  --p14: oklch(0.81 0.06 9.0);
+  --p15: oklch(0.76 0.06 355.0);
+  /* Logo vocal : carmin, bleu de Prusse, vert d'eau, ocre. */
+  --anim-rec: oklch(0.55 0.2 28);
+  --anim-wait: oklch(0.43 0.17 15);
+  --anim-ready: oklch(0.43 0.17 15);
+  --anim-1: oklch(0.45 0.12 250);
+  --anim-2: oklch(0.6 0.09 185);
+  --anim-3: oklch(0.72 0.12 75);
+  --mix: 10%;
+  --dl: -0.05;
+  /* Texture : les courbes de niveau de quatre reliefs sur deux calques de tailles différentes (le motif ne se répète
+     pas à l'œil), gravées sépia, et le quadrillage des méridiens et des parallèles. */
+  --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='500'%3E%3Cdefs%3E%3Cpath id='h0' d='M127 0C125 11 113 22 105 31C97 41 91 51 80 58C70 65 55 69 42 73C28 77 16 79 0 83C-16 86 -37 95 -54 93C-70 91 -90 81 -98 71C-106 60 -101 42 -102 31C-104 19 -105 10 -105 0C-106 -10 -109 -22 -105 -31C-102 -41 -92 -50 -83 -59C-73 -68 -63 -80 -49 -86C-36 -92 -15 -97 -0 -95C15 -94 30 -81 43 -75C56 -68 65 -63 78 -56C91 -50 113 -45 121 -36C129 -27 130 -11 127 0ZM112 -3C109 7 98 15 92 23C85 31 81 40 72 46C64 52 51 55 40 59C28 63 18 68 4 72C-10 76 -31 85 -45 82C-59 80 -74 67 -79 57C-85 47 -77 31 -77 21C-78 11 -83 6 -85 -3C-87 -12 -91 -22 -88 -30C-85 -39 -77 -47 -69 -56C-61 -64 -53 -75 -40 -80C-28 -85 -9 -88 4 -85C17 -82 28 -70 39 -64C51 -59 61 -57 73 -52C85 -48 106 -44 112 -35C119 -27 116 -13 112 -3ZM96 -6C92 2 85 8 79 15C74 22 72 30 65 35C58 40 48 42 38 47C29 51 20 58 8 61C-4 65 -24 73 -35 70C-47 66 -56 52 -59 42C-62 33 -53 21 -54 13C-56 5 -64 1 -67 -6C-70 -13 -73 -22 -71 -30C-70 -37 -62 -45 -56 -52C-49 -59 -42 -70 -31 -74C-20 -77 -3 -77 8 -74C19 -70 26 -59 36 -55C46 -51 57 -53 68 -49C79 -46 98 -41 102 -34C107 -27 100 -14 96 -6ZM80 -9C76 -2 72 2 69 8C65 13 64 20 59 25C53 29 45 31 37 35C30 39 22 47 12 50C2 53 -16 58 -24 54C-33 50 -36 35 -38 27C-39 18 -32 11 -34 5C-36 -1 -47 -3 -50 -9C-54 -15 -56 -22 -55 -29C-54 -35 -48 -42 -42 -48C-36 -54 -30 -63 -21 -66C-12 -68 3 -65 12 -61C21 -58 25 -49 34 -47C42 -44 54 -49 64 -46C73 -44 87 -38 90 -32C93 -26 83 -16 80 -9ZM65 -12C62 -7 61 -4 59 1C57 5 56 11 53 14C49 18 42 20 36 23C30 27 24 35 16 37C8 39 -6 41 -12 37C-18 32 -17 19 -17 12C-18 6 -14 2 -17 -2C-20 -6 -31 -8 -35 -12C-38 -16 -39 -23 -38 -28C-37 -33 -32 -39 -28 -43C-23 -48 -17 -55 -9 -56C-2 -57 9 -52 16 -50C23 -47 25 -42 32 -40C39 -39 51 -44 58 -43C66 -41 75 -35 76 -30C77 -25 68 -17 65 -12ZM52 -15C50 -11 51 -9 51 -6C50 -3 49 1 46 4C44 7 40 8 35 11C31 14 26 21 20 22C14 23 4 22 1 18C-2 14 1 4 0 -1C-0 -5 1 -6 -2 -8C-6 -11 -16 -12 -19 -15C-22 -18 -21 -23 -20 -27C-19 -31 -16 -35 -12 -38C-8 -41 -3 -46 2 -46C7 -46 15 -41 20 -39C25 -37 26 -35 32 -35C37 -35 47 -39 52 -38C57 -37 62 -31 62 -27C62 -24 54 -19 52 -15ZM41 -18C40 -16 43 -14 42 -13C42 -11 42 -8 40 -6C39 -5 36 -3 33 -2C31 0 27 4 24 5C21 5 15 2 14 -0C12 -3 15 -9 15 -11C14 -14 13 -13 10 -14C8 -15 1 -16 -1 -18C-2 -20 -1 -23 -0 -25C1 -27 2 -30 5 -32C7 -34 11 -36 14 -36C17 -35 21 -32 24 -31C27 -30 28 -30 31 -30C34 -30 41 -33 44 -32C46 -31 48 -27 47 -25C47 -23 42 -20 41 -18Z'/%3E%3Cpath id='h1' d='M82 0C78 9 73 16 70 25C66 33 67 44 61 52C55 59 43 65 33 68C23 71 11 72 0 72C-11 72 -24 72 -33 68C-43 64 -50 55 -56 48C-63 41 -66 33 -73 26C-79 18 -93 10 -96 0C-99 -10 -97 -24 -90 -32C-84 -40 -67 -44 -57 -49C-47 -53 -38 -57 -29 -59C-19 -62 -10 -66 -0 -66C10 -67 19 -64 31 -63C42 -61 56 -61 66 -56C77 -51 89 -42 92 -32C94 -23 86 -9 82 0ZM66 -3C63 5 62 9 60 17C58 24 59 34 55 40C50 46 39 50 31 52C22 55 13 56 4 56C-5 56 -16 56 -23 52C-30 49 -35 40 -40 35C-46 29 -50 25 -57 18C-63 12 -77 5 -79 -3C-81 -11 -76 -23 -69 -29C-62 -35 -48 -36 -39 -40C-31 -43 -26 -47 -19 -50C-12 -53 -4 -56 4 -57C12 -58 20 -56 30 -56C39 -55 53 -56 62 -52C70 -48 78 -38 79 -29C80 -21 70 -11 66 -3ZM52 -6C50 -0 52 3 51 9C50 15 52 24 48 28C44 33 35 35 29 36C22 38 15 39 8 39C1 39 -7 39 -13 36C-18 34 -21 27 -25 22C-30 18 -36 16 -41 11C-47 7 -58 0 -59 -6C-60 -12 -52 -21 -46 -25C-40 -29 -29 -29 -23 -32C-17 -35 -14 -39 -9 -41C-4 -44 2 -47 8 -48C14 -49 21 -49 29 -49C37 -49 49 -50 55 -46C61 -42 65 -33 65 -26C64 -19 54 -12 52 -6ZM40 -9C39 -5 43 -2 43 2C43 6 44 13 41 16C38 19 31 19 26 21C22 22 17 23 12 23C7 23 1 23 -2 21C-6 18 -7 13 -11 11C-15 8 -21 7 -25 4C-30 1 -37 -5 -37 -9C-37 -13 -28 -19 -24 -22C-19 -24 -12 -24 -8 -26C-4 -28 -4 -32 -0 -34C3 -36 7 -38 12 -39C17 -41 22 -41 28 -41C34 -41 43 -42 47 -38C50 -35 51 -27 50 -22C49 -17 41 -13 40 -9ZM31 -12C31 -10 35 -8 35 -5C36 -3 35 1 33 3C32 5 27 4 24 5C21 6 19 7 16 7C13 7 10 6 8 5C5 4 5 1 2 -0C-0 -2 -5 -2 -7 -4C-10 -6 -14 -10 -13 -12C-12 -14 -6 -17 -3 -19C0 -20 4 -20 5 -21C7 -22 7 -26 9 -27C10 -29 13 -30 16 -31C19 -31 22 -32 26 -32C29 -32 35 -32 37 -30C38 -27 37 -22 36 -19C35 -16 31 -14 31 -12Z'/%3E%3C/defs%3E%3Cg fill='none' stroke='%233b2108' stroke-width='1.1'%3E%3Cuse href='%23h0' x='150' y='140'/%3E%3Cuse href='%23h0' x='150' y='640'/%3E%3Cuse href='%23h0' x='710' y='140'/%3E%3Cuse href='%23h0' x='710' y='640'/%3E%3Cuse href='%23h1' x='-90' y='-70'/%3E%3Cuse href='%23h1' x='-90' y='430'/%3E%3Cuse href='%23h1' x='470' y='-70'/%3E%3Cuse href='%23h1' x='470' y='430'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='430' height='610'%3E%3Cdefs%3E%3Cpath id='h0' d='M78 0C75 7 62 13 56 19C51 24 48 29 43 34C38 40 34 48 27 52C20 56 9 57 0 57C-9 58 -19 56 -28 54C-37 51 -47 47 -52 42C-58 36 -58 27 -60 20C-63 13 -65 7 -67 0C-69 -7 -75 -17 -73 -24C-70 -31 -61 -38 -53 -42C-44 -46 -33 -45 -24 -46C-15 -48 -8 -50 -0 -51C8 -52 17 -52 26 -50C34 -48 42 -44 50 -40C59 -36 71 -32 75 -25C80 -18 81 -7 78 0ZM62 -3C59 3 48 6 44 10C39 15 40 19 37 23C34 28 31 36 26 39C20 42 11 42 4 42C-3 42 -11 42 -18 39C-25 37 -32 34 -36 29C-40 24 -39 17 -41 12C-43 7 -47 3 -49 -3C-51 -9 -56 -17 -54 -22C-52 -28 -42 -32 -35 -34C-28 -37 -20 -35 -13 -36C-7 -38 -2 -41 4 -42C10 -43 18 -43 24 -42C31 -41 38 -39 45 -36C52 -32 62 -29 65 -23C68 -18 66 -9 62 -3ZM46 -6C43 -2 36 -1 33 2C31 6 34 9 32 13C30 17 28 23 24 25C20 27 13 26 8 26C3 26 -3 26 -8 24C-12 23 -17 20 -20 16C-22 13 -21 8 -23 4C-25 0 -29 -2 -31 -6C-33 -10 -36 -16 -34 -20C-32 -23 -23 -25 -18 -27C-13 -28 -8 -27 -4 -28C1 -30 4 -33 8 -34C12 -35 18 -35 23 -35C28 -34 33 -33 38 -30C43 -28 51 -25 52 -21C53 -17 49 -10 46 -6ZM32 -9C30 -7 26 -6 26 -5C25 -3 28 1 27 3C26 5 24 8 22 10C19 11 15 10 12 10C9 10 5 10 3 9C0 8 -2 6 -4 3C-5 1 -4 -1 -5 -3C-7 -5 -11 -7 -12 -9C-13 -11 -14 -15 -13 -17C-11 -19 -5 -19 -2 -20C1 -21 3 -21 5 -22C8 -23 9 -25 12 -26C15 -27 18 -27 21 -26C24 -26 28 -25 31 -24C33 -22 38 -20 38 -18C38 -15 34 -11 32 -9Z'/%3E%3Cpath id='h1' d='M91 0C94 9 102 20 99 29C97 38 87 47 78 54C68 62 56 69 43 73C30 77 13 80 0 78C-13 76 -25 67 -37 62C-48 57 -58 54 -69 49C-81 43 -100 39 -107 31C-114 23 -112 9 -109 0C-105 -9 -93 -17 -87 -25C-80 -33 -78 -42 -70 -49C-62 -56 -51 -63 -40 -67C-28 -72 -14 -74 -0 -76C14 -78 33 -82 47 -79C60 -76 74 -65 80 -56C86 -47 79 -33 81 -24C83 -14 88 -9 91 0ZM82 -3C86 4 93 15 91 22C90 30 79 38 71 44C63 50 52 57 41 60C30 63 15 64 4 62C-7 60 -16 51 -26 47C-35 43 -45 43 -56 39C-67 35 -84 31 -89 24C-94 17 -89 5 -85 -3C-81 -11 -71 -16 -66 -23C-62 -30 -62 -39 -56 -45C-50 -51 -40 -57 -30 -61C-20 -65 -8 -68 4 -70C16 -72 34 -76 45 -72C55 -68 64 -56 68 -48C72 -39 64 -28 66 -21C68 -14 77 -10 82 -3ZM74 -6C79 -0 84 9 83 16C81 22 71 28 64 33C56 38 48 44 39 46C29 48 17 47 8 45C-1 43 -6 35 -15 33C-23 30 -34 32 -43 30C-52 27 -67 22 -70 17C-73 11 -64 0 -61 -6C-57 -12 -51 -16 -48 -22C-45 -28 -47 -36 -42 -41C-38 -46 -29 -51 -21 -54C-12 -58 -2 -62 8 -63C18 -64 34 -67 42 -63C50 -59 54 -47 56 -39C58 -32 51 -25 54 -19C57 -14 69 -12 74 -6ZM67 -9C72 -4 74 3 72 8C70 14 62 18 55 21C49 25 43 30 36 31C28 32 19 30 12 28C5 26 2 21 -5 20C-12 19 -22 22 -30 20C-37 18 -47 13 -48 9C-50 4 -40 -4 -37 -9C-34 -14 -32 -17 -31 -21C-29 -26 -32 -33 -28 -37C-25 -42 -18 -45 -11 -48C-4 -51 4 -54 12 -55C20 -56 32 -56 38 -52C43 -48 43 -37 44 -32C46 -26 42 -23 46 -19C49 -15 63 -14 67 -9ZM59 -12C62 -9 62 -3 60 1C58 4 51 7 47 10C42 12 38 15 32 16C27 16 21 14 16 12C11 11 9 9 4 8C-1 8 -10 11 -15 10C-20 9 -26 4 -26 0C-26 -3 -18 -8 -16 -12C-14 -16 -15 -17 -15 -21C-14 -24 -16 -30 -14 -33C-11 -36 -6 -38 -1 -40C4 -42 10 -45 16 -45C22 -45 30 -44 33 -41C37 -38 34 -29 36 -26C37 -22 36 -21 40 -19C44 -17 55 -15 59 -12ZM48 -15C50 -13 48 -9 46 -7C45 -5 41 -4 38 -3C35 -1 32 1 29 1C26 1 23 -1 20 -2C17 -2 16 -3 13 -3C10 -3 3 -1 1 -1C-2 -2 -4 -6 -4 -8C-3 -10 2 -13 3 -15C4 -17 1 -18 1 -20C1 -23 0 -26 2 -28C3 -30 7 -31 10 -32C13 -33 17 -35 20 -35C23 -34 28 -33 29 -31C31 -29 29 -24 30 -22C30 -20 32 -20 35 -19C38 -18 46 -17 48 -15Z'/%3E%3C/defs%3E%3Cg fill='none' stroke='%233b2108' stroke-width='1.1'%3E%3Cuse href='%23h0' x='300' y='190'/%3E%3Cuse href='%23h1' x='90' y='-130'/%3E%3Cuse href='%23h1' x='90' y='480'/%3E%3Cuse href='%23h1' x='520' y='-130'/%3E%3Cuse href='%23h1' x='520' y='480'/%3E%3C/g%3E%3C/svg%3E"), repeating-linear-gradient(90deg, rgba(59, 33, 8, 0.55) 0 1px, transparent 1px 132px), repeating-linear-gradient(0deg, rgba(59, 33, 8, 0.55) 0 1px, transparent 1px 132px);
+  --texture-size: 560px 500px, 430px 610px, auto, auto;
+  --texture-position: 0 0, 170px 90px, 0 0, 0 0;
+  --texture-blend: multiply;
+  --texture-opacity: 0.12;
+}
+
+/* Cathodique (crt) : un moniteur monochrome ambre dans une pièce éteinte. Bandes presque noires, chaudes ; le texte
+   n'est pas blanc mais ambre, comme le phosphore P3. Projets dans les teintes sourdes d'un écran mal réglé, de l'ambre
+   au rouge, au violet, au bleu puis au cyan, quatre crans. Ce qui travaille est vert phosphore (le seul cri), ce qui
+   tourne tout seul cyan, le titre 24/7 ambre vif. Texture : les lignes de balayage, la grille de luminophores rouge,
+   vert, bleu et l'assombrissement des coins du tube. */
+:root[data-theme='crt'] {
+  color-scheme: dark;
+  --ink: #ffdca0;
+  --logo-filter: grayscale(1) brightness(.3) invert(1) sepia(.7) saturate(1.8);
+  --agent: oklch(0.19 0.03 65);
+  --devil: oklch(0.29 0.09 25);
+  --devil-reply: oklch(0.28 0.05 150);
+  --h24: oklch(0.29 0.06 60);
+  --calm: oklch(0.15 0.025 65);
+  --calm-soft: -0.03;
+  --fluo: oklch(0.87 0.2 145);
+  /* Les 16 emplacements : un écran mal réglé, ambre → rouge → violet → bleu → cyan, quatre crans. */
+  --p0: oklch(0.2 0.075 100.0);
+  --p1: oklch(0.25 0.075 81.3);
+  --p2: oklch(0.3 0.075 62.7);
+  --p3: oklch(0.35 0.075 44.0);
+  --p4: oklch(0.2 0.075 25.3);
+  --p5: oklch(0.25 0.075 6.7);
+  --p6: oklch(0.3 0.075 348.0);
+  --p7: oklch(0.35 0.075 329.3);
+  --p8: oklch(0.2 0.075 310.7);
+  --p9: oklch(0.25 0.075 292.0);
+  --p10: oklch(0.3 0.075 273.3);
+  --p11: oklch(0.35 0.075 254.7);
+  --p12: oklch(0.2 0.075 236.0);
+  --p13: oklch(0.25 0.075 217.3);
+  --p14: oklch(0.3 0.075 198.7);
+  --p15: oklch(0.35 0.075 180.0);
+  /* Logo vocal : vert phosphore, ambre, cyan. */
+  --anim-rec: oklch(0.7 0.2 25);
+  --anim-wait: oklch(0.87 0.2 145);
+  --anim-ready: oklch(0.87 0.2 145);
+  --anim-1: oklch(0.84 0.11 205);
+  --anim-2: oklch(0.8 0.15 70);
+  --anim-3: oklch(0.93 0.06 85);
+  --mix: 10%;
+  --dl: 0.05;
+  /* Texture : une ligne de balayage sur trois, la grille rouge-vert-bleu des luminophores, les coins sombres du tube. */
+  --texture: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.85) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(255, 60, 60, 0.35) 0 1px, rgba(60, 255, 90, 0.35) 1px 2px, rgba(70, 120, 255, 0.35) 2px 3px), radial-gradient(ellipse 75% 70% at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.9) 100%);
+  --texture-size: auto;
+  --texture-blend: normal;
+  --texture-opacity: 0.12;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1662,6 +1764,15 @@ button.copy.done {
   --auto-fluo: oklch(0.83 0.09 230);
 }
 
+/* Atlas : bleu de Prusse. Cathodique : cyan. */
+:root[data-theme='atlas'] {
+  --auto-fluo: oklch(0.38 0.12 255);
+}
+
+:root[data-theme='crt'] {
+  --auto-fluo: oklch(0.84 0.11 205);
+}
+
 .auto-mark {
   color: var(--auto-fluo);
 }
@@ -1898,6 +2009,7 @@ button.copy.done {
 [data-theme='vaporwave'] .msg.orch.ext,
 [data-theme='deco'] .msg.orch.ext,
 [data-theme='chalkboard'] .msg.orch.ext,
+[data-theme='crt'] .msg.orch.ext,
 [data-theme='synthwave'] .msg.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
   /* Keep the external bubble dark enough for its white text and living links. */
@@ -2704,6 +2816,7 @@ button.copy.done {
 [data-theme='vaporwave'] .peek-item.orch.ext,
 [data-theme='deco'] .peek-item.orch.ext,
 [data-theme='chalkboard'] .peek-item.orch.ext,
+[data-theme='crt'] .peek-item.orch.ext,
 [data-theme='synthwave'] .peek-item.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
 }
@@ -2866,6 +2979,14 @@ button.copy.done {
   --alert: #f5333f;
 }
 
+:root[data-theme='atlas'] {
+  --alert: oklch(0.5 0.19 25);
+}
+
+:root[data-theme='crt'] {
+  --alert: #f5333f;
+}
+
 .alert {
   color: inherit;
 }
@@ -2985,6 +3106,7 @@ button.copy.done {
 [data-theme='vaporwave'] .wv-flash,
 [data-theme='deco'] .wv-flash,
 [data-theme='chalkboard'] .wv-flash,
+[data-theme='crt'] .wv-flash,
 [data-theme='synthwave'] .wv-flash,
 [data-theme='graphite'] .wv-flash {
   animation-name: wv-flash-dark;

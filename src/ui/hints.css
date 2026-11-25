@@ -22,7 +22,8 @@
 [data-theme='synthwave'] .hint,
 [data-theme='vaporwave'] .hint,
 [data-theme='deco'] .hint,
-[data-theme='chalkboard'] .hint {
+[data-theme='chalkboard'] .hint,
+[data-theme='crt'] .hint {
   background: #fff;
   color: #000;
 }

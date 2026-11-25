@@ -146,6 +146,7 @@
 [data-theme='synthwave'] ::highlight(wv-ask),
 [data-theme='vaporwave'] ::highlight(wv-ask),
 [data-theme='deco'] ::highlight(wv-ask),
-[data-theme='chalkboard'] ::highlight(wv-ask) {
+[data-theme='chalkboard'] ::highlight(wv-ask),
+[data-theme='crt'] ::highlight(wv-ask) {
   background-color: rgb(255 255 255 / 0.24);
 }

@@ -19,6 +19,8 @@
 :root[data-theme='deco'] { --automated-ink: #f2d49b; }
 :root[data-theme='carbon'] { --automated-ink: #a20222; }
 :root[data-theme='chalkboard'] { --automated-ink: #f7b9d5; }
+:root[data-theme='atlas'] { --automated-ink: #7a3412; }
+:root[data-theme='crt'] { --automated-ink: #ffa63d; }
 :root[data-theme='zen'] { --automated-ink: #9223d8; }
 :root[data-theme='graphite'] { --automated-ink: #165cdb; }
 .h24.band { overflow: hidden; }

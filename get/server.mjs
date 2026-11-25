@@ -32,7 +32,7 @@ import { SIZES } from './hetzner.js'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** The npm package `weevils` is published: the page shows `npx weevils <setup id>` first (same switch as
  *  shared/paste-line.ts). Never before: an unpublished name could be taken by anyone. */
-export const NPX_PUBLISHED = false
+export const NPX_PUBLISHED = true
 
 export function config(env = process.env) {
   return {

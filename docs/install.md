@@ -4,17 +4,20 @@ One command on a Linux machine or VPS (Ubuntu/Debian tested; dnf, pacman, zypper
 (Apple Silicon or Intel: see [macOS](#macos) for what differs). On Windows, use WSL2 (see below).
 
 ```sh
-git clone https://github.com/Sc4rville/weevils ~/weevils && cd ~/weevils && ./install.sh
-# or, without cloning first (it clones into ~/weevils):
+npx weevils
+# no Node.js on the machine yet (a brand-new Mac or server): the same, without npx (it clones into ~/weevils)
 curl -fsSL https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh | bash
+# or from a clone
+git clone https://github.com/Sc4rville/weevils ~/weevils && cd ~/weevils && ./install.sh
 ```
 
-The `weevils` npm package ([npm/](../npm/)) is the same install as `npx weevils`: one file with no dependencies that
-downloads these scripts from the same addresses and runs them with `bash -s`. Until its owner publishes it on npm,
-nothing shows its line (`NPX_PUBLISHED` in `shared/paste-line.ts` and `get/server.mjs`, kept equal by the tests);
-once published, the site's computer step, weevboss's line for another computer and the bring line show
-`npx weevils …` first, with the curl line under it for a machine without Node.js. To publish: `cd npm && npm publish`
-(bump `version` only when `bin/weevils.js` changes: the scripts themselves are never in the package).
+`npx weevils` is the npm package in [npm/](../npm/): one file with no dependencies that downloads the same script from
+the same address, whole, and runs it with `bash -s` and your options (`npx weevils --lang fr` is `… | bash -s --
+--lang fr`). The setup site's line is `npx weevils <setup id>` (its `install.sh`), weevboss's line for another
+computer `npx weevils join <your weevils> <code>`; each one shows its curl line under it, for a machine without
+Node.js. A fresh server never has Node.js: the site's VPS step shows the curl line only. The npx lines are on because
+the package is published (`NPX_PUBLISHED` in `shared/paste-line.ts` and `get/server.mjs`, kept equal by the tests).
+A new version (`cd npm && npm publish`) is only needed when `bin/weevils.js` changes: the scripts are never in it.
 
 Run it again any time: it updates (git pull, npm ci and build only when something changed) and keeps your settings.
 
@@ -268,6 +271,8 @@ and its sshd answers too (SSH goes to that name, or to a VPS's public IP when th
 thread shows one line to paste in a terminal on the other computer:
 
 ```sh
+npx weevils join <your weevils> <code>
+# the same without Node.js on that computer (weevboss shows both):
 curl -fsSL https://<your weevils>/api/join.sh | bash -s <code>
 ```
 

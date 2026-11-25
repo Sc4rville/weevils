@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { BringItem, BringView } from '../../shared/bring.ts'
+import { curlLine, npxLine } from '../../shared/paste-line.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/setup'
@@ -29,7 +30,9 @@ export function Bring() {
       window.clearInterval(id)
     }
   }, [])
-  const line = code ? `curl -fsSL ${location.origin}/api/bring.sh | bash -s ${code}` : ''
+  // npx first (short, readable); the curl line for a computer without Node.js.
+  const line = code ? npxLine('bring', location.origin, code) : ''
+  const plain = code ? curlLine('bring', location.origin, code) : ''
   const sources = view?.sources ?? []
   const tap = (source: string, it: BringItem, live: boolean) => {
     if (it.state === 'here' && it.sessionId) return push({ kind: 'session', id: it.sessionId })
@@ -48,6 +51,8 @@ export function Bring() {
             <Icon name={copied ? 'check' : 'copy'} /> {copied ? t.bringCopied : t.bringCopy}
           </button>
           {!sources.some((s) => s.id.startsWith('pc:')) && copied && <span className="meta">{t.bringWaiting}</span>}
+          <span className="meta">{t.bringNoNode}</span>
+          <code>{plain}</code>
         </div>
       )}
       {sources.map((s) => (

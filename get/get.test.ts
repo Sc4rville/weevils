@@ -236,6 +236,8 @@ describe('an install, end to end through the API', () => {
   it('reports a failure without anything that looks like a login link', async () => {
     const job = (await post('/api/job', { kind: 'pc', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
     expect(job.command).toBe(`curl -fsSL https://get.example/install.sh | bash -s ${job.sid}`)
+    // npx first on the page (npm/: the same script, run by bash); a test service names itself.
+    expect(job.npx).toBe(`WEEVILS_SITE=https://get.example npx weevils ${job.sid}`)
     await fetch(`${base}/i/${job.sid}.env`)
     await report(job.sid, { event: 'failed', error: 'oops https://x/#k=abc' })
     const st = (await post('/api/status', { sid: job.sid, view: job.view })).data
@@ -785,7 +787,7 @@ describe('Windows', () => {
     expect((await post('/api/status', { sid: job.sid, view: job.view })).data).toMatchObject({ state: 'running', error: '' })
     // Git Bash: the bootstrap goes to WSL itself, or says what is missing.
     expect(bootstrap).toMatch(/MINGW\* \| MSYS\* \| CYGWIN\*\)/)
-    expect(page).toContain("os === 'windows' && job.win ? job.win : job.command")
+    expect(page).toContain("os === 'windows' && job.win ? job.win : job.npx || job.command")
   })
 })
 

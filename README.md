@@ -57,6 +57,14 @@ You need a Linux machine (a VPS, a home server, WSL2) or a Mac (Apple Silicon or
 installed and logged in as a regular user (not root). Codex is optional.
 
 ```sh
+npx weevils
+```
+
+That is the [`weevils` npm package](npm/), one short file that downloads `install.sh` and runs it with bash, nothing
+more. No Node.js yet (a brand-new Mac or server)? These do the same:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh | bash
 git clone https://github.com/Sc4rville/weevils ~/weevils && cd ~/weevils && ./install.sh
 ```
 

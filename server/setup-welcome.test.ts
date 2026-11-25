@@ -242,6 +242,9 @@ describe('another computer, by talking', () => {
     expect(await s.ask('machine')).toBe(false)
     const line = /`(curl -fsSL https:\/\/weevils\.example\.com\/api\/join\.sh \| bash -s ([A-Za-z0-9_-]+))`/.exec(texts().at(-1)!)
     expect(line).not.toBeNull()
+    // npx first, the same code; the curl line under it for a machine without Node.js.
+    expect(texts().at(-1)).toContain(`\`npx weevils join weevils.example.com ${line![2]}\``)
+    expect(texts().at(-1)!.indexOf('npx weevils')).toBeLessThan(texts().at(-1)!.indexOf('curl -fsSL'))
     expect(texts().at(-1)).toMatch(/^On your other computer, open a terminal and paste this line:/)
     expect(join.open(line![2])?.target).toBe('user@weevils.example.com')
     expect(s.contextFor()).not.toContain(line![2])
@@ -270,7 +273,10 @@ describe('another computer, by talking', () => {
     const { it: s, texts } = make({ join, sshd: async () => true })
     await s.ask('machine', undefined, false, { since: '2026-10-01' })
     expect(texts().at(-1)).toMatch(/`curl -fsSL https:\/\/weevils\.example\.com\/api\/join\.sh \| bash -s [A-Za-z0-9_-]+ --since 2026-10-01`/)
-    expect(s.contextFor()).toContain('bash -s •••• --since 2026-10-01')
+    expect(texts().at(-1)).toMatch(/`npx weevils join weevils\.example\.com [A-Za-z0-9_-]+ --since 2026-10-01`/)
+    const context = s.contextFor()
+    expect(context).toContain('bash -s •••• --since 2026-10-01')
+    expect(context).toContain('npx weevils join weevils.example.com •••• --since 2026-10-01')
   })
 
   it('only from a public https address; SSH to that name, or to a VPS’s public IP behind a tunnel', () => {

@@ -55,6 +55,7 @@ import { VAULT_REPO, withoutVault } from './weevbook/vault-github.ts'
 import { discoveryHint, isTry, mayOffer, nextStep, stepDone, STEPS, tryBrief, type JourneyFacts, type Step } from './journey.ts'
 import J from './i18n/journey.ts'
 import { openaiKey } from './transcribe.ts'
+import { curlLine, maskPasteCode, npxLine } from '../shared/paste-line.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
 const LAB_ON = !!process.env.WEEVILS_LAB_DIR?.trim()
@@ -894,16 +895,17 @@ export class Setup {
   /** The one line that plugs a computer in, with a new one-time code; null when other computers cannot reach this one
    *  over SSH. The same computer pasting it again keeps its name (server/join.ts): it is also how one that lost its
    *  link comes back (Your factory, a machine that does not answer: « Copy the line »). */
-  private async joinCommand(s: SetupState, extra = ''): Promise<string | null> {
+  private async joinCommand(s: SetupState, extra = ''): Promise<{ npx: string; curl: string } | null> {
     const host = this.deps.join ? joinHost(s) : null
     if (!host || !(await (this.deps.sshd ?? sshdUp)())) return null
     const code = this.deps.join!.create(`${s.machine.user}@${host}`)
-    return `curl -fsSL ${s.url.replace(/\/+$/, '')}/api/join.sh | bash -s ${code}${extra}`
+    return { npx: npxLine('join', s.url, code, extra), curl: curlLine('join', s.url, code, extra) }
   }
 
-  /** A fresh line for a machine of yours that does not answer any more (Your factory). */
+  /** A fresh line for a machine of yours that does not answer any more (Your factory). It ran weevils, so it has
+   *  Node.js (install.sh puts Node 22 there): the npx line. */
   async rejoinLine(): Promise<string | null> {
-    return this.joinCommand(await this.detect())
+    return (await this.joinCommand(await this.detect()))?.npx ?? null
   }
 
   /** Another computer's key came in through its line (server/join.ts): weevilsd says it, then says when it shows up. */
@@ -1461,7 +1463,7 @@ export class Setup {
         if (cmd) {
           this.p.joining = { at: Date.now() }
           this.save()
-          const line = t.joinLine(cmd)
+          const line = t.joinLine(cmd.npx, cmd.curl)
           // A line that says what to bring is always shown, even right after a plain one (the person just chose).
           if (joinChoice(bring)) this.lastAsk = { brick, id: this.say(line), text: line }
           else post(line)
@@ -2000,7 +2002,7 @@ export class Setup {
     const parts: string[] = []
     const hidden = new Set(this.p.hidden ?? [])
     // A join line's code works on its own: the model never needs it.
-    const said = (m: Message) => (hidden.has(m.id) ? '(a sign-in code, not shown)' : m.text.replace(/(\/api\/join\.sh \| bash -s )[A-Za-z0-9_-]+/g, '$1••••'))
+    const said = (m: Message) => (hidden.has(m.id) ? '(a sign-in code, not shown)' : maskPasteCode(m.text))
     if (fresh.length) {
       const lines = fresh.map((m) => `${m.role === 'user' ? 'user' : 'you'}: ${said(m).replace(/```[a-z]*\n?/g, '`').replace(/\s+/g, ' ').slice(0, 400)}`)
       parts.push(`shown in your thread since your last reply (written by weevils in your name, or the user's answers to a setup flow; secrets never shown): ${lines.join(' | ').slice(0, 2400)}`)

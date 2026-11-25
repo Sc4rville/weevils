@@ -1,0 +1,13 @@
+{
+  "name": "weevils",
+  "version": "1.0.0",
+  "description": "Install weevils (watch and drive your Claude Code and Codex sessions from your phone): npx weevils",
+  "bin": { "weevils": "bin/weevils.js" },
+  "files": ["bin/weevils.js", "README.md", "LICENSE"],
+  "engines": { "node": ">=12" },
+  "license": "MIT",
+  "homepage": "https://github.com/Sc4rville/weevils#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/Sc4rville/weevils.git", "directory": "npm" },
+  "bugs": "https://github.com/Sc4rville/weevils/issues",
+  "keywords": ["claude-code", "codex", "agents", "phone", "installer"]
+}

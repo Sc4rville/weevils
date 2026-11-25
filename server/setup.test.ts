@@ -265,8 +265,9 @@ describe('never a command for the user to type', () => {
     // The only lines the person pastes: the one for another computer, and a sign-in that only works in a terminal.
     it(`${lang}: the deliberate exceptions, each one exact line in code`, () => {
       const t = M[lang]
-      const join = t.joinLine('curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE')
-      expect(join.match(/`[^`]+`/g)).toEqual(['`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
+      // npx first; the curl line under it for a machine without Node.js.
+      const join = t.joinLine('npx weevils join weevils.example.com CODE', 'curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE')
+      expect(join.match(/`[^`]+`/g)).toEqual(['`npx weevils join weevils.example.com CODE`', '`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
       expect(t.claudeTerminal('no answer', 'claude').match(/`[^`]+`/g)).toEqual(['`claude`'])
       expect(t.codexTerminal('no answer', 'codex login').match(/`[^`]+`/g)).toEqual(['`codex login`'])
       // Another computer that did not install, or that stopped answering: the one command to run on it.

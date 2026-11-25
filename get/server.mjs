@@ -732,7 +732,13 @@ export function createServer(cfg = config(), deps = {}) {
 
   // A computer's command: bash on Linux, a Mac or inside WSL; PowerShell on Windows (any of its terminals: cmd and Git
   // Bash run it too), which hands the same install to Ubuntu in WSL.
-  const commands = (j) => ({ command: `curl -fsSL ${cfg.base}/install.sh | bash -s ${j.sid}`, win: `powershell -c "irm ${cfg.base}/w/${j.sid} | iex"` })
+  // npx first where Node.js may be there (the npm package `weevils`, npm/: it downloads this same script and runs it
+  // with bash, nothing else); the curl line for a computer without it (a brand-new Mac). A test service names itself.
+  const commands = (j) => ({
+    command: `curl -fsSL ${cfg.base}/install.sh | bash -s ${j.sid}`,
+    npx: `${cfg.base === 'https://get.scarville.tech' ? '' : `WEEVILS_SITE=${cfg.base} `}npx weevils ${j.sid}`,
+    win: `powershell -c "irm ${cfg.base}/w/${j.sid} | iex"`,
+  })
   /** What the page needs to start a setup: a computer's commands; a VPS's command to paste on it; the cloud-init of a
    * Hetzner server (the page creates it from the browser, with the person's own token). */
   const forPage = (j) => (j.kind === 'pc' ? commands(j) : j.kind === 'ssh' ? { command: commands(j).command } : { command: commands(j).command, userData: cloudInit(cfg, j.sid) })

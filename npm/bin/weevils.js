@@ -16,7 +16,7 @@
 
 const http = require('http')
 const https = require('https')
-const { spawn } = require('child_process')
+const { spawn, spawnSync } = require('child_process')
 
 const INSTALL = process.env.WEEVILS_INSTALL_URL || 'https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh'
 const SITE = (process.env.WEEVILS_SITE || 'https://get.scarville.tech').replace(/\/+$/, '')
@@ -124,6 +124,12 @@ async function main() {
     process.exit(1)
   }
   if (process.platform === 'win32') return exit(windows(p))
+  // The site's, join and bring scripts talk to their service with curl (a machine with Node.js may lack it: Debian,
+  // a minimal Ubuntu); the installer from GitHub fetches it itself.
+  if (p.url !== INSTALL && spawnSync('sh', ['-c', 'command -v curl'], { stdio: 'ignore' }).status !== 0) {
+    say('curl is missing on this computer: install it (for example sudo apt install curl), then run the same line again.', 'curl manque sur cet ordinateur : installe-le (par exemple sudo apt install curl), puis relance la même ligne.')
+    process.exit(1)
+  }
   let script
   try {
     script = await download(p.url)

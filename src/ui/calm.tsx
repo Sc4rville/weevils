@@ -195,7 +195,7 @@ export function CalmConv({ id }: { id: string }) {
           <div ref={body} className="page-body" data-scroll>
             {err && (
               <Notice eventId={noticeKey('error:calm', location.pathname, location.hash, err)} className="in meta" role="alert">
-                ! {err}
+                {err}
               </Notice>
             )}
             <Messages plain={!main} messages={messages} author={author} working={!!working} />

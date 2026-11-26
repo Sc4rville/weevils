@@ -603,7 +603,7 @@ export function ProjectBand({ project }: { project: Project }) {
           <AnimatePresence initial={false}>
             {shown === 'mini' && (
               <motion.span key="s" className="meta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tx}>
-                {cut.length > 0 && <span className="alert-pill">× {t.cut(cut.length)}</span>}
+                {cut.length > 0 && <span className="alert-pill"><G c="||" /> {t.cut(cut.length)}</span>}
                 {cut.length > 0 && summary ? ' ' : ''}
                 {summary}
               </motion.span>
@@ -631,7 +631,7 @@ export function ProjectBand({ project }: { project: Project }) {
             {cut.length > 0 && (
             <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
               <span>
-                <G c="×" />
+                <G c="||" />
                 <sup>{cut.length}</sup>
               </span>
             </button>

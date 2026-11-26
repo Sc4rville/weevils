@@ -307,7 +307,7 @@ One single-flight loop spends the model budget; publication has its own persiste
 
 Every item is a full-width band with its own `--c`; inner zones use `.tone`; nothing has a border, a radius or a
 shadow. Colours: result → a green derived from `--fluo` readable in the four themes; question → `--h24` amber;
-alert → `.invert` / `--alert`, one line, no giant « ! »; boss → `--agent`; mail → the author's colour, thin;
+alert → calm, a question's look (never red, never inverted), one line, no « ! »; boss → `--agent`; mail → the author's colour, thin;
 proposals → the auto palette (`propColors`), **always recognisable by the same trait**: a `+` glyph leading the
 title and the ✓ × pair on the right, whatever the form (carousel of 2–3, one wide band, or a band with a reply
 line when the proposal is a question); media → edge to edge, capped at 62 dvh, caption on a tone strip of its

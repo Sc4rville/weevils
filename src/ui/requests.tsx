@@ -386,8 +386,8 @@ export function RequestsPage() {
   return (
     <Shell slot={colors.__foot ?? 'p3'} kicker="weevboss" title={t.title}>
       {err && (
-        <Notice eventId={noticeKey('error:requests', location.pathname, location.hash, err)} className="band invert" role="alert">
-          <div className="in meta" style={{ paddingBlock: 12 }}>! {err}</div>
+        <Notice eventId={noticeKey('error:requests', location.pathname, location.hash, err)} className="band tone calm-note" role="alert">
+          <div className="in meta" style={{ paddingBlock: 12 }}>{err}</div>
         </Notice>
       )}
       {v && (

@@ -75,9 +75,9 @@ export function FootError({ text }: { text: string | null }) {
   }, [text])
   return (
     <Collapse open={!!text}>
-      <Notice eventId={noticeKey("foot-error", location.pathname, location.hash, text)} ref={band} className="band invert" role="alert">
+      <Notice eventId={noticeKey("foot-error", location.pathname, location.hash, text)} ref={band} className="band tone calm-note" role="alert">
         <div className="in meta" style={{ paddingBlock: 12 }}>
-          ! {last.current}
+          {last.current}
         </div>
       </Notice>
     </Collapse>

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// A message that did not arrive: the person's own bubble turns red with its cause and « Notify weevboss » (outbox-status.tsx).
+// A message that did not arrive: the person's own bubble is marked calmly with its cause, in the theme's colours, and « Notify weevboss » (outbox-status.tsx).
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
@@ -17,12 +17,12 @@ const scope = '/api/sessions/tux/'
 const render = (seen: { text: string; at: number; role?: string }[] = []) => act(async () => root.render(<OutboxStatus scope={scope} seen={seen} />))
 const buttons = () => [...host.querySelectorAll('button')].map(b => b.textContent?.trim())
 
-it('failed → red bubble with its cause and « Notify weevboss » → weevboss is on it → delivered → back to normal', async () => {
+it('failed → a calm bubble with its cause and « Notify weevboss » → weevboss is on it → delivered → back to normal', async () => {
  state.rows = [{ messageId: 'm1', url: '/api/sessions/tux/send', status: 'failed', cause: 'unreachable', text: 'les 4 decisions quoi', acceptedAt: 1000, updatedAt: 1000 }]
  await render()
  const bubble = host.querySelector('.msg.delivery-failed')!
  expect(bubble.textContent).toContain('les 4 decisions quoi')
- expect(bubble.querySelector('.delivery-cause')?.textContent).toBe('Session unreachable')
+ expect(bubble.querySelector('.delivery-cause')?.textContent).toBe('the session isn’t answering right now')
  expect(buttons()).toEqual(['Notify weevboss'])
  await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
  expect(state.main).toHaveBeenCalledTimes(1)
@@ -34,7 +34,7 @@ it('failed → red bubble with its cause and « Notify weevboss » → weevboss 
  await render()
  expect(host.querySelector('.delivery-cause')?.textContent).toBe('weevboss is on it')
  expect(buttons()).toEqual([])
- // The text reaches the thread (weevboss got it there): the red bubble is gone.
+ // The text reaches the thread (weevboss got it there): the bubble is back to normal.
  await render([{ text: '[from:weevboss] They asked: les 4 decisions quoi', at: 2000 }])
  expect(host.textContent).toBe('')
 })
@@ -53,10 +53,10 @@ it('says nothing for a slow, unconfirmed or delivered message, nor for one sent 
  expect(host.textContent).not.toMatch(/not sure it arrived/)
 })
 
-it('a failure without a known cause reads « Delivery problem »; a later identical delivered send clears it', async () => {
+it('a failure without a known cause reads « Not there yet »; a later identical delivered send clears it', async () => {
  state.rows = [{ messageId: 'f', url: '/api/sessions/tux/send', fingerprint: 'same', status: 'failed', text: 'hello', updatedAt: 1 }]
  await render()
- expect(host.querySelector('.delivery-cause')?.textContent).toBe('Delivery problem')
+ expect(host.querySelector('.delivery-cause')?.textContent).toBe('Not there yet')
  state.rows.push({ messageId: 'g', url: '/api/sessions/tux/send', fingerprint: 'same', status: 'delivered', updatedAt: 2 })
  await render()
  expect(host.textContent).toBe('')
@@ -68,7 +68,7 @@ it('to weevboss itself, or never taken by the server, the way round is « try ag
  expect(buttons()).toEqual(['try again'])
  state.rows = [{ messageId: 'n', url: '/api/sessions/tux/send', status: 'sending', stuck: true, trackingLost: true, text: 'hey' }]
  await render()
- expect(host.querySelector('.delivery-cause')?.textContent).toBe('Not sent: connection lost')
+ expect(host.querySelector('.delivery-cause')?.textContent).toBe('it goes out as soon as the connection is back')
  await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
  expect(state.retry).toHaveBeenCalledWith('n')
 })

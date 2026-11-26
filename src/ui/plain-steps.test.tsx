@@ -105,5 +105,5 @@ it('header live note: plain words, 6 max, never a path or a command, calm when n
   expect(note({ status: 'done', now: 'running the full check' })).toEqual({ text: 'done', state: 'calm' })
   expect(note({ status: 'idle', now: 'x' }).text).toBe('idle')
   expect(note({ status: 'needs_user' })).toEqual({ text: 'waiting for you', state: 'waiting' })
-  expect(note({ status: 'interrupted' }).text).toBe('stopped')
+  expect(note({ status: 'interrupted' }).text).toBe('paused')
 })

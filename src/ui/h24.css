@@ -4,7 +4,7 @@
 
 .h24 {
   --st-paused: color-mix(in oklab, var(--ink) 55%, transparent);
-  --st-failed: var(--alert);
+  --st-failed: color-mix(in oklab, var(--ink) 70%, transparent);
 }
 
 /* ---------- A large word, a fine activity line, then the drawer ---------- */
@@ -180,7 +180,7 @@
 
 .auto-glyph .alert,
 .auto-band .st .alert {
-  color: var(--alert);
+  color: inherit;
 }
 
 /* ---------- The fill: a flat, darker (lighter in the dark) layer of the band's colour, from the left ---------- */
@@ -315,7 +315,7 @@
   z-index: 0;
 }
 
-/* The runs, oldest left: one tick each, its height its length; red when it failed; the next one faint. */
+/* The runs, oldest left: one tick each, its height its length; fainter when it failed; the next one faint. */
 .auto-ticks {
   position: absolute;
   left: 0;
@@ -343,7 +343,7 @@
 }
 
 .auto-ticks > .bad {
-  background: var(--alert);
+  background: color-mix(in oklab, currentColor 45%, transparent);
 }
 
 .auto-ticks > .next {
@@ -466,7 +466,7 @@
 
 .auto-delete { position: relative; z-index: 2; display: inline-flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .auto-delete button { flex: none; min-width: 44px; height: 44px; padding: 0; text-decoration: none; }
-.auto-delete [role="alert"] { color: var(--alert); font-size: .8rem; }
+.auto-delete [role="alert"] { font-size: .8rem; opacity: .8; }
 .auto-delete-row { text-align: end; }
 
 .auto-band .act.retry-time { max-width: 9em; white-space: normal; text-align: end; }
@@ -516,4 +516,4 @@
   padding-block: 8px;
 }
 
-.auto-band .act.alert { color: var(--alert); }
+.auto-band .act.alert { color: inherit; }

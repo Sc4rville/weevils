@@ -213,7 +213,7 @@ export function AskPanel({
               <Icon name="star" />
             </span>
           )}
-          {answer.err && <Notice eventId={noticeKey("error:answer", answer.err)} className="strong" role="alert">! {answer.err}</Notice>}
+          {answer.err && <Notice eventId={noticeKey("error:answer", answer.err)} className="strong" role="alert">{answer.err}</Notice>}
           {a.shown && <p className="qa-text">{a.shown}</p>}
           {answer.reply?.hits && (
             <div className="qa-hits">

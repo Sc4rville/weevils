@@ -2730,47 +2730,18 @@ button.copy.done {
   opacity: 0.85;
 }
 
-/* ---------- Session coupée en plein travail : couleur d'alerte, jamais confondue avec « terminée » ---------- */
+/* ---------- Ce qui s'est arrêté : jamais une alarme (2026-11-26) ----------
+   No red for a state: a paused session, a failed run, a limit near are said calmly in the theme's own colours. --alert
+   is kept as a name and points at the band's ink, softened; red is only for something truly destroyed (--destroy). */
 
 :root {
-  --alert: #e0201b;
-  --alert-ink: #fff;
-}
-
-[data-theme='dark'] {
-  --alert: #ff3b30;
-}
-
-:root[data-theme='zen'] {
-  --alert: oklch(0.55 0.17 27);
-}
-
-:root[data-theme='desert'] {
-  --alert: oklch(0.5 0.19 25);
-}
-
-:root[data-theme='synthwave'] {
-  --alert: #f5333f;
-}
-
-:root[data-theme='botanical'] {
-  --alert: oklch(0.5 0.19 25);
-}
-
-:root[data-theme='vaporwave'] {
-  --alert: #f5333f;
-}
-
-:root[data-theme='coastal'] {
-  --alert: oklch(0.5 0.19 25);
-}
-
-:root[data-theme='deco'] {
-  --alert: #f5333f;
+  --alert: color-mix(in oklab, currentColor 78%, transparent);
+  --alert-ink: currentColor;
+  --destroy: #d92d20;
 }
 
 .alert {
-  color: var(--alert);
+  color: inherit;
 }
 
 /* La ligne entière en rouge, la reprise à droite. */
@@ -2778,14 +2749,9 @@ button.copy.done {
   position: relative;
 }
 
-.row.cut {
-  background: var(--alert);
-  color: var(--alert-ink);
-}
-
 .row.cut .tool-svg,
 .row.cut .alert {
-  color: var(--alert-ink);
+  color: inherit;
 }
 
 .row.cut .title {
@@ -2804,9 +2770,9 @@ button.copy.done {
   min-height: 36px;
   padding: 6px 14px;
   border-radius: 999px;
-  background: var(--alert-ink);
-  color: var(--alert);
-  font-weight: 700;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+  color: inherit;
+  font-weight: 650;
   font-size: 0.9375rem;
   white-space: nowrap;
 }
@@ -2822,29 +2788,51 @@ button.copy.done {
   transform: translateY(-50%);
 }
 
-/* Fil de la session : la bande d'alerte, puis reprendre / laisser. */
-.msg.band.cut-band {
-  background: var(--alert);
-  color: var(--alert-ink);
+/* Fil de la session : une ligne tranquille dans les couleurs du thème (« En pause — on reprend ? »), « reprendre » en
+   mot doux et appuyé, « laisser » en simple texte pâle. Jamais une bande rouge. */
+.msg.cut-band .in {
+  padding-block: 14px 18px;
+}
+
+.cut-band .cut-line {
+  display: block;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.cut-band .cut-why {
+  display: block;
+  margin-top: 2px;
 }
 
 .cut-band .cut-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 18px;
-  margin-top: 10px;
+  align-items: baseline;
+  gap: 6px 22px;
+  margin-top: 6px;
 }
 
-.cut-band .link {
-  color: var(--alert-ink);
+.cut-band .resume {
+  min-height: 32px;
+  padding: 4px 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-weight: 750;
 }
 
-/* Bande projet : le compteur des sessions coupées, en pastille rouge (visible même repliée). */
+.cut-band .cut-leave {
+  color: inherit;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+/* Bande projet : le compteur des sessions en pause, une pastille douce (visible même repliée). */
 .ch.alert-ch > span,
 .alert-pill {
-  background: var(--alert);
-  color: var(--alert-ink);
+  background: color-mix(in oklab, currentColor 12%, transparent);
+  color: inherit;
   border-radius: 999px;
 }
 
@@ -2974,8 +2962,8 @@ button.copy.done {
 
 /* Dans le flux : une bande d'alerte, une ligne, qui ouvre la vue des plans. */
 .band.relay-band {
-  background: var(--alert);
-  color: var(--alert-ink);
+  background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h);
+  color: var(--ink);
 }
 
 .relay-band-row {
@@ -3376,11 +3364,9 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-page .session-heading .h2 { font-size: 1.25rem; }
 
 .outbox-status { flex: none; }
-/* A message that did not arrive: the person's own bubble, its band's lightness kept (so its ink reads as on every band
-   of this theme), its hue turned soft red. One short line under it, one text action: no box, no square button. */
-/* Solid, from the theme's ink: black ink → a light soft red, white ink → a deep soft red, so the ink reads on it in
-   every theme and the thread's gradient never shows through. */
-.outbox-status .msg.band.delivery-failed { background: oklch(from var(--ink) calc(0.84 - l * 0.48) 0.11 22); color: var(--ink); border-inline-start: 5px solid color-mix(in oklab, #e5484d 75%, var(--ink)); }
+/* A message that is not there yet: the person's own bubble, a step of the band's own tone with a thin ink edge (never
+   red). One short line under it, one text action: no box, no square button. */
+.outbox-status .msg.band.delivery-failed { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); color: var(--ink); border-inline-start: 3px solid color-mix(in oklab, var(--ink) 30%, transparent); }
 .msg.delivery-failed + .msg.delivery-failed { margin-top: 3px; }
 .delivery-failed .delivery-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .delivery-failed .delivery-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 8px 0 0; font-size: .8125rem; }
@@ -3691,8 +3677,8 @@ main.stack {
 @keyframes win-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .md strong.win.win-shine { animation: none; } }
 
-/* A page on its way (src/ui/loading.tsx): the weevil, big and centred, doing little jumps from the first frame. Its
-   faces are the logo's; its shadow a flat block (no rounded corner) that narrows while it is up. Never a spinner. */
+/* A page on its way (src/ui/loading.tsx): the weevil, big and centred, doing little jumps from the first frame, and a
+   small turning « syncing… » line under it. Its faces are the logo's; its shadow a flat block that narrows while it is up. */
 .weevil-loading {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
   min-height: min(60vh, 520px); padding: 32px 0; color: var(--ink); pointer-events: none;
@@ -3705,7 +3691,14 @@ main.stack {
   display: block; width: 72px; height: 8px; margin-top: 4px; border-radius: 0;
   background: color-mix(in oklab, #000 28%, transparent); animation: weevil-hop-shadow .9s cubic-bezier(.3, 0, .3, 1) infinite;
 }
-.weevil-loading-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* The small turning « syncing… » line (src/ui/loading.tsx Syncing): under the weevil, or alone where a list or a feed
+   is still empty. The theme's ink, softened; after a long wait its words change, never its colour. */
+.syncing { display: inline-flex; align-items: center; gap: 8px; font-size: .875rem; font-weight: 500; color: inherit; opacity: .7; }
+.syncing-turn { display: inline-flex; animation: syncing-turn 1.2s linear infinite; }
+.syncing-turn .ic { width: 1em; height: 1em; }
+.weevil-loading-sync { margin-top: 18px; }
+@keyframes syncing-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .syncing-turn { animation-duration: 3s; } }
 @keyframes weevil-loading-in { from { opacity: 0; } }
 @keyframes weevil-hop {
   0%, 100% { transform: translateY(0) scale(1.08, .9); }

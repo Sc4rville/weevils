@@ -14,7 +14,7 @@ import { seedPending } from './pending'
 import { FootError, Shell, swapPage } from './shell'
 import { Icon } from './icons'
 import { GoneBack, useGoneTitle } from './gone'
-import { WeevilLoading } from './loading'
+import { useLongWait, WeevilLoading } from './loading'
 
 const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
 /** The two agents, by their product names. */
@@ -69,7 +69,7 @@ export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => v
   }
   return (
     <div className="band tone">
-      {err && <Notice eventId={noticeKey("error:conversations", location.pathname, err)} className="in meta" role="alert">! {err}</Notice>}
+      {err && <Notice eventId={noticeKey("error:conversations", location.pathname, err)} className="in meta" role="alert">{err}</Notice>}
       {snap.projects
         .filter((p) => p.id !== c.projectId && p.id !== 'divers' && p.id !== 'general')
         .map((p) => (
@@ -139,6 +139,8 @@ export function ConversationPage({ id }: { id: string }) {
   const name = useProjectName()
   const [d, setD] = useState<ConversationDetail | null>(null)
   const [missing, setMissing] = useState(false)
+  // « Gone » only after a long wait: a network blip reads « syncing… », never a breakdown.
+  const goneForGood = useLongWait(missing)
   const [choosing, setChoosing] = useState(false)
   const [tool, setTool] = useState<Tool>(snap.setup?.provider ?? 'claude')
   const [err, setErr] = useState<string | null>(null)
@@ -154,7 +156,7 @@ export function ConversationPage({ id }: { id: string }) {
     }
   }, [id, snap.version])
 
-  if (!d) return <Shell slot="agent" kicker={t.conversations} title={missing ? gone : '…'}>{missing ? <GoneBack /> : <WeevilLoading />}</Shell>
+  if (!d) return <Shell slot="agent" kicker={t.conversations} title={goneForGood ? gone : '…'}>{goneForGood ? <GoneBack /> : <WeevilLoading />}</Shell>
   const c = d.conversation
 
   const accept = async () => {
@@ -267,7 +269,7 @@ export function ImportPage() {
       {result && <div className="in meta strong" style={{ paddingBlock: 12 }}>
           <Icon name="check" /> {t.imported(result.total, result.added, result.updated)}
         </div>}
-      {err && <Notice eventId={noticeKey("error:import", err)} className="in meta strong" style={{ paddingBlock: 12 }} role="alert">! {err}</Notice>}
+      {err && <Notice eventId={noticeKey("error:import", err)} className="in meta strong" style={{ paddingBlock: 12 }} role="alert">{err}</Notice>}
       <div className="in meta" style={{ paddingBlock: 10 }}>
         {cl.running ? t.filing(cl.queued) : cl.lastError ? t.filingFailed : snap.conversationCounts.pending ? t.toFileByYou(snap.conversationCounts.pending) : t.allFiled}
       </div>

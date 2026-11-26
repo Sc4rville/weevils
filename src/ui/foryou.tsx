@@ -403,7 +403,7 @@ function PostSheet({ item, onClose }: { item: ForYouItem; onClose: () => void })
                   <button type="button" className="link small" onClick={() => setFiles([])}>{t.sheetRemoveFiles}</button>
                 </>
               )}
-              {fileErr && <span>! {fileErr}</span>}
+              {fileErr && <span>{fileErr}</span>}
             </div>
           )}
           <form ref={box} className="fy-sheet-say" onSubmit={(e) => { e.preventDefault(); void send() }}>

@@ -47,7 +47,7 @@ import { ProjectPage } from './project-screen'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 import { WebPage } from './living-link'
-import { WeevilLoading } from './loading'
+import { useLongWait, WeevilLoading } from './loading'
 
 
 
@@ -147,9 +147,9 @@ function Missing() {
 
 function ErrorBand({ text }: { text: string }) {
   return (
-    <Notice eventId={noticeKey("page-error", location.pathname, text)} className="band invert" role="alert">
+    <Notice eventId={noticeKey("page-error", location.pathname, text)} className="band tone calm-note" role="alert">
       <div className="in meta" style={{ paddingBlock: 12 }}>
-        ! {text}
+        {text}
       </div>
     </Notice>
   )
@@ -170,6 +170,7 @@ function SessionPage({ id }: { id: string }) {
   const gone = useGoneTitle()
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
+  const goneForGood = useLongWait(missing && !snap.sessions.some((x) => x.id === id))
   const [err, setErr] = useState<string | null>(null)
   // Le premier message d'une session qu'on vient de lancer est déjà là (pending.ts : seedPending).
   const [pending, setPending] = useState<Pending[]>(() => peekSeed(id))
@@ -216,12 +217,13 @@ function SessionPage({ id }: { id: string }) {
   const toEnd = follow.toEnd
 
 
-  // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
+  // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite). « Partie » seulement après une
+  // longue attente (gone) : un raté du réseau ou une session pas encore listée se lit « synchronisation… », jamais une panne.
   if (!s)
     return (
-      <Shell slot={held?.slot ?? 'agent'} kicker={held?.kicker ?? 'weevils'} title={missing && !pending.length ? gone : '…'} bodyRef={body} side={held?.side}>
+      <Shell slot={held?.slot ?? 'agent'} kicker={held?.kicker ?? 'weevils'} title={goneForGood && !pending.length ? gone : '…'} bodyRef={body} side={held?.side}>
         {/* A session just launched (its first message is on its way) is not gone, only not listed yet. */}
-        {missing && !pending.length ? <GoneBack /> : !pending.length && <WeevilLoading />}
+        {goneForGood && !pending.length ? <GoneBack /> : !pending.length && <WeevilLoading />}
       </Shell>
     )
 

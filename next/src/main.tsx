@@ -117,7 +117,7 @@ const live = (s: Session) => s.status === 'working' || s.status === 'needs_user'
 function StatusMark({ s }: { s: Session }) {
   if (s.status === 'working') return <span className="spin fluo"><Icon name="star" /></span>
   if (s.status === 'needs_user') return <Icon name="waits" />
-  if (s.status === 'interrupted') return <span className="alert"><Icon name="bang" /></span>
+  if (s.status === 'interrupted') return <Icon name="pause" />
   if (s.status === 'done') return <Icon name="check" />
   return <Icon name="idle" />
 }

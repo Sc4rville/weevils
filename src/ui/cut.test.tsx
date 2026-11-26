@@ -122,9 +122,9 @@ afterEach(() => {
 })
 
 describe('session coupée en plein travail', () => {
-  it('état à part : « interrompue », caractère ×, jamais « terminée »', () => {
-    expect(status.interrupted.label).toBe('interrompue')
-    expect(status.interrupted.ch).toBe('×')
+  it('état à part, dit calmement : « en pause », le signe pause (jamais une croix rouge), jamais « terminée »', () => {
+    expect(status.interrupted.label).toBe('en pause')
+    expect(status.interrupted.ch).toBe('||')
     expect(status.interrupted.label).not.toBe(status.done.label)
   })
 
@@ -142,7 +142,7 @@ describe('session coupée en plein travail', () => {
     expect(calls.pushed).toEqual([{ kind: 'session', id: 's1' }])
   })
 
-  it('bande du projet : pastille rouge avec le compte, en tête et dans le résumé replié ; la session est dans les actives', () => {
+  it('bande du projet : pastille douce avec le compte, en tête et dans le résumé replié ; la session est dans les actives', () => {
     const done = session({ id: 's2', status: 'done', interrupted: undefined })
     render(<ProjectBand project={project} />, [session(), done])
     const band = host.querySelector('.band')!
@@ -151,21 +151,23 @@ describe('session coupée en plein travail', () => {
     const chip = host.querySelector('.ch.alert-ch')!
     expect(text(chip)).toBe('1')
     expect(chip.querySelector('svg')).not.toBeNull()
-    expect(chip.getAttribute('aria-label')).toBe('1 session coupée en plein travail')
+    expect(chip.getAttribute('aria-label')).toBe('1 session en pause, à reprendre quand tu veux')
     expect(host.querySelectorAll('.cut-wrap .row.cut')).toHaveLength(1)
     // Repliée : le résumé commence par la pastille.
     localStorage.setItem('weevils-collapsed', JSON.stringify({ p: true }))
     act(() => root.unmount())
     root = createRoot(host)
     render(<ProjectBand project={project} />, [session(), done])
-    expect(text(host.querySelector('.alert-pill'))).toBe('× 1 interrompue')
+    expect(text(host.querySelector('.alert-pill'))).toBe('1 en pause')
   })
 
-  it('fil de la session : bande d’alerte avec la raison, « reprendre » sur place et « laisser »', async () => {
+  it('fil de la session : une ligne calme « En pause — on reprend ? » avec la raison utile, « reprendre » sur place et « laisser »', async () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ interrupted: { at: NOW - MIN, reason: 'quota', detail: 'Claude usage limit reached' } })])
     await flush() // les bandes d'état arrivent avec le fil (ici : détail absent)
     const band = host.querySelector('.cut-band')!
-    expect(text(band.querySelector('.who'))).toBe('interrompue · limite d’usage atteinte')
+    expect(text(band.querySelector('.cut-line'))).toBe('En pause — on reprend ?')
+    expect(text(band.querySelector('.cut-why'))).toBe('la limite d’usage est atteinte pour l’instant')
+    expect(band.classList.contains('band')).toBe(false)
     // The tool's raw error stays one tap away, folded.
     expect(band.querySelector('details.cut-detail')?.hasAttribute('open')).toBe(false)
     expect(text(band.querySelector('.text'))).toBe('Claude usage limit reached')
@@ -190,7 +192,7 @@ describe('compte déconnecté', () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [out])
     await flush()
     const band = host.querySelector('.cut-band')!
-    expect(text(band.querySelector('.who'))).toBe('interrompue · compte déconnecté')
+    expect(text(band.querySelector('.cut-why'))).toBe('il faut se reconnecter')
     const sign = band.querySelector<HTMLButtonElement>('.sign-in')!
     expect(text(sign)).toBe('me reconnecter')
     expect(band.querySelector('.resume:not(.sign-in)')).not.toBeNull()

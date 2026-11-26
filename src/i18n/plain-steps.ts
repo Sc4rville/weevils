@@ -12,7 +12,7 @@ export default defineMessages({
     message: 'Coordination', other: 'Travail en cours',
     code: (n: string) => `le code « ${n} »`, doc: (n: string) => `la doc « ${n} »`, settings: (n: string) => `les réglages « ${n} »`,
     count: (n: number) => ` · ${n}`, more: ' …',
-    liveWaiting: 't’attend', liveStopped: 'interrompue', liveDone: 'terminée', liveIdle: 'au repos', liveLabel: (t: string) => `En ce moment : ${t}`,
+    liveWaiting: 't’attend', liveStopped: 'en pause', liveDone: 'terminée', liveIdle: 'au repos', liveLabel: (t: string) => `En ce moment : ${t}`,
     // An action's title in the list under a step (the literal command one tap further).
     aRead: (f: string, l?: string) => `Lire ${f}${l ? (l.endsWith('-') ? `, depuis la ligne ${l.slice(0, -1)}` : `, lignes ${l}`) : ''}`,
     aEdit: (f: string) => `Modifier ${f}`, aWrite: (f: string) => `Créer ${f}`,
@@ -34,7 +34,7 @@ export default defineMessages({
     message: 'Coordinating', other: 'Working',
     code: (n: string) => `the ${n} code`, doc: (n: string) => `the ${n} notes`, settings: (n: string) => `the ${n} settings`,
     count: (n: number) => ` · ${n}`, more: ' …',
-    liveWaiting: 'waiting for you', liveStopped: 'stopped', liveDone: 'done', liveIdle: 'idle', liveLabel: (t: string) => `Right now: ${t}`,
+    liveWaiting: 'waiting for you', liveStopped: 'paused', liveDone: 'done', liveIdle: 'idle', liveLabel: (t: string) => `Right now: ${t}`,
     aRead: (f: string, l?: string) => `Read ${f}${l ? (l.endsWith('-') ? ` from line ${l.slice(0, -1)}` : ` lines ${l}`) : ''}`,
     aEdit: (f: string) => `Edit ${f}`, aWrite: (f: string) => `Create ${f}`,
     aSearch: (p: string, w?: string) => `Search ${w ?? 'the code'} for "${p}"`, aFind: (p: string) => `Find files named "${p}"`,

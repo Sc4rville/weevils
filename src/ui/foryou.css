@@ -401,8 +401,8 @@
 }
 
 .fy-err {
-  background: var(--ink);
-  color: var(--c);
+  background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h);
+  color: var(--ink);
 }
 
 .fy-err .in {
@@ -639,7 +639,7 @@
 
 /* Close to a limit: the alert colour. */
 .fy-gauge.hot .fy-gauge-bar i {
-  background: var(--alert);
+  background: currentColor;
 }
 
 /* On a band that is already the alert colour, or inverted, the alert red would vanish: the ink of the band says it. */

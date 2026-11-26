@@ -10,7 +10,9 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
 
 - `src/ui/app-context.tsx`: `Theme`, `THEMES` (selector order), `THEME_COLOR` (hex of `--agent`, the iOS status bar);
 - `src/i18n/bands.ts`: the label in fr and en;
-- `src/styles.css`: `--auto-fluo` (AutoMark), `--alert`; `src/ui/h24.css`: `--automated-ink`; `src/ui/infra.css`:
+- `src/styles.css`: `--auto-fluo` (AutoMark); never a red `--alert` (2026-11-26: a state is never an alarm, a paused
+  session or a failure reads in the theme's own colours; red is only `--destroy`, for something truly destroyed);
+  `src/ui/h24.css`: `--automated-ink`; `src/ui/infra.css`:
   `--warn`/`--crit` when the defaults clash; `src/ui/foryou.css`: `--fy-ok`, `--fy-who-*`, `--fy-g1…4` when needed;
 - a **dark** theme also joins every `[data-theme='dark']` rule (`.msg.orch.ext`, `.peek-item.orch.ext`, `.wv-flash`,
   `.hint`, `::highlight(wv-ask)`, `.fy-sheet-back`, `--warn`/`--crit`; `grep -rn "data-theme='synthwave'" src` lists them):

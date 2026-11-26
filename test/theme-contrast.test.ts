@@ -42,7 +42,7 @@ it('lists every added theme in the selector', () => {
   for (const theme of ADDED) expect(THEMES).toContain(theme)
 })
 
-it.each(ADDED)('%s: text, working star, AutoMark, 24/7 title and alert read on every band and sub-band', (theme) => {
+it.each(ADDED)('%s: text, working star, AutoMark and 24/7 title read on every band and sub-band; no red alert of its own', (theme) => {
   const v = vars(theme)
   const dl = Number(v.dl)
   const bands = ['agent', 'h24', 'devil', 'devil-reply', 'calm', ...Array.from({ length: 16 }, (_, i) => `p${i}`)].flatMap((k) => {
@@ -54,10 +54,9 @@ it.each(ADDED)('%s: text, working star, AutoMark, 24/7 title and alert read on e
     expect(ratio(lab(v.fluo), bg), `${theme} working star`).toBeGreaterThanOrEqual(3)
     expect(ratio(lab(v['auto-fluo']), bg), `${theme} AutoMark`).toBeGreaterThanOrEqual(3)
     expect(ratio(lab(v['automated-ink']), bg), `${theme} 24/7 title`).toBeGreaterThanOrEqual(3)
-    // The alert is a filled line (white text on it), so it only has to stand out from the band as a fill.
-    expect(ratio(lab(v.alert), bg), `${theme} alert fill`).toBeGreaterThanOrEqual(1.5)
   }
-  expect(ratio(lab('#ffffff'), lab(v.alert)), `${theme} text on alert`).toBeGreaterThanOrEqual(3.5)
+  // A state is never an alarm (2026-11-26): a paused session or a failure reads in the theme's colours, no red fill.
+  expect(v.alert, `${theme} sets no alert colour`).toBeUndefined()
 })
 
 it.each(ADDED)('%s: two project slots at least 2 apart stay distinct (For you cards, feed bands)', (theme) => {

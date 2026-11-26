@@ -15,6 +15,7 @@ import { itemSlot, itemWho, useForYou } from './foryou-store'
 import { stopVoice, useVoiceId } from './foryou-voice'
 import { Icon } from './icons'
 import './foryou-top.css'
+import { Syncing } from './loading'
 
 export type Top = 'boss' | 'foryou'
 
@@ -190,7 +191,7 @@ export function ForYouPeek() {
             )
           })}
         </AnimatePresence>
-        {shown.length === 0 && <button type="button" className="in fyt-empty" onClick={open}>{emptyLine}</button>}
+        {shown.length === 0 && <button type="button" className="in fyt-empty" onClick={open}>{!feed && waiting === 0 ? <Syncing /> : emptyLine}</button>}
       </div>
     </motion.div>
   )

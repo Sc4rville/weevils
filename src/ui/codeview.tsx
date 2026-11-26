@@ -243,9 +243,9 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err, kick
       dock={file && !file.binary && !editing ? <AskVoice a={a} /> : undefined}
     >
       {err && (
-        <Notice eventId={noticeKey('error:codeview', location.pathname, location.hash, err)} className="band invert" role="alert">
+        <Notice eventId={noticeKey('error:codeview', location.pathname, location.hash, err)} className="band tone calm-note" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
-            ! {err}
+            {err}
           </div>
         </Notice>
       )}

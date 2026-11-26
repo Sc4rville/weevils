@@ -432,7 +432,7 @@ function AutoBand({ x, slot, proposal: o, nested }: { x: AutoItem; slot: string;
           </span>
           {k.notes.get(o.id) && (
             <span className="meta sub" role="status">
-              ! {k.notes.get(o.id)}
+              {k.notes.get(o.id)}
             </span>
           )}
         </div>

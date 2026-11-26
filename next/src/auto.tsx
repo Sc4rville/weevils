@@ -94,7 +94,7 @@ function Overview({ id }: { id: string }) {
   const facts: [string, ReactNode, (() => void)?][] = [
     ['Next run', next],
     ['Schedule', triggerText(x.trigger, now)],
-    ...(last ? [['Last run', <><span>{last.ok ? <Icon name="check" /> : <span className="alert"><Icon name="close" /></span>} {short(now - last.at, true)} ago{last.ok ? '' : ', failed'}</span>{outcome && <span className="nx-auto-note">{outcome}</span>}</>, () => push({ kind: 'autorun', id, at: last.at })] as [string, ReactNode, () => void]] : []),
+    ...(last ? [['Last run', <><span>{last.ok ? <Icon name="check" /> : <Icon name="pause" />} {short(now - last.at, true)} ago{last.ok ? '' : ', stopped early'}</span>{outcome && <span className="nx-auto-note">{outcome}</span>}</>, () => push({ kind: 'autorun', id, at: last.at })] as [string, ReactNode, () => void]] : []),
     ...(x.runCount ? [['So far', `${x.runCount} run${x.runCount > 1 ? 's' : ''}`] as [string, ReactNode]] : []),
     ...(where ? [['Works in', where] as [string, ReactNode]] : []),
   ]

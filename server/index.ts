@@ -48,6 +48,7 @@ import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, machineInput, readAny, startInfra } from './infra.ts'
 import { jailedAllowed, jailedPeer, ownPeer, sameUserPeer } from './jail-peer.ts'
+import { answer as machineClaude } from './machine-claude.ts'
 import { Hub, hubRoutes, Runner, runnerRoutes } from './heavy/jobs.ts'
 import { installShims } from './heavy/shims.ts'
 import { setSessionShims } from './mux.ts'
@@ -315,6 +316,12 @@ const setup = new Setup({
     return { machines: snap.machines, projects: mine.length, names: mine.map((p) => p.name) }
   },
   remoteFacts: async () => (await Promise.all(w.remotes.filter((r) => r.online).map((r) => r.call<MachineFacts>('GET', '/api/infra/facts').catch(() => null)))).filter((f): f is MachineFacts => !!f),
+  // Claude's sign-in on another machine (server/machine-claude.ts): through its tunnel, with its local token.
+  machineCall: <T,>(id: string, p: string, body: unknown, timeout: number) => {
+    const r = w.remotes.find((x) => x.machineId() === id) ?? w.remotes.find((x) => x.id === id)
+    if (!r) throw new Error(`no machine ${id}`) // i18n-ignore: internal, never shown as is
+    return r.call<T>('POST', p, body, timeout)
+  },
   devices: () => tokens.size,
   push: () => w.push.count,
   shortcut: () => !!shortcutToken(),
@@ -904,6 +911,14 @@ const routes: [string, RegExp, Handler][] = [
     }
     json(res, 200, r)
   }],
+  // Claude's sign-in on this secondary machine, driven from weevboss's thread on the main one (server/machine-claude.ts):
+  // only the main machine calls it, through the tunnel with this machine's local token; never a jailed process.
+  ['POST', /^\/api\/machine\/claude\/(login|code)$/, async (req, res, _url, m) => {
+    if (!isLocal(req) || jailedPeer(req.socket)) return json(res, 403, { error: tr(PM).localOnly })
+    if (ORCHESTRATOR) return json(res, 409, { error: 'main machine' }) // i18n-ignore: machine-to-machine answer
+    const r = await machineClaude(m[0] as 'login' | 'code', await readBody(req).catch(() => ({})), setup.claudeHereDriver())
+    json(res, r.status, r.body)
+  }],
   // Updates by itself (server/weevils-update, every 20 to 30 minutes when nothing is working): on unless turned off here.
   ['POST', /^\/api\/updates$/, async (req, res) => {
     const b = await readBody(req)
@@ -1000,6 +1015,11 @@ const routes: [string, RegExp, Handler][] = [
     const again = b.again === true && (b.brick === 'claude' || b.brick === 'codex')
     // Another computer's line, with what to bring of its history (weevils setup ask machine --since … | --match …).
     const bring = b.brick === 'machine' ? { since: typeof b.since === 'string' ? b.since : undefined, match: typeof b.match === 'string' ? b.match : undefined } : {}
+    // Claude's sign-in on another machine of yours (weevils setup ask claude <machine>): its link, its code pasted here.
+    if (b.brick === 'claude' && typeof b.machine === 'string' && b.machine && b.machine !== MACHINE.id) {
+      if (!(await setup.claudeOn(b.machine))) return json(res, 400, { error: tr(S).badBrick })
+      return json(res, 200, { ok: true, flow: false, said: setup.lastSaid ?? undefined, open: setup.takeOpen() })
+    }
     const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined, again, bring)
     json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined, open: setup.takeOpen() })
   }],

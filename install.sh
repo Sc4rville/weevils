@@ -170,6 +170,10 @@ EN_almost_login="almost ready: run claude once in a terminal to log in, then ope
 FR_almost_login="presque prêt : lance claude une fois dans un terminal pour te connecter, puis ouvre le lien"
 EN_almost_install="almost ready: install Claude Code and log in once, then open the link"
 FR_almost_install="presque prêt : installe Claude Code et connecte-toi une fois, puis ouvre le lien"
+EN_almost_login_secondary="almost ready: Claude Code is not signed in here yet. No terminal needed: weevboss offers it in the app"
+FR_almost_login_secondary="presque prêt : Claude Code n'est pas encore connecté ici. Pas besoin de terminal : weevboss te le propose dans l'app"
+EN_almost_install_secondary="almost ready: Claude Code is not on this machine yet. No terminal needed: weevboss installs it and signs it in from the app"
+FR_almost_install_secondary="presque prêt : Claude Code n'est pas encore sur cette machine. Pas besoin de terminal : weevboss l'installe et le connecte depuis l'app"
 EN_codex_login="Codex is not logged in: run codex once in a terminal (optional)"
 FR_codex_login="Codex n'est pas connecté : lance codex une fois dans un terminal (optionnel)"
 EN_safe_off="agents run WITHOUT permission prompts, as you chose (WEEVILS_SAFE=0): they can run any command as you. To bring the prompts back: install.sh --ask-permissions"
@@ -1115,7 +1119,7 @@ private_ip() {
 # What is left to do on the end screen: notes on agents, permissions, PATH.
 agent_notes() {
   local svc="$DIR/server/weevils-service"
-  if ! command -v claude >/dev/null; then info "$(t claude_later) $CLAUDE_INSTALLER"; fi
+  if ! command -v claude >/dev/null && [ -z "$SECONDARY" ]; then info "$(t claude_later) $CLAUDE_INSTALLER"; fi
   if command -v codex >/dev/null && [ ! -s "$HOME/.codex/auth.json" ]; then info "$(t codex_login)"; fi
   if [ "$("$svc" config get WEEVILS_SAFE)" = 0 ]; then warn "$(t safe_off)"
   elif [ "${SAFE_NEW:-0}" = 1 ]; then warn "$(t safe_new)"
@@ -1233,6 +1237,8 @@ finish() {
   elif ! claude_logged; then title=almost_login; fi
   detect
   if [ -n "$SECONDARY" ]; then
+    # Claude's sign-in here happens in the app, from weevboss's thread on the main machine (server/machine-claude.ts).
+    [ "$title" = ready ] || title=${title}_secondary
     step "$(t "$title")"
     ok "$(t secondary_ok) $SECONDARY"
     info "$(t secondary_next)"

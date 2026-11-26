@@ -79,7 +79,7 @@ if [ "$(wv_lang)" = fr ]; then
 weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
 weevils project new <nom>            weevils do "travail" [codex]
 weevils recall <id>                  weevils boss
-weevils setup [install | github | ask <brique> [--since <date> | --match <mots>] | mark <id>]   weevils config set <CLÉ> <valeur>
+weevils setup [install | github | ask <brique> [--since <date> | --match <mots>] | ask claude [<machine>] | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
 weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."] [--mockup phone|browser|tablet|print|cinema|board]' # i18n-ignore
@@ -128,7 +128,7 @@ else
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
 weevils project new <name>           weevils do "job" [codex]
 weevils recall <id>                  weevils boss
-weevils setup [install | github | ask <brick> [--since <date> | --match <words>] | mark <id>]   weevils config set <KEY> <value>
+weevils setup [install | github | ask <brick> [--since <date> | --match <words>] | ask claude [<machine>] | mark <id>]   weevils config set <KEY> <value>
 weevils memory [add "memory" | rm <id>]
 weevils post "text" [--title "title"] [--action "label::what to do"]…      weevils show <file> ["Title sentence. Why it matters."] [--mockup phone|browser|tablet|print|cinema|board]
   post and show: --link <https://…> [--link-label "label"] when the result lives at an address (a site, a preview, a page), never localhost   weevils link <post id> <https://…>
@@ -527,14 +527,17 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
         curl -sf -m 240 -X POST "$base/api/setup/github" | json "print(d.get('state') or 'failed')" ;;
       ask|mark)
         # « ask machine --since 2026-10-01 » / « --match "words" »: the line for another computer then says what to
-        # bring of its history (server/join.sh).
+        # bring of its history (server/join.sh). « ask claude <machine> »: Claude's sign-in on that machine of yours.
         key=brick; [ "$2" = mark ] && key=id
+        # Claude's sign-in may install Claude Code first (here or on that machine): minutes, not seconds.
+        secs=30; [ "$2" = ask ] && [ "${3:-}" = claude ] && secs=420
         "$py" -c 'import json,sys
 a=sys.argv[3:]; o={sys.argv[1]:sys.argv[2]}
 for k in ("since","match"):
     if "--"+k in a and a.index("--"+k)+1 < len(a): o[k]=a[a.index("--"+k)+1]
+if o.get("brick") == "claude" and a and not a[0].startswith("--"): o["machine"]=a[0]
 print(json.dumps(o))' "$key" "${3:?}" "${@:4}" \
-          | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/setup/$2" >/dev/null && echo ok ;;
+          | curl -sf -m "$secs" -H 'content-type: application/json' --data-binary @- "$base/api/setup/$2" >/dev/null && echo ok ;;
       *) echo "$usage"; exit 1 ;;
     esac ;;
   config)

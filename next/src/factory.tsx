@@ -22,6 +22,7 @@ import { seedPending } from '../../src/ui/pending.ts'
 import { askSetup, openKey } from '../../src/ui/setup.tsx'
 import { Shell } from '../../src/ui/shell.tsx'
 import { AwayLine } from '../../src/ui/away.tsx'
+import { AppLink } from '../../src/ui/living-link.tsx'
 import { TempoBand, useTempo } from '../../src/ui/tempo.tsx'
 import { call } from './data.ts'
 import { foldPrefs, saveFold } from './fold.ts'
@@ -229,7 +230,7 @@ function liveMachine(m: FactoryMachine, live: Snapshot['machines']): FactoryMach
   const l = live.find((x) => x.id === m.id)
   if (!l) return m
   const { away: _gone, ...rest } = m
-  return { ...rest, online: l.online !== false, ...(l.online === false && l.away ? { away: l.away } : {}) }
+  return { ...rest, online: l.online !== false, ...(l.online === false && l.away ? { away: l.away } : {}), ...(l.claude ? { claude: l.claude } : {}) }
 }
 
 /** Just switched: « connecting… » until it is online (or « switching off… » until it is not), 30 s at most. */
@@ -715,6 +716,13 @@ function MachineStrip({ m }: { m: FactoryMachine | undefined }) {
     <div className="nx-mx-strip">
       {m.load != null && m.online ? <Bar pct={m.load} level={m.level} /> : null}
       <span className="nx-mx-figs">{!m.online ? 'Offline' : m.off ? `Off${figs ? ` · ${figs}` : ''}` : figs}</span>
+      {/* Claude not signed in there: a link in the sentence, the sign-in goes on in weevboss's thread (server/machine-claude.ts). */}
+      {m.online && !m.here && m.claude && !m.claude.logged && (
+        <span className="nx-mx-figs">
+          {m.claude.installed ? 'Claude isn’t signed in here: ' : 'Claude Code isn’t here yet: '}
+          <AppLink href={`/#do=claude.${m.id}`} label={m.claude.installed ? 'sign it in' : 'install and sign it in'} />
+        </span>
+      )}
       {m.panel && (
         <a className="living nx-mx-panel" href={m.panel} target="_blank" rel="noreferrer">
           {m.provider ?? 'Host'} <Icon name="external" />

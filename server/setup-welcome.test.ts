@@ -16,6 +16,7 @@ vi.mock('./provider.ts', () => ({
   codexLogged: () => false,
 }))
 vi.mock('./claude-login.ts', () => ({
+  LOGIN_TTL: 15 * 60_000,
   start: vi.fn(async () => 'https://claude.ai/oauth/authorize?code=abc'),
   output: () => '',
   cancel: vi.fn(),
@@ -36,7 +37,7 @@ vi.mock('./guest-brain.ts', async (orig) => ({
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-welcome-'))
 process.env.WEEVILS_CONFIG = path.join(dir, 'env')
 process.env.WEEVILS_LANG = 'en'
-const { Setup, greeting, firstRunBrief, joinHost, looksLikeLoginCode, joinChoice, vaultLine, githubBrief, offersServer } = await import('./setup.ts')
+const { Setup, greeting, firstRunBrief, joinHost, looksLikeLoginCode, joinChoice, vaultLine, githubBrief, offersServer, otherClaudes } = await import('./setup.ts')
 const { withLang, tr } = await import('./i18n.ts')
 const { default: M } = await import('./i18n/setup.ts')
 const { DATA_DIR } = await import('./config.ts')
@@ -260,6 +261,83 @@ describe('another computer, by talking', () => {
     const said = s.messages()
     expect(said.at(-1)?.win).toMatchObject({ kind: 'machine', id: expect.stringMatching(/^machine:laptop:/) })
     expect(said.at(-2)?.win).toBeUndefined()
+  })
+
+  // No terminal on the other computer: Claude's sign-in there happens here, in weevboss's thread (server/machine-claude.ts).
+  const watch = (s: unknown) => (s as { watch: () => Promise<void> }).watch()
+  type Box = { id: string; name: string; online?: boolean; claude?: { installed: boolean; logged: boolean } }
+
+  it('Claude not signed in on the new computer: one sentence with its link; its page here, the code pasted here goes there', async () => {
+    auth.ready = true
+    const machines: Box[] = []
+    const calls: unknown[][] = []
+    const answers: unknown[] = []
+    const machineCall = vi.fn(async (...a: unknown[]) => (calls.push(a.slice(0, 3)), answers.shift()))
+    const { it: s, texts } = make({ feed: () => ({ machines, projects: 0 }), machineCall: machineCall as SetupDeps['machineCall'] })
+    s.joined('desk')
+    machines.push({ id: 'desk', name: 'desk', online: true, claude: { installed: true, logged: false } })
+    await watch(s)
+    expect(texts().at(-1)).toBe('[[win]]**desk is plugged in**: I can run agents there now. One thing left, Claude isn’t signed in there yet: [sign it in from here](/#do=claude.desk), it takes a minute.')
+    expect(withLang('fr', () => tr(M).joinClaude('desk'))).toBe('Il reste à y connecter Claude : [connecte-le d’ici](/#do=claude.desk), ça prend une minute.')
+    // The link: desk starts its sign-in, its official page comes here.
+    answers.push({ installed: true, logged: false, url: 'https://claude.com/cai/oauth/authorize?code=desk' })
+    expect(await s.act('claude.desk')).toBe(true)
+    expect(calls.at(-1)).toEqual(['desk', '/api/machine/claude/login', { install: true }])
+    expect(texts().at(-1)).toBe('Open [Claude’s sign-in page](https://claude.com/cai/oauth/authorize?code=desk) for desk, accept, then paste the code it shows here: I’ll hand it to desk.')
+    // Not a code: the message goes on to weevboss as usual. A wrong code: said, and a new page at once.
+    expect(s.takeRemoteCode('what can you do on desk?')).toBe(false)
+    answers.push({ ok: false, why: "That code wasn't accepted." }, { installed: true, logged: false, url: 'https://claude.com/cai/oauth/authorize?code=desk2' })
+    expect(s.takeRemoteCode('abcDEF1234567890ghij#KLMN')).toBe(true)
+    await vi.waitFor(() => expect(texts().at(-1)).toContain('code=desk2'))
+    expect(calls[1]).toEqual(['desk', '/api/machine/claude/code', { code: 'abcDEF1234567890ghij#KLMN' }])
+    expect(texts().at(-2)).toBe('Claude doesn’t accept this code for desk (incomplete, expired or already used). Here’s a new link:')
+    expect(s.contextFor()).not.toContain('abcDEF1234567890ghij')
+    // The good code: desk says it is signed in, weevboss confirms.
+    answers.push({ ok: true })
+    expect(s.takeRemoteCode('xyzDEF1234567890ghij#KLMN')).toBe(true)
+    await vi.waitFor(() => expect(texts().at(-1)).toBe('Claude is signed in on desk ✓'))
+    expect(withLang('fr', () => tr(M).remoteClaudeOk('desk'))).toBe('Claude est connecté sur desk ✓')
+    // Nothing waits any more: the next such text is not taken.
+    expect(s.takeRemoteCode('qqqDEF1234567890ghij#KLMN')).toBe(false)
+  })
+
+  it('Claude Code not on that computer: installed there first; signed in there some other way, said once; away, said', async () => {
+    auth.ready = true
+    const machines: Box[] = [{ id: 'desk', name: 'desk', online: true, claude: { installed: false, logged: false } }]
+    const machineCall = vi.fn(async () => ({ installed: true, logged: false, url: 'https://claude.com/cai/oauth/authorize?code=d' }))
+    const { it: s, texts } = make({ feed: () => ({ machines, projects: 0 }), machineCall: machineCall as SetupDeps['machineCall'] })
+    s.joined('desk')
+    await watch(s)
+    expect(texts().at(-1)).toContain('Claude Code isn’t on it yet: [I’ll install it and sign it in](/#do=claude.desk), a few minutes.')
+    expect(await s.act('claude.desk')).toBe(true)
+    expect(texts().at(-2)).toBe('Installing Claude Code on desk (the official installer), one minute…')
+    expect(machineCall).toHaveBeenCalledWith('desk', '/api/machine/claude/login', { install: true }, 360_000)
+    // Signed in on desk without the code coming here (a terminal there, a lost answer): said once, from its snapshot.
+    machines[0].claude = { installed: true, logged: true }
+    await watch(s)
+    expect(texts().at(-1)).toBe('Claude is signed in on desk ✓')
+    await watch(s)
+    expect(texts().filter((t) => t === 'Claude is signed in on desk ✓')).toHaveLength(1)
+    // Away, or not a machine of yours.
+    machines[0].online = false
+    expect(await s.act('claude.desk')).toBe(true)
+    expect(texts().at(-1)).toBe('desk isn’t answering right now: once it’s back, ask me again and I’ll sign Claude in there.')
+    expect(await s.act('claude.nas')).toBe(false)
+    expect(machineCall).toHaveBeenCalledTimes(1)
+  })
+
+  it('signed in there already: the welcome says nothing more; weevboss is told which machines still need it', async () => {
+    auth.ready = true
+    const machines: Box[] = []
+    const { it: s, texts } = make({ feed: () => ({ machines, projects: 0 }) })
+    s.joined('desk')
+    machines.push({ id: 'desk', name: 'desk', online: true, claude: { installed: true, logged: true } })
+    await watch(s)
+    expect(texts().at(-1)).toBe('[[win]]**desk is plugged in**: I can run agents there now.')
+    expect(otherClaudes(machines)).toBe('')
+    expect(otherClaudes([{ id: 'nas', name: 'nas', online: true, claude: { installed: false, logged: false } }, { id: 'pi', name: 'pi', online: false, claude: { installed: true, logged: false } }])).toBe(
+      'Claude Code on other machines: nas not installed ([sign Claude in on nas](/#do=claude.nas) in your sentence, or `weevils setup ask claude nas` to post that link, installing it first)',
+    )
   })
 
   // docs/spec/07-vault.md, « The history »: a date or a few conversations for the other computer ride on its line.

@@ -16,6 +16,8 @@ export interface FactoryMachine {
   off: boolean
   /** weevboss runs on it. */
   here: boolean
+  /** Claude Code there, from the snapshot (absent: not known). */
+  claude?: { installed: boolean; logged: boolean }
   /** Its health in one figure: the fullest of processor, memory and disk (null: not measured). */
   load: number | null
   level: Level

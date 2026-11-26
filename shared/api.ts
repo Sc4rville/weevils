@@ -293,6 +293,8 @@ export interface Machine {
   off?: boolean
   /** A machine of yours that does not answer: why, as this one sees it, and since when. */
   away?: MachineAway
+  /** Claude Code on that machine, as its own weevilsd sees it (absent: not answering, or an older weevils there). */
+  claude?: { installed: boolean; logged: boolean }
 }
 
 /** Why another machine does not answer:

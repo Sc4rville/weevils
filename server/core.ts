@@ -45,7 +45,7 @@ import { setCartesiaVoice } from './fast.ts'
 import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
-import { claudeLogged, withoutContext, type Setup } from './setup.ts'
+import { claudeHere, claudeLogged, withoutContext, type Setup } from './setup.ts'
 import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir, type PreparedTurn } from './boss-turns.ts'
 import { liveDigest } from './boss-live.ts'
 import { aheadCommand, BOSS_WARM, SPARE_MAX_AGE_MS, spareWaiting, type Spare } from './boss-warm.ts'
@@ -595,6 +595,8 @@ export class Weevils {
   private listeners = new Set<() => void>()
   private bumpTimer: NodeJS.Timeout | null = null
   private snap: Snapshot | null = null
+  /** Claude Code here (installed, signed in): on this machine's line of the snapshot, so the main machine knows. */
+  private claude = claudeHere()
   private snapLang: Lang | null = null
   private persistTimer: NodeJS.Timeout | null = null
   private retitleSoon: NodeJS.Timeout | undefined
@@ -698,6 +700,13 @@ export class Weevils {
     setInterval(() => void this.retitle(), 45_000)
     setTimeout(() => void this.retitle(), 15_000)
     setInterval(() => this.refreshH24(), 10_000)
+    // Claude Code signed in (or installed) here meanwhile: the snapshot says it, the main machine hears it.
+    setInterval(() => {
+      const c = claudeHere()
+      if (c.installed === this.claude.installed && c.logged === this.claude.logged) return
+      this.claude = c
+      this.bump()
+    }, 5000)
     // Les durées et états « périmés » évoluent avec le temps.
     setInterval(() => this.bump(), 30_000)
   }
@@ -1471,9 +1480,9 @@ export class Weevils {
       version: this.version,
       now,
       machines: [...new Map([
-        { ...MACHINE, online: true },
-        // Une machine distante : seulement ce qui se calcule (nom, en ligne), jamais sa description.
-        ...this.remotes.filter((r) => r.snap?.machines[0]?.id !== MACHINE.id).map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online, ...(r.online || !r.away ? {} : { away: r.away() }) })),
+        { ...MACHINE, online: true, claude: this.claude },
+        // Une machine distante : seulement ce qui se calcule (nom, en ligne, son Claude Code), jamais sa description.
+        ...this.remotes.filter((r) => r.snap?.machines[0]?.id !== MACHINE.id).map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online, ...(r.online || !r.away ? {} : { away: r.away() }), ...(r.online && r.snap?.machines[0]?.claude ? { claude: r.snap.machines[0].claude } : {}) })),
       ].map((m) => [m.id, { ...m, name: this.factory.names[m.id] || m.name, ...(this.factory.machinesOff.includes(m.id) ? { off: true } : {}) }])).values()],
       projects: this.withConversationProjects(this.projects(sessions, remote.flatMap((r) => r.snap!.projects)), now),
       sessions,
@@ -2662,6 +2671,8 @@ export class Weevils {
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     // A test never writes into weevboss's thread (CONTRIBUTING.md: a test brief starts with [test]).
     if (isTestBrief(text)) throw new OutboxError(409, tr(M).testNotInBoss)
+    // The code of Claude's sign-in on another machine of yours: to that machine, never to the model (server/machine-claude.ts).
+    if (this.setup?.takeRemoteCode?.(text)) return { id: 'setup' }
     recordOrigin(BOSS_DIR, text, origin)
     // A new weevboss conversation gets it once; the ongoing one already has it.
     // Stateless turns never remember it: every turn gets it.
@@ -2859,7 +2870,7 @@ export class Weevils {
     this.spareStarting = true
     try {
       const id = crypto.randomUUID()
-      const { args, key } = await turns.ahead({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '' })
+      const { args, key } = await turns.ahead({ id, claude: bossClaude(), memory: this.memory?.digest() ?? '' })
       const name = await this.spawn('claude', ORCH_DIR, 'weevboss', aheadCommand(id, args), id)
       this.spare = { id, pane: name, key: key + this.spareAccount(), at: Date.now() }
       this.persist()

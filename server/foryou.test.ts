@@ -311,7 +311,7 @@ describe('session results', () => {
       session({ id: 'c1' }),
       session({ id: 'h2', origin: 'headless' }),
       session({ id: 'd1', cwd: '/home/u/.local/share/weevils/titles' }),
-      session({ id: 'w1', cwd: '/home/u/projects/.auto/.811c154e93' }),
+      session({ id: 'w1', cwd: '/home/u/projects/.auto/.f6e5d4c3b2' }),
       // An agent's probe in a temporary folder (a Codex run that answered « BANANA », 2026-11-17).
       session({ id: 'p1', cwd: '/tmp/sa-codex/work' }),
       session({ id: 'boss' }),
@@ -1892,5 +1892,62 @@ describe('older stored tiles', () => {
     old.post('Prices come from the sheet now.', undefined, undefined, undefined, 'The new menu is live')
     const fy2 = new ForYou(w, { file, shelf: null })
     expect(fy2.feed().items.map((i) => i.kind)).toEqual(['boss'])
+  })
+})
+
+// ---------------------------------------------------------------- automation runs that did nothing
+
+describe('an automation run that did nothing is never a card', () => {
+  const run = (over: Partial<Session> = {}) => session({ id: 'run-1', title: 'Building the ad factory', cwd: '/home/u/projects/.auto/myshop-ads/a1b2c3d4e5', ...over })
+
+  it('« weevils post » from a run that skipped is refused, whatever its words; the same words from a person’s session, or a run with news, are posted', () => {
+    const fy = make()
+    snap.sessions = [run(), run({ id: 'hunt-1', cwd: '/home/u/projects/.auto/.f6e5d4c3b2' }), session()]
+    expect(() => fy.post("UI ad factory: I didn't start a batch. The factory is still stopped for the v2 rewrite.", undefined, 'claude', undefined, undefined, 'run-1')).toThrow(M.en.quietRun)
+    expect(() => fy.post('The factory is still stopped for the v2 rewrite.', undefined, 'claude', undefined, "UI ad factory: I didn't start a batch", 'run-1')).toThrow(M.en.quietRun)
+    expect(() => fy.post('No new leads this run.', undefined, 'claude', undefined, undefined, 'hunt-1')).toThrow(M.en.quietRun)
+    expect(() => fy.post('Opportunity hunter: nothing new since yesterday.', undefined, 'claude', undefined, undefined, 'hunt-1')).toThrow(M.en.quietRun)
+    // No session named, but the caller is in an automation's jail.
+    expect(() => fy.post('Skipped: no batch this run.', undefined, 'claude', undefined, undefined, undefined, undefined, true)).toThrow(M.en.quietRun)
+    expect(fy.feed().items).toEqual([])
+    // A run with something to show, a run asking the person, a person's own session: posted.
+    fy.post('1 new lead worth a reply: https://example.com/p/leads', undefined, 'claude', undefined, undefined, 'hunt-1')
+    fy.post('The factory is stopped and its stop file is hidden from it.', [{ label: 'Keep it stopped', brief: 'pause it' }], 'claude', undefined, 'Resume the ad factory on the new cast?', 'run-1')
+    fy.post("I skipped this run's flaky test and fixed the rest.", undefined, 'claude', undefined, undefined, 's1')
+    expect(fy.feed().items).toHaveLength(3)
+  })
+
+  it('a run’s closing turn that only says it was skipped makes no session card; one with work does', async () => {
+    const fy = make()
+    const s = run()
+    snap.sessions = [s]
+    threads['run-1'] = [says('go', 'user'), says('**Skipped:** no ad batch was started this run.\n\nThe factory is still stopped.')]
+    fy.sessionTurn(s, 'result')
+    await flush()
+    later.splice(0).forEach((f) => f())
+    await flush()
+    expect(fy.feed().items).toEqual([])
+    now = T0 + 3 * HOUR
+    threads['run-1'].push(says('go', 'user'), says('Done: one ad batch started; it will make the next 4 ads.'))
+    fy.sessionTurn(s, 'result')
+    await flush()
+    expect(ids(fy)).toEqual(['s:run-1'])
+  })
+
+  it('one card per pending decision: the same card never stacks, and a newer run’s « Land it » replaces the older one', () => {
+    const fy = make()
+    const land = (run: number) => fy.add({ id: `auto-land:ad:${run}`, replaces: 'auto-land:ad:', kind: 'boss', who: 'weevils', title: '"Ad factory" is waiting for your OK', text: `Run ${run}: it is in another project.`, actions: [{ label: 'Land it', brief: 'Land this work.', op: `land:s${run}` }] })
+    for (let r = 1; r <= 6; r++) {
+      now = T0 + r * HOUR
+      land(r)
+    }
+    expect(ids(fy)).toEqual(['auto-land:ad:6'])
+    // Another automation's card is its own decision.
+    fy.add({ id: 'auto-land:other:1', replaces: 'auto-land:other:', kind: 'boss', who: 'weevils', title: '"Night lens" is waiting for your OK', text: 'main moved meanwhile.' })
+    expect(ids(fy).sort()).toEqual(['auto-land:ad:6', 'auto-land:other:1'])
+    // The very same words posted again: one card, the newest.
+    fy.post('The server is back.', undefined, 'weevils')
+    fy.post('The server is back.', undefined, 'weevils')
+    expect(fy.feed().items.filter((i) => i.text === 'The server is back.')).toHaveLength(1)
   })
 })

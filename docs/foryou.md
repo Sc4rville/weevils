@@ -63,6 +63,17 @@ actions?, reply?, open?, more?, seen?, live? }`. `who` is the speaker (weevboss,
 Sketch → kinds: 1 media · 2 boss · 3 mail · 4 proposals · 5 session · new idea: improve · 6 alert · 7 insight,
 milestone and stat.
 
+**Quiet runs and one card per decision** (enforced by the server where cards are made, never left to each
+automation: `server/quiet-run.ts`, `ForYou.post`, `ForYou.add`, `Optimizers.pushRun`):
+
+- An automation run that did nothing (skipped, stopped, no new lead, no change) makes no card. Its `weevils post` is
+  refused when it comes from a run (its session's folder under `<projects>/.auto/`, or a caller in an automation's
+  jail) and its headline only says nothing happened; its closing turn makes no `session` card either. Its run line
+  on the automation's page says it. A question to the person (a headline ending with « ? ») still goes out.
+- A run that left no work (no commit since it started, no tracked change) gets no « Land it » card.
+- One card per pending decision: a new card retires the cards still on screen that say exactly the same thing, and
+  an automation's newer « Land it » or question replaces its earlier one (`NewItem.replaces`).
+
 Added by the user while step 1 was being built:
 
 - **Voice messages.** A word from weevboss or from an outside actor can be listened to: the item carries a play

@@ -480,6 +480,8 @@ export interface Sys {
   refresh: (dir: string, base: string) => Promise<'ff' | 'merged' | 'kept'>
   /** Pushes the task's own branch to origin, never anything else (see pushBranch). */
   push: (dir: string, branch: string, base?: string) => Promise<boolean>
+  /** Did the run leave work in its worktree (commits since <base>, or tracked changes)? See leftWork. Absent: assumed. */
+  leftWork?: (dir: string, base?: string) => Promise<boolean>
   /** Lands a safe or in-scope change on main by itself (see autoMerge); absent in tests that do not use it. */
   merge?: (dir: string, box?: Sandbox, judge?: ScopeJudge) => Promise<MergeResult>
   /** Brings the running app up to a merged commit, restarting it when server code changed (see updateLive). */
@@ -530,6 +532,17 @@ export async function refreshWorktree(dir: string, base: string, git = gitOut): 
  * After a run, weevils (not the agent: it holds no push credential) pushes the task's own branch to origin when the run
  * committed something: only an auto/… branch, never main, never forced.
  */
+/**
+ * A run left something to land: commits since where it started, or tracked changes not committed. A run that changed
+ * nothing has nothing waiting for the person's OK (server/quiet-run.ts): no « Land it » card. Unknown (no base, git
+ * failing): assumed yes, the card is not lost.
+ */
+export async function leftWork(dir: string, base?: string, git = gitOut): Promise<boolean> {
+  if (!base) return true
+  const [ahead, dirty] = await Promise.all([git(dir, ['rev-list', '--count', `${base}..HEAD`]), git(dir, ['status', '--porcelain', '--untracked-files=no'])])
+  if (ahead === null || dirty === null) return true
+  return ahead !== '0' || dirty !== ''
+}
 export async function pushBranch(dir: string, branch: string, base?: string, git = gitOut): Promise<boolean> {
   if (!/^auto\/[\w.-]+$/.test(branch)) return false
   if ((await git(dir, ['remote', 'get-url', 'origin'])) === null) return false
@@ -572,7 +585,7 @@ export function memGauge(platform: Platform = process.platform, read: () => Prom
 }
 /** The note of a queued task that waits for Claude on a Mac, in every language (a task keeps the one it was given). */
 const MAC_NOTES: string[] = [O.fr.noJailMac, O.en.noJailMac]
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), merge: (dir, box, judge) => autoMerge(dir, APP_DIR, box, undefined, undefined, judge), live: (commit, restart) => updateLive(APP_DIR, commit, undefined, undefined, restart ? () => restartWeevils() : undefined), jail: tryJail, head: headOf }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), leftWork: (dir, base) => leftWork(dir, base), merge: (dir, box, judge) => autoMerge(dir, APP_DIR, box, undefined, undefined, judge), live: (commit, restart) => updateLive(APP_DIR, commit, undefined, undefined, restart ? () => restartWeevils() : undefined), jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -909,6 +922,7 @@ export class Optimizers {
       base: (repo) => (sys.base ?? realSys.base)(repo),
       refresh: (dir, base) => (sys.refresh ?? realSys.refresh)(dir, base),
       push: (dir, branch, base) => (sys.push ?? realSys.push)(dir, branch, base),
+      leftWork: (dir, base) => (sys.leftWork ?? leftWork)(dir, base),
       jail: (args) => (sys.jail ?? realSys.jail)(args),
       head: (repo, d) => (sys.head ?? realSys.head)(repo, d),
       // Landing on main and updating the running app: the real ones only for the real runner, never in a test that
@@ -1889,7 +1903,8 @@ export class Optimizers {
     const question = oneLine(s.attention || s.lastMessage || '', 600)
     o.supervision = [...(o.supervision ?? []), { at: now, action: 'asked' as const, why: oneLine(question, 160) }].slice(-20)
     try {
-      this.w.foryou?.add({ id: `auto-ask:${o.id}:${o.startedAt ?? now}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: t.askTitle(o.title), text: question || t.askTitle(o.title), open: { page: 'auto', id: o.id } })
+      // One card per pending decision: a later run's question replaces the earlier one still on screen.
+      this.w.foryou?.add({ id: `auto-ask:${o.id}:${o.startedAt ?? now}`, replaces: `auto-ask:${o.id}:`, kind: 'boss', tone: 'neutral', who: 'weevils', title: t.askTitle(o.title), text: question || t.askTitle(o.title), open: { page: 'auto', id: o.id } })
     } catch (e) {
       console.error(`[auto] question de « ${o.title} » : ${(e as Error).message}`)
     }
@@ -1941,7 +1956,7 @@ export class Optimizers {
         this.w.foryou?.add({ id: `auto-live:${id}:${m.commit.slice(0, 12)}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: text, text, open: { page: 'auto', id }, win: { id: `land:${m.commit.slice(0, 12)}`, kind: 'land' } })
       })
       .then(() => this.sys.push(cwd, branch, baseCommit))
-      .then((pushed) => {
+      .then(async (pushed) => {
         if (pushed) {
           const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)
           if (r) {
@@ -1953,7 +1968,8 @@ export class Optimizers {
         // Work that did not land by itself is never left on its branch in silence, pushed or not (a push refused as
         // non-fast-forward used to hide it): one plain line in For you, and a button that hands the run's own session
         // to the person to land it (core.ts sendOne, origin 'user'); the work is in the run's worktree either way.
-        if (left && left.why !== 'off' && left.why !== 'nothing to merge' && sessionId) this.offerLanding(id, startedAt ?? Date.now(), title, sessionId, left.why)
+        // A run that changed nothing (skipped, stopped, nothing new) leaves nothing to land: no card at all.
+        if (left && left.why !== 'off' && left.why !== 'nothing to merge' && sessionId && (await Promise.resolve(this.sys.leftWork?.(cwd, baseCommit) ?? true).catch(() => true))) this.offerLanding(id, startedAt ?? Date.now(), title, sessionId, left.why)
       })
       .catch((e) => console.error(`[auto] push de « ${title} » : ${(e as Error).message}`))
   }
@@ -1980,7 +1996,9 @@ export class Optimizers {
   private offerLanding(id: string, startedAt: number, title: string, sessionId: string, why: string) {
     const t = tr(O)
     const text = landingWhy(why)
-    this.w.foryou?.add({ id: `auto-land:${id}:${startedAt}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: t.landTitle(title), text, open: { page: 'session', id: sessionId }, actions: [{ label: t.landButton, brief: t.landBrief, op: `land:${sessionId}` }] })
+    // One card per pending decision: the newest run's work replaces an earlier « Land it » of the same automation
+    // (its worktree and branch carry the earlier work too).
+    this.w.foryou?.add({ id: `auto-land:${id}:${startedAt}`, replaces: `auto-land:${id}:`, kind: 'boss', tone: 'neutral', who: 'weevils', title: t.landTitle(title), text, open: { page: 'session', id: sessionId }, actions: [{ label: t.landButton, brief: t.landBrief, op: `land:${sessionId}` }] })
   }
 
   /** The agent's turn has not ended: its transcript waits for a tool's result and no Stop hook came since. */

@@ -12,7 +12,7 @@ import { execFile as execFileCb, execFileSync, spawnSync } from 'node:child_proc
 import { Writable } from 'node:stream'
 import { nightRecap } from './sleep.ts'
 import { PORT } from './config.ts'
-import { BACKOFF_MS, DENY, isBlocked, MAX_RELAUNCHES, STALL_MS, SUPERVISE_MS, mainRef, pushBranch, refreshWorktree, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, MAC_DENY, MEM_REFRESH_MS, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, denyList, freeReason, guardEnv, isRepeat, jailArgs, isStall, memGauge, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, tryJail, type Sys } from './optimizers.ts'
+import { BACKOFF_MS, DENY, isBlocked, MAX_RELAUNCHES, STALL_MS, SUPERVISE_MS, mainRef, pushBranch, leftWork, refreshWorktree, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, MAC_DENY, MEM_REFRESH_MS, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, denyList, freeReason, guardEnv, isRepeat, jailArgs, isStall, memGauge, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, tryJail, type Sys } from './optimizers.ts'
 import { availableMem } from './platform.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
@@ -414,6 +414,30 @@ describe('auto — the runner', () => {
     const card = add.mock.calls[0][0]
     expect(card).toMatchObject({ kind: 'boss', title: O.en.landTitle('Harden myshop tests'), text: 'It adds a new settings page, not a cleanup.', open: { page: 'session', id: 'sess-1' } })
     expect(card.actions).toEqual([{ label: O.en.landButton, brief: O.en.landBrief, op: 'land:sess-1' }])
+  })
+
+  it('a run that changed nothing (skipped, stopped) leaves no « Land it » card, whatever the merge said', async () => {
+    const add = vi.fn()
+    sys.merge = vi.fn(async () => ({ merged: false as const, why: 'not weevils' }))
+    sys.push = vi.fn(async () => false)
+    sys.leftWork = vi.fn(async () => false)
+    const o = await accepted(1, { foryou: { add } })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Skipped: no batch started this run.' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    for (let i = 0; i < 5; i++) await flush()
+    expect(sys.leftWork).toHaveBeenCalled()
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  it('leftWork: commits since the start or tracked changes are work; nothing, no work; unknown, assumed work', async () => {
+    const git = (ahead: string | null, dirty: string | null) => async (_d: string, args: string[]) => (args[0] === 'rev-list' ? ahead : dirty)
+    expect(await leftWork('/w', 'abc', git('0', ''))).toBe(false)
+    expect(await leftWork('/w', 'abc', git('2', ''))).toBe(true)
+    expect(await leftWork('/w', 'abc', git('0', ' M src/a.ts'))).toBe(true)
+    expect(await leftWork('/w', 'abc', git(null, ''))).toBe(true)
+    expect(await leftWork('/w', undefined, git('0', ''))).toBe(true)
   })
 
   it('a push refused (the branch moved on the remote) still hands the work over: « Land it » in For you', async () => {

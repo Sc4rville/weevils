@@ -61,6 +61,7 @@ export default defineMessages({
         : `- travaille dans ce dossier seulement ;\n`) +
       `- ne pousse jamais toi-même (weevils pousse ta branche à la fin du passage), n'ouvre aucune PR, ne publie et n'envoie rien hors de cette machine (ni e-mail, ni réseau social, ni déploiement) ;\n` +
       `- la commande weevils marche pour : sessions, read, asks, projects, new, send, post, show, page, pages (le reste est refusé) ; une question pour l'utilisateur part avec \`weevils post\`, puis continue sans attendre ;\n` +
+      `- un passage qui n'a rien fait (sauté, arrêté, rien de nouveau) ne publie rien : ta fin de passage le dit sur la page de l'automatisation ;\n` +
       `- un résultat à regarder ou sur lequel agir (des pistes, une liste, des médias, un rapport) devient une page : \`weevils page list <items.json> "titre"\` ou \`weevils page <dossier> "titre" --kind <type>\` (docs/LINKS.md) ; mets le lien qu'elle imprime dans ton \`weevils post\`, plutôt qu'un résumé en texte ;\n` +
       `- ne dépense rien, sauf RunPod pour un rendu ou un job de modèle IA (jamais un rendu sur le CPU de cette machine) : un pod éphémère, arrêté à la fin du job ; tout autre achat ou API payante attend la validation de l'utilisateur ;\n` +
       `- ne supprime rien en dehors de ta branche ou de ce dossier ; ne touche à aucun secret (clés, .env, identifiants) ;\n` +
@@ -222,6 +223,7 @@ export default defineMessages({
         : `- work in this folder only;\n`) +
       `- never push yourself (weevils pushes your branch at the end of the run), never open a PR, never publish or send anything off this machine (no e-mail, no social post, no deploy);\n` +
       `- the weevils command works for: sessions, read, asks, projects, new, send, post, show, page, pages (the rest is refused); a question for the user goes out with \`weevils post\`, then carry on without waiting;\n` +
+      `- a run that did nothing (skipped, stopped, nothing new) posts nothing: your closing words say it on the automation's page;\n` +
       `- a result to look at or act on (leads, a list, media, a report) becomes a page: \`weevils page list <items.json> "title"\` or \`weevils page <folder> "title" --kind <kind>\` (docs/LINKS.md); put the link it prints in your \`weevils post\` rather than a text summary;\n` +
       `- never spend money, except RunPod for a render or an AI model job (never a render on this machine's CPU): an ephemeral pod, stopped at the end of the job; any other purchase or paid API waits for the user's go;\n` +
       `- never delete anything outside your branch or this folder; never touch a secret (keys, .env, credentials);\n` +

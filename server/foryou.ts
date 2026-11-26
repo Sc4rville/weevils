@@ -37,6 +37,7 @@ import { DATA_DIR, MACHINE } from './config.ts'
 import type { MediaShelf } from './foryou-media.ts'
 import { isLocal, trustedFrom } from './http.ts'
 import { originOf } from './outbox-http.ts'
+import { jailedPeer } from './jail-peer.ts'
 import { installationLang, lang, tr, withLang, type Lang } from './i18n.ts'
 import CM from './i18n/core.ts'
 import M from './i18n/foryou.ts'
@@ -45,6 +46,7 @@ import { actOn, personalTips, type Found, type TipInput } from './tips.ts'
 import { nightRecap, recapWorth, type RecapAuto } from './sleep.ts'
 import SM from './i18n/sleep.ts'
 import { ForYouNumbers } from './foryou-numbers.ts'
+import { automationRunDir, saysNothingHappened } from './quiet-run.ts'
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 type Json = (res: http.ServerResponse, status: number, body: unknown) => void
@@ -532,6 +534,9 @@ export interface NewItem {
   at?: number
   /** Stable id to replace an earlier item of the same subject (else a new one). */
   id?: string
+  /** One card per pending decision: the cards still on screen whose id starts with this are retired by this one
+   *  (an automation's « Land it » or question from an earlier run). */
+  replaces?: string
   kind: 'boss' | 'improve' | 'insight' | 'milestone' | 'stat'
   tone?: ForYouTone
   who?: string
@@ -747,6 +752,16 @@ export class ForYou {
     const line = headline(whole)
     const text = line || clip(collapse(whole), HEADLINE_MAX)
     if (!text || internalFeedUpdate(whole)) return
+    // An automation's run that did nothing: its run line on the automation page is enough, no card (server/quiet-run.ts).
+    if (automationRunDir(s.cwd) && saysNothingHappened({ text: whole })) {
+      const was = this.get(`s:${s.id}`)
+      // Its first words said more: the better words of the same turn take the card back.
+      if (!first && was?.tone === 'result' && !was.gone) {
+        was.gone = true
+        this.changed()
+      }
+      return
+    }
     // Words with no whole sentence to show keep their body too: the card says it finished, they unfold under it.
     const body = collapse(whole) === text && (line || !untitledProse(whole)) ? undefined : clip(whole.replace(/\n{3,}/g, '\n\n'), BODY_MAX)
     const cur = this.get(`s:${s.id}`)
@@ -886,7 +901,15 @@ export class ForYou {
     return s
   }
 
-  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown, source?: unknown, link?: unknown): ForYouItem {
+  /** The session that ran « weevils post » is an automation's run (its folder under <projects>/.auto/). */
+  private automationRun(id: unknown): boolean {
+    if (typeof id !== 'string' || !id) return false
+    const s = this.w.snapshot().sessions.find((x) => x.id === id && x.machineId === this.machineId)
+    return !!s && automationRunDir(s.cwd)
+  }
+
+  /** jailed: the caller runs in an automation's jail (server/jail-peer.ts), whatever session it names. */
+  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown, source?: unknown, link?: unknown, jailed = false): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
     const where = this.linkOf(link)
     // The post's title, in bold on top (weevils post --title): one short line.
@@ -894,8 +917,13 @@ export class ForYou {
     if (!body) throw new Error(tr(M).emptyText)
     if (technicalEvent('', body) || internalFeedUpdate(body)) throw new Error(tr(M).technicalPost)
     const proof = evidenceInput(evidence)
+    const buttons = this.buttons(actions)
+    // An automation's run that did nothing (skipped, stopped, no new lead, no change) is not news: its run line on its
+    // automation page says it, never a card (server/quiet-run.ts). Refused here, whatever the run's agent was told.
+    if ((jailed || this.automationRun(source)) && saysNothingHappened({ title: head, text: body })) throw new Error(tr(M).quietRun)
     const s = this.sourceSession(source)
-    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: this.buttons(actions), ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : { reply: 'boss' as const, open: { page: 'boss' as const } }), ...(proof ? { evidence: proof } : {}), ...(where ? { link: where } : {}) }
+    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: buttons, ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : { reply: 'boss' as const, open: { page: 'boss' as const } }), ...(proof ? { evidence: proof } : {}), ...(where ? { link: where } : {}) }
+    this.retire(item)
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())!
@@ -1090,9 +1118,24 @@ export class ForYou {
       ...(gone ? { gone } : {}),
     }
     if (n.win) item.win = { ...n.win, at: item.at }
+    if (!item.gone) this.retire(item, n.replaces)
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())
+  }
+
+  /**
+   * One card per pending decision, never the same card stacked: a new card retires (gone, kept) the cards still on
+   * screen that say exactly the same thing (kind, author, title, text, buttons), and those whose id starts with
+   * <replaces>. Enforced here, where cards are made, whatever their producer.
+   */
+  private retire(item: Stored, replaces?: string) {
+    const sig = (i: Stored) => JSON.stringify([i.kind, i.who, collapse(i.title ?? ''), collapse(i.text), (i.actions ?? []).map((a) => a.label)])
+    const same = sig(item)
+    for (const i of this.s.items) {
+      if (i.gone || i.id === item.id || i.kind === 'session') continue
+      if ((replaces && i.id.startsWith(replaces)) || sig(i) === same) i.gone = true
+    }
   }
 
   /** Mails still raw (no « did this » line yet), never under the user's eyes, that say more than their first line: for the curator. */
@@ -1979,7 +2022,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/post$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, { from: b?.from }), b?.evidence, b?.title, b?.session, b?.link) }))
+      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, { from: b?.from }), b?.evidence, b?.title, b?.session, b?.link, jailedPeer(req.socket)) }))
     }],
     // weevils link <post> <url> [label]: this machine only, like post and show.
     ['POST', /^\/api\/foryou\/([^/]+)\/link$/, async (req, res, _u, [raw]) => {

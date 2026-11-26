@@ -195,13 +195,21 @@ function ProjectGroup({ snap, project, color, current, open, page, boss, pinned 
           </span>
         </button>
       ))}
-      {/* Finished sessions wait under their own line. */}
-      {done.length > 0 && (
-        <button className="nx-row nx-sub nx-more" onClick={() => setMore((v) => !v)} aria-expanded={more}>
-          <span className="nx-mark" />
-          <span className="nx-row-text"><span className="nx-row-sub">{more ? 'Hide done' : `${done.length} done`}</span></span>
-        </button>
-      )}
+      {/* Its last line: the finished sessions waiting under « N done », and a small « + » right under its « > »
+          that opens a new conversation in this repo, its box ready to write in (2026-11-26). */}
+      <div className="nx-project-line nx-project-foot">
+        {done.length > 0 ? (
+          <button className="nx-row nx-sub nx-more" onClick={() => setMore((v) => !v)} aria-expanded={more}>
+            <span className="nx-mark" />
+            <span className="nx-row-text"><span className="nx-row-sub">{more ? 'Hide done' : `${done.length} done`}</span></span>
+          </button>
+        ) : <span className="nx-row nx-sub nx-more" aria-hidden />}
+        <div className="chars">
+          <button className="ch" aria-label={`New conversation in ${boss ? 'weevils' : project.name}`} onClick={() => page({ kind: 'new', projectId: project.id })}>
+            <Icon name="plus" />
+          </button>
+        </div>
+      </div>
       </Collapse>
     </section>
   )

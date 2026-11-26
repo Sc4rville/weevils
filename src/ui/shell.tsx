@@ -186,7 +186,9 @@ export function Shell({
   const lateral = useLateral()
   const back = lateral ? lateral.close : app.back
   useEffect(() => {
-    if (!lateral) heading.current?.focus({ preventScroll: true })
+    // A box already ready to write in (a new conversation's) keeps the focus; else the heading takes it.
+    const writing = document.activeElement?.matches('textarea, input') && page.current?.contains(document.activeElement)
+    if (!lateral && !writing) heading.current?.focus({ preventScroll: true })
   }, [lateral])
   usePageChrome(slot, page, !lateral, identity ? (IDENTITY as Record<string, string>)['--c'] : undefined)
   const [split, unsplit] = useSplit(!!side)

@@ -507,7 +507,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       foot={
         <>
           <FootError text={err} />
-          <Composer placeholder={sourceIssue ?? t.firstMessage} label={t.firstMessageLabel} onSend={create} disabled={!!sourceIssue} />
+          <Composer placeholder={sourceIssue ?? t.firstMessage} label={t.firstMessageLabel} onSend={create} disabled={!!sourceIssue} autoFocus={!sourceIssue} />
         </>
       }
     >

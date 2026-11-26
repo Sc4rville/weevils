@@ -392,6 +392,7 @@ export function Composer({
   captureSuggestions = false,
   draftKey,
   captureTo,
+  autoFocus = false,
 }: {
   placeholder: string
   label: string
@@ -423,6 +424,8 @@ export function Composer({
   /** Where this box sends a capture from next's camera (held-capture.ts): with it, a held capture sits in the box as a
    *  small square and goes with the next message. */
   captureTo?: CaptureTo
+  /** Ready to write as soon as it shows (a new conversation opened by its « + »). */
+  autoFocus?: boolean
 }) {
   const t = useT(M)
   const tc = useT(CM)
@@ -466,6 +469,7 @@ export function Composer({
     field.current.focus()
     field.current.setSelectionRange(at, at)
   }, [roomy, text])
+  useEffect(() => { if (autoFocus) field.current?.focus({ preventScroll: true }) }, [autoFocus])
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<Attachment[]>([])
   const [rec, setRec] = useState<'off' | 'on' | 'wait'>('off')

@@ -203,6 +203,10 @@ body { overflow: hidden; }
 .nx-project-head.nx-boss-row { gap: var(--mark-gap); min-height: var(--band-h); }
 .nx-project-head.nx-boss-row .nx-project-name { font-weight: 800; }
 .nx-row.nx-more { min-height: 38px; }
+/* A repo's last line (main.tsx ProjectGroup): « N done », then its « + » in the column of the head's « > », on the
+   same line, the same thin size as autonomous's and pages's « + ». */
+.nx-project-foot .nx-more { flex: 1; min-width: 0; }
+.nx-project-foot .ch { min-height: 38px; height: 38px; }
 
 /* A session's thread: no lines between messages (2026-11-21: no thin light lines); the bands of who wrote what
    and the room between messages separate them. weevboss's briefs keep their own tint (styles.css .orch). */

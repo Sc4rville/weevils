@@ -81,6 +81,18 @@
   background: var(--ink);
 }
 
+/* Paused (nothing moved for a day, or its session is gone): words in the bar's place too, at rest. No block and a
+   lighter weight than « needs you », so the two never read alike; the ink at full strength, as on the titles: on
+   the deepest bands of a theme a dimmed ink no longer reads (under 3:1 in dark at 60 %). */
+.rc-rests {
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
 /* Finished or dropped: still there, quieter. */
 .rc-row.c-done .rc-title,
 .rc-row.c-dropped .rc-title,

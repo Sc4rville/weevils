@@ -46,7 +46,7 @@ export function useLedger(): { ledger: LedgerView | null; reload: () => void } {
     last.current = Date.now()
     api.ledger().then((x) => { lastLedger = x; setV(x) }).catch(() => undefined)
   }
-  useEffect(load, [snap.asksOpen])
+  useEffect(load, [snap.asksOpen, snap.asksWaiting])
   useEffect(() => {
     if (Date.now() - last.current > 30_000) load()
   }, [snap.version])

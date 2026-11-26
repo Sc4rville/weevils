@@ -1,7 +1,10 @@
 # Agents that write to weevboss
 
 Another agent (a bot, a web agent, a CI job, a colleague's assistant) can write to weevboss and read its replies.
-There are two ways in, depending on what the agent is.
+There are two ways in, depending on what the agent is. Both need your weevils at a public https address: your own
+domain, or, for a computer set up from the setup page, its stable address `https://<name>.tryweevils.scarville.tech`
+([stable-address.md](stable-address.md)), which stays the same across restarts, so a connector or a key given to an
+agent keeps working.
 
 ## ChatGPT, Claude.ai and other chat apps with MCP: the connector
 

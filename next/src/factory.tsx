@@ -114,6 +114,17 @@ export function flipProject(id: string, on: boolean | null) {
 export function shownNow(snap: Snapshot, p: Project): boolean {
   return flipped.get(p.id) ?? inSideBar(snap, p)
 }
+/** A repo pinned in the side bar or taken out of it, shown at once (the side bar's pin, Your factory's switch). */
+export function showProject(r: { id: string; repos: string[] }, on: boolean) {
+  flipProject(r.id, on)
+  void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))
+}
+/** A drawer (autonomous, pages, settings) pinned or taken out, shown at once. */
+export function showDrawer(id: Drawer, on: boolean) {
+  flipProject(`drawer:${id}`, on)
+  void call('POST', '/api/factory/drawer', { id, shown: on }).catch(() => flipProject(`drawer:${id}`, null))
+}
+
 /** A drawer's choice now: a switch just flipped, else the one kept (true pinned, false out, undefined its own rule). */
 export function drawerChoice(snap: Snapshot, id: Drawer): boolean | undefined {
   return flipped.get(`drawer:${id}`) ?? snap.sideDrawers?.[id]
@@ -594,16 +605,8 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
   const known = new Set([...rows, ...snap.projects].flatMap((r) => [r.id, ...r.repos]))
   // What can be added: one band per product (its mother repo, server/projects.ts motherRepos), never one per folder.
   const others: Row[] = (mothers ?? []).filter((m) => !known.has(m.id) && !m.repos.some((r) => known.has(r))).map((m) => ({ id: m.id, name: m.name, repos: m.repos, project: null }))
-  const showDrawer = (id: Drawer, on: boolean) => {
-    flipProject(`drawer:${id}`, on)
-    void call('POST', '/api/factory/drawer', { id, shown: on }).catch(() => flipProject(`drawer:${id}`, null))
-  }
   const sessions = sOpen ? sessionRuns(snap.sessions) : []
   const loose = new Set(sOpen ? looseSessions(snap).map((x) => x.id) : [])
-  const showProject = (r: Row, on: boolean) => {
-    flipProject(r.id, on)
-    void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))
-  }
 
   // The staircase: every band one small step from the one above it, counting only what is unfolded (as Autonomous).
   let s = 0
@@ -673,6 +676,10 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
             {others.map((r) => projectBand(r, step(pOpen && more), 3))}
           </Collapse>
           {/* The side bar's other drawers, each with the same switch: the person chooses all that is in it (2026-11-26). */}
+          {/* The conversations started with no repo, each its own band of the side bar: those pinned, still open, or of
+              the last week, whatever their place in Sessions below. */}
+          {looseSessions(snap).filter((x) => sessionPinned(snap, x) || x.status !== 'done' || snap.now - x.lastActivityAt < 7 * 86_400_000)
+            .sort((a, b) => b.lastActivityAt - a.lastActivityAt).slice(0, 12).map((x) => looseBand(x, step(pOpen)))}
           {DRAWERS.map((id) => drawerBand(id, step(pOpen)))}
         </Collapse>
         <LevelHead step={step()} name="Sessions" mark="chat" open={sOpen} onFold={sFold} />
@@ -687,7 +694,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
                 <span className="nx-fx-val">{STATE_WORD[x.status] ?? ''}</span>
               </button>
               {/* A conversation started with no repo is its own band in the side bar: pinned here, or out. */}
-              {loose.has(x.id) && <Switch small on={sessionPinned(snap, x)} label={`${x.title || 'Untitled'} in the side bar`} onChange={(v2) => pinSession(x.id, v2)} />}
+              {loose.has(x.id) && <Switch small on={sessionPinned(snap, x)} label={`Pin ${x.title || 'Untitled'}`} onChange={(v2) => pinSession(x.id, v2)} />}
             </Band>
           ))}
           {sessions.length > sessionsShown && (
@@ -716,6 +723,21 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
         </span>
         <Switch small on={on} label={`${id} in the side bar`} onChange={(v2) => showDrawer(id, v2)} />
         {/* The room of a project's « / » and « > », so every switch stands in one column. */}
+        <div className="chars nx-fx-room" aria-hidden><span className="ch"><Icon name="slash" /></span><span className="ch"><G c=">" /></span></div>
+      </Band>
+    )
+  }
+
+  /** A conversation started with no repo: its own colour, its title (a tap opens it), its switch for the side bar. */
+  function looseBand(x: Session, at: number) {
+    const on = sessionPinned(snap, x)
+    return (
+      <Band key={x.id} step={at} depth={2} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${slotOf(x.id)})` } as CSSProperties}>
+        <button className="nx-fx-main" onClick={() => openSession(x.id)}>
+          <span className="nx-mark"><Icon name="bubble" /></span>
+          <span className="nx-row-title">{x.title || 'Untitled'}</span>
+        </button>
+        <Switch small on={on} label={`${x.title || 'Untitled'} in the side bar`} onChange={(v2) => pinSession(x.id, v2)} />
         <div className="chars nx-fx-room" aria-hidden><span className="ch"><Icon name="slash" /></span><span className="ch"><G c=">" /></span></div>
       </Band>
     )

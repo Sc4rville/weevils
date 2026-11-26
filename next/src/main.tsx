@@ -39,7 +39,7 @@ import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
-import { drawerOn, drawerPinned, FactorySection, looseSessions, NextMachinePage, pinnedProject, sessionPinned, shownNow, slotOf, useFlips } from './factory.tsx'
+import { drawerOn, drawerPinned, FactorySection, looseSessions, NextMachinePage, pinnedProject, pinSession, sessionPinned, showDrawer, showProject, shownNow, slotOf, useFlips } from './factory.tsx'
 import { PinMark } from './pin.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
@@ -168,7 +168,7 @@ function ProjectGroup({ snap, project, color, current, open, page, boss, pinned 
         ) : (
         <button className={`nx-row nx-project-head nx-repo-row ${busy ? 'nx-active' : ''}`} onClick={fold} aria-expanded={!folded}>
           {/* In the weevils logo's column, its name under the « w » of weevils. */}
-          <span className="nx-repo-mark" aria-hidden><Icon name="repo" />{pinned && <PinMark />}</span>
+          <span className="nx-repo-mark"><Icon name="repo" />{pinned && <PinMark name={project.name} onUnpin={() => showProject(project, false)} />}</span>
           <span className="nx-row-title nx-project-name">{project.name}</span>
           {active.some((s) => working(s) && !alone(snap, s)) && <span className="spin fluo"><Icon name="star" /></span>}
         </button>
@@ -225,7 +225,7 @@ function LooseBand({ snap, s, current, open }: { snap: Snapshot; s: Session; cur
     <section className="nx-project nx-loose band" style={{ '--c': `var(--${slotOf(s.id)})` } as React.CSSProperties}>
       <div className="nx-project-line">
         <button className={`nx-row nx-project-head nx-repo-row ${live(s) ? 'nx-active' : ''} ${current === s.id ? 'nx-current' : ''}`} onClick={() => open(s.id)}>
-          <span className="nx-repo-mark" aria-hidden><Icon name="bubble" /><PinMark /></span>
+          <span className="nx-repo-mark"><Icon name="bubble" /><PinMark name={s.title || 'Untitled'} onUnpin={() => pinSession(s.id, false)} /></span>
           <span className="nx-row-text">
             <span className="nx-row-title nx-project-name">{s.title || 'Untitled'}</span>
             {sub && <span className="nx-row-sub">{sub}</span>}
@@ -298,14 +298,14 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
     addEventListener('keydown', esc)
     return () => removeEventListener('keydown', esc)
   }, [])
-  // A drag that ends over a row is not a tap on it.
+  // A drag that ends over a row is not a tap on it; a tap whose finger slid a few pixels (a small pin, a switch) still is.
   const dragged = useRef(false)
   const noTapAfterDrag = (e: React.MouseEvent) => { if (dragged.current) { e.preventDefault(); e.stopPropagation() } }
   return (
     <>
       <motion.div className="nx-scrim" initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={close} />
       <motion.nav className="nx-side" style={{ x }} initial={still ? false : { x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={PANEL}
-        ref={nav} onPointerDownCapture={() => { dragged.current = false }} onDragStart={() => { dragged.current = true }} onClickCapture={noTapAfterDrag} drag="x" dragDirectionLock dragConstraints={{ left: -400, right: 0 }} dragElastic={{ left: 0.2, right: 0 }} dragMomentum={false} onDragEnd={onEnd}>
+        ref={nav} onPointerDownCapture={() => { dragged.current = false }} onDrag={(_, i) => { if (Math.abs(i.offset.x) > 10) dragged.current = true }} onClickCapture={noTapAfterDrag} drag="x" dragDirectionLock dragConstraints={{ left: -400, right: 0 }} dragElastic={{ left: 0.2, right: 0 }} dragMomentum={false} onDragEnd={onEnd}>
         <div className="nx-side-scroll" onClick={(e) => { if (e.target === e.currentTarget) close() }}>
           {/* weevboss and weevils' own repo are one block at the top (weevils improving itself). Where weevboss has no
               repo of its own (anyone else's install), the block is its logo and « weevils » alone. */}
@@ -331,7 +331,7 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
                 {/* Laid out like weevils and the repos: its icon in the logo's column, its name under the « w ». No star:
                     while anything here runs, that icon itself lights up and turns (the app's AutoMark); else it rests. */}
                 <button className="nx-row nx-project-head nx-repo-row" onClick={foldAutos} aria-expanded={!autosFolded}>
-                  <span className="nx-repo-mark nx-autos-mark" aria-hidden>{autos.some((o) => o.state === 'running') ? <AutoMark /> : <Icon name="cycle" />}{drawerPinned(snap, 'autonomous') && <PinMark />}</span>
+                  <span className="nx-repo-mark nx-autos-mark">{autos.some((o) => o.state === 'running') ? <AutoMark /> : <Icon name="cycle" />}{drawerPinned(snap, 'autonomous') && <PinMark name="autonomous" onUnpin={() => showDrawer('autonomous', false)} />}</span>
                   <span className="nx-row-title nx-project-name">autonomous</span>
                 </button>
                 <div className="chars">
@@ -352,12 +352,12 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
             </section>
           )}
           {/* Pages: the person's own pages, each built in a conversation (pages.tsx). */}
-          {drawerOn(snap, 'pages') && <PagesSection snap={all} page={page} openSlugs={openPages} pinned={drawerPinned(snap, 'pages')} />}
+          {drawerOn(snap, 'pages') && <PagesSection snap={all} page={page} openSlugs={openPages} pinned={drawerPinned(snap, 'pages')} onUnpin={() => showDrawer('pages', false)} />}
           {/* Your factory: machines, intelligence, projects and the global Tempo (factory.tsx). */}
           <FactorySection snap={snap} colors={colors} page={page} toBoss={close} openSession={(id) => open(id)} />
           {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
               shows here too; machines, subscriptions and Tempo live in Your factory; no line to the classic app (an address away). */}
-          {drawerOn(snap, 'settings') && <div className="nx-settings"><FootBand toNext={false} factory mark={<span className="nx-repo-mark" aria-hidden><Icon name="settings" />{drawerPinned(snap, 'settings') && <PinMark />}</span>} /></div>}
+          {drawerOn(snap, 'settings') && <div className="nx-settings"><FootBand toNext={false} factory mark={<span className="nx-repo-mark"><Icon name="settings" />{drawerPinned(snap, 'settings') && <PinMark name="settings" onUnpin={() => showDrawer('settings', false)} />}</span>} /></div>}
         </div>
       </motion.nav>
     </>

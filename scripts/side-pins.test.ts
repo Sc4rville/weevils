@@ -24,8 +24,15 @@ describe('the pin', () => {
   it('sits in the icon of every drawer that can be pinned, never on weevils', () => {
     const main = fs.readFileSync(path.join(import.meta.dirname, '../next/src/main.tsx'), 'utf8')
     const pages = fs.readFileSync(path.join(import.meta.dirname, '../next/src/pages.tsx'), 'utf8')
-    expect(main.match(/<PinMark \/>/g)).toHaveLength(4) // a repo, a conversation with no repo, autonomous, settings
-    expect(pages).toMatch(/<Icon name="page" \/>\{pinned && <PinMark \/>\}/)
+    expect(main.match(/<PinMark /g)).toHaveLength(4) // a repo, a conversation with no repo, autonomous, settings
+    expect(pages).toMatch(/<Icon name="page" \/>\{pinned && <PinMark name="pages" onUnpin=\{onUnpin\} \/>\}/)
+    // A tap on the pin unpins: every pin of the side bar carries what takes its drawer out.
+    expect(main.match(/<PinMark [^\n>]*onUnpin=/g)).toHaveLength(4)
+    const pin = fs.readFileSync(path.join(import.meta.dirname, '../next/src/pin.tsx'), 'utf8')
+    expect(pin).toMatch(/e\.stopPropagation\(\)/)
+    const css = fs.readFileSync(path.join(import.meta.dirname, '../next/src/next.css'), 'utf8')
+    expect(css).toMatch(/\.nx-pin\.nx-pin-tap \{ pointer-events: auto/)
+    expect(css).toMatch(/\.nx-pin\.nx-pin-tap::before \{ content: ''; position: absolute; inset: -16px -9px; \}/)
     expect(main).not.toMatch(/WeevbossLogo[^\n]*PinMark/)
   })
 })

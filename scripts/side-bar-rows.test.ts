@@ -82,7 +82,7 @@ it('« autonomous » and « your factory » are lowercase wherever they are draw
 
 it('settings wears its own icon in the same column, through the app\'s own band', () => {
   const main = fs.readFileSync(path.join(root, 'next/src/main.tsx'), 'utf8')
-  expect(main).toMatch(/<FootBand[^>]*mark=\{<span className="nx-repo-mark" aria-hidden><Icon name="settings" \/>\{drawerPinned\(snap, 'settings'\) && <PinMark \/>\}<\/span>\}/)
+  expect(main).toMatch(/<FootBand[^>]*mark=\{<span className="nx-repo-mark"><Icon name="settings" \/>\{drawerPinned\(snap, 'settings'\) && <PinMark [^\n]*?\/>\}<\/span>\}/)
   const icons = fs.readFileSync(path.join(root, 'src/ui/icons.tsx'), 'utf8')
   expect(icons).toMatch(/\n  settings: '[^']+'/)
 })

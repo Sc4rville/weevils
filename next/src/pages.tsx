@@ -31,7 +31,7 @@ export function pageOf(p: BandPage): NxPage {
 
 // ---------------------------------------------------------------- the band
 
-export function PagesSection({ snap, page, openSlugs, pinned = false }: { snap: Snapshot; page: (p: NxPage) => void; openSlugs: Set<string>; pinned?: boolean }) {
+export function PagesSection({ snap, page, openSlugs, pinned = false, onUnpin }: { snap: Snapshot; page: (p: NxPage) => void; openSlugs: Set<string>; pinned?: boolean; onUnpin?: () => void }) {
   const list = snap.pageBand ?? []
   const [folded, setFolded] = useState(() => !!foldPrefs().__pages)
   // Its name folds its pages, like every band's; with no page yet there is nothing to fold: it starts the first one.
@@ -41,7 +41,7 @@ export function PagesSection({ snap, page, openSlugs, pinned = false }: { snap: 
     <section className="nx-project nx-autos nx-pages band" style={{ '--c': `var(--${PAGES_SLOT})` } as CSSProperties}>
       <div className="nx-project-line">
         <button className="nx-row nx-project-head nx-repo-row" onClick={head} aria-expanded={list.length ? !folded : undefined}>
-          <span className="nx-repo-mark" aria-hidden><Icon name="page" />{pinned && <PinMark />}</span>
+          <span className="nx-repo-mark"><Icon name="page" />{pinned && <PinMark name="pages" onUnpin={onUnpin} />}</span>
           <span className="nx-row-title nx-project-name">pages</span>
         </button>
         <div className="chars">

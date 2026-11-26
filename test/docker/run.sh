@@ -272,7 +272,9 @@ run_systemd() {
     say "systemd: the third machine's connection dies without a word (sleep, another network): it comes back by itself"
     # Its network goes, the tunnel's ssh is killed meanwhile: the main machine never hears of it and keeps the port.
     local tpid
-    tpid=$(docker exec "$c3" bash -c 'pgrep -u test -f "ssh -T .*-R 127.0.0.1:4193"' | head -1)
+    # (The tunnel was just restarted: it asks the main machine first, « hold », then opens. Wait for the tunnel itself.)
+    tpid=$(docker exec "$c3" bash -c 'for i in $(seq 30); do p=$(pgrep -u test -f "ssh -T .*-R 127.0.0.1:4193" | head -1); [ -n "$p" ] && { echo "$p"; exit 0; }; sleep 1; done')
+    sleep 2
     docker network disconnect "$net" "$c3"
     docker exec "$c3" kill -9 "$tpid"
     check "main: the dead connection still holds desk's port" as_test 'grep -q "0100007F:1061 00000000:0000 0A" /proc/net/tcp'

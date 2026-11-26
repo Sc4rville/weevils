@@ -9,7 +9,12 @@ const SAFE = /^[\w-]{1,80}$/
 
 export class SeenThreads {
   private mem = new Map<string, SessionDetail>()
-  constructor(private dir: string, private max = 300) {}
+  private dir: string
+  private max: number
+  constructor(dir: string, max = 300) {
+    this.dir = dir
+    this.max = max
+  }
 
   /** Keeps a thread that came back with something in it (an empty answer never erases what was seen). */
   remember(d: SessionDetail | undefined | null) {

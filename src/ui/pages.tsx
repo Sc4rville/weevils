@@ -1,3 +1,4 @@
+import { useFollowFetch } from './newest.ts'
 import { sourceAccessIssue, sourceForRepo, sourceForSession } from './source-access'
 import { ThinkGate, LostFeaturesPage } from './lost-features'
 import { ModelControlsPage } from './model-controls'
@@ -184,22 +185,13 @@ function SessionPage({ id }: { id: string }) {
   /** Whether the header pill shows its phrase whole (not cut with « … » on a narrow screen). */
 
 
-  // Le détail suit chaque nouvelle version annoncée par le serveur.
-  useEffect(() => {
-    let off = false
-    api
-      .session(id)
-      .then((d) => {
-        if (off) return
-        setDetail(d)
-        setMissing(false)
-        if (d.session.id !== id) replace({ kind: 'session', id: d.session.id })
-      })
-      .catch(() => !off && setMissing(true))
-    return () => {
-      off = true
-    }
-  }, [id, snap.version, replace, appLang])
+  // Le détail suit chaque nouvelle version annoncée par le serveur : une demande à la fois, puis une de plus si ça a
+  // bougé entre-temps, et chaque réponse s'affiche (newest.ts : sinon un weevils occupé ne montrait jamais le fil).
+  useFollowFetch(id, `${snap.version}:${appLang}`, () => api.session(id), (d) => {
+    setDetail(d)
+    setMissing(false)
+    if (d.session.id !== id) replace({ kind: 'session', id: d.session.id })
+  }, () => setMissing(true))
 
   const s = snap.sessions.find((x) => x.id === id) ?? detail?.session
   // Ouverte : tout ce qu'elle a dit jusqu'ici est lu.

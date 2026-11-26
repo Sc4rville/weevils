@@ -1,3 +1,4 @@
+import { useFollowFetch } from './newest.ts'
 import { sourceAccessIssue, sourceForSession } from './source-access'
 import { interceptModelControl } from '../model-controls'
 import { dismissNotice } from './notice-store'
@@ -79,21 +80,11 @@ export function CalmConv({ id }: { id: string }) {
   const [more, setMore] = useState(false)
   const [preview, setPreview] = usePreviewState(id)
 
-  useEffect(() => {
-    if (main) return
-    let off = false
-    api
-      .session(id)
-      .then((d) => {
-        if (off) return
-        setDetail(d)
-        if (d.session.id !== id) replace({ kind: 'calmconv', id: d.session.id })
-      })
-      .catch((e) => !off && setErr((e as Error).message))
-    return () => {
-      off = true
-    }
-  }, [id, main, snap.version, replace])
+  // One fetch at a time, once more if the snapshot moved meanwhile; every answer is shown (newest.ts).
+  useFollowFetch(id, snap.version, () => api.session(id), (d) => {
+    setDetail(d)
+    if (d.session.id !== id) replace({ kind: 'calmconv', id: d.session.id })
+  }, (e) => setErr(e.message), !main)
 
   const s = main ? undefined : (snap.sessions.find((x) => x.id === id) ?? detail?.session)
   useEffect(() => {

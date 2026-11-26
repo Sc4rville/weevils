@@ -31,6 +31,7 @@ import type { AutoDetail, AutoRun, AutoRunDetail, BandPage, ConversationDetail, 
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, internalCwd, madePageCwd, madePageTranscript, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS, WEEVBOOK_DIR } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { weevbookDetail } from './offline-machines.ts'
+import { SeenThreads } from './seen-threads.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
@@ -430,6 +431,8 @@ export class Weevils {
   convs = new ConversationStore(DATA_DIR)
   pinnedRepos: string[] = []
   factory: FactoryState = freshFactory()
+  /** The last thread read from each other machine's conversation (seen-threads.ts). */
+  seenThreads = new SeenThreads(path.join(DATA_DIR, 'seen-threads'))
   /** Accueil et branchements (server/setup.ts), posé par index.ts : ses messages se mêlent au fil de weevboss. */
   setup: Setup | null = null
   /** Clé des pages statiques des repos (index.ts, dérivée du code d'accès). */
@@ -693,6 +696,7 @@ export class Weevils {
       setInterval(() => void this.ledgerTick(), 30_000)
     }
     setInterval(() => void this.watchImports(), 30_000)
+    setInterval(() => void this.keepRemoteThreads(), 30_000)
     setInterval(() => void this.classify(), 60_000)
     setTimeout(() => void this.classify(), 5000)
     setInterval(() => void this.retitle(), 45_000)
@@ -1790,11 +1794,48 @@ export class Weevils {
     const local = this.detail(id)
     if (local) return local
     const r = this.remoteFor(id)
-    if (r) return r.call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(id)}`)
-    // Its machine does not answer: the history synced here (the weevbook), never a dead row.
-    const row = this.snapshot().sessions.find((s) => s.id === id && s.offline)
-    if (!row) return undefined
-    return (await weevbookDetail(path.join(WEEVBOOK_DIR, '.git'), row).catch(() => null)) ?? { session: row, messages: [] }
+    // Another machine's conversation: its thread is kept here as it is read (seen-threads.ts), so it still shows when
+    // that machine stops answering, or answers with nothing.
+    if (r) {
+      try {
+        const d = await r.call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(id)}`)
+        this.seenThreads.remember(d)
+        const kept = d && !d.messages?.length ? this.seenThreads.recall(id) : null
+        return kept ? { ...d, messages: kept.messages } : d
+      } catch (e) {
+        const kept = this.seenThreads.recall(id)
+        if (kept) return { ...kept, session: this.snapshot().sessions.find((s) => s.id === id) ?? kept.session }
+        throw e
+      }
+    }
+    // Its machine does not answer: the history synced here (the weevbook) or the one last read, the longer of the
+    // two; never a dead row.
+    const kept = this.seenThreads.recall(id)
+    const row = this.snapshot().sessions.find((s) => s.id === id && s.offline) ?? this.snapshot().sessions.find((s) => s.id === id)
+    if (!row) return kept ?? undefined
+    const book = row.offline ? await weevbookDetail(path.join(WEEVBOOK_DIR, '.git'), row).catch(() => null) : null
+    const best = (book?.messages.length ?? 0) >= (kept?.messages.length ?? 0) ? book : kept
+    return best ? { session: book && best === book ? book.session : row, messages: best.messages } : { session: row, messages: [] }
+  }
+
+  private keptAt = new Map<string, number>()
+  private keeping = false
+  /** While another machine answers, the threads that moved there are read and kept here (seen-threads.ts), a few at a
+   *  time: a conversation never opened still shows its history once that machine is offline. */
+  async keepRemoteThreads(perTick = 6) {
+    if (this.keeping) return
+    this.keeping = true
+    try {
+      const moved = this.remotes.filter((r) => r.online && r.snap).flatMap((r) => r.snap!.sessions.filter((x) => !x.archived && this.keptAt.get(x.id) !== x.lastActivityAt).map((x) => ({ r, x })))
+      for (const { r, x } of moved.sort((a, b) => b.x.lastActivityAt - a.x.lastActivityAt).slice(0, perTick)) {
+        const d = await r.call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(x.id)}`).catch(() => null)
+        if (!d) continue
+        this.seenThreads.remember(d)
+        this.keptAt.set(x.id, x.lastActivityAt)
+      }
+    } finally {
+      this.keeping = false
+    }
   }
 
   detail(id: string): SessionDetail | undefined {

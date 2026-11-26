@@ -1509,7 +1509,7 @@ export class Setup {
         return true
       case 'mail':
         if (s.mail.on) return post(`${t.mailOk(s.mail.address ?? '').replace(/:$/, '.')} [[setup:author]]`), false
-        // Agent keys first (settings → agent keys); the e-mail bridge only as the fallback the person turns on.
+        // Agent keys first (settings → ChatGPT and agents); the e-mail bridge only as the fallback the person turns on.
         post(`${t.agentKeysPitch}\n\n${t.mailPitch}\n\n${t.mailAsk}`)
         return true
       case 'author':
@@ -2102,7 +2102,7 @@ export class Setup {
       `github: gh installed ${yes(s.github.installed)} · signed in ${yes(s.github.logged)}${s.github.login ? ` (${s.github.login})` : ''}`,
       `voice: spoken ${s.voice.spoken ?? 'none'} · dictation (OpenAI key) ${yes(s.voice.openai)} · https for the mic ${yes(s.voice.https)}`,
       `devil: plugged ${yes(s.devil.plugged)}${s.devil.model ? ` (${s.devil.model})` : ''}`,
-      `agent keys: made in the app's settings (agent keys), the way for another agent to write to you (docs/agents.md) · e-mail bridge (deprecated, off by default): ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
+      `agent keys: made in the app's settings (ChatGPT and agents), the way for another agent to write to you (docs/agents.md) · e-mail bridge (deprecated, off by default): ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
       `quota: ${s.quota.join(' · ') || 'unknown'}`,
       `security: agents ask permission ${yes(s.security.safe)} · exposed over plain http ${yes(s.security.exposedHttp)}`,
       `tools: ${Object.entries(s.tools).map(([k, x]) => (k === 'node' ? `node ${x}` : `${k} ${yes(!!x)}`)).join(', ')} · package manager ${s.pkg ?? 'none'} · sudo ${s.sudo}`,

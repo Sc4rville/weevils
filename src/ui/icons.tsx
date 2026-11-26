@@ -183,7 +183,7 @@ const GLYPHS: Record<string, [IconName, Dir?]> = {
   '%': ['usage'],
   A: ['language'],
   x: ['logout'],
-  '&': ['agents'],
+  '&': ['bubble'],
   '>': ['chevron', 'right'],
   '<': ['chevron', 'left'],
   '⇣': ['compact'],

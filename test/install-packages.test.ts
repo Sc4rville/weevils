@@ -31,7 +31,7 @@ function run(pm: string, pkgs: string[], tools: Tools, o: { sudo?: string; failF
   const script = [
     'set -euo pipefail',
     strings,
-    'L=en E= B= R= D= O=',
+    'L=en E= B= R= D= O= AGENT=0',
     `t() { local k=EN_$1; printf '%s' "\${!k}"; }`,
     `info() { printf '  · %s\\n' "$*"; }`,
     'summary() { :; }',
@@ -104,11 +104,11 @@ esac`,
 esac`,
     }, { failFile: true })
     expect(r.ok).toBe(false)
-    expect(r.why).toBe('one tool weevils needs didn't install on this computer: tmux.')
+    expect(r.why).toBe('one tool weevils needs didn’t install on this computer: tmux.')
     expect(r.fix).toBe('sudo pacman -S --needed tmux')
     expect(r.out).not.toMatch(/error:|transaction/)
     // join.sh's file: the sentence, then the command; the raw output kept aside.
-    expect(r.failFile).toBe('one tool weevils needs didn't install on this computer: tmux.\nsudo pacman -S --needed tmux\n')
+    expect(r.failFile).toBe('one tool weevils needs didn’t install on this computer: tmux.\nsudo pacman -S --needed tmux\n')
     expect(r.out).toContain('This should sort it out:')
     expect(r.log).toContain('could not satisfy dependencies')
   })
@@ -141,7 +141,7 @@ describe('the other package managers: install, never upgrade', () => {
       'apt-get': '[ "$1" = update ] && exit 0\necho "E: Unable to locate package tmux"; exit 100',
       'dpkg-query': '[ "$3" = git ] && printf "install ok installed" || exit 1',
     })
-    expect([r.ok, r.why, r.fix]).toEqual([false, 'one tool weevils needs didn't install on this computer: tmux.', 'sudo apt-get install -y tmux'])
+    expect([r.ok, r.why, r.fix]).toEqual([false, 'one tool weevils needs didn’t install on this computer: tmux.', 'sudo apt-get install -y tmux'])
     expect(r.out).not.toContain('E: Unable')
   })
 

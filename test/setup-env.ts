@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll } from 'vitest'
+import { dropPushRewrites } from './session-env.ts'
 
 const root = process.env.WEEVILS_TEST_ROOT || os.tmpdir()
 const home = fs.mkdtempSync(path.join(root, 'home-'))
@@ -24,6 +25,9 @@ delete process.env.TMUX_PANE
 delete process.env.INVOCATION_ID
 delete process.env.CODEX_HOME
 delete process.env.WEEVILS_PROJECTS
+// Run from an automation's session, the tests would inherit its push guard, which also refuses a push between two
+// folders of a test's own (test/session-env.ts).
+dropPushRewrites(process.env)
 // Le HOME jetable part avec le fichier de test.
 const clean = () => fs.rmSync(home, { recursive: true, force: true })
 afterAll(clean)

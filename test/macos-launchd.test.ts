@@ -59,6 +59,9 @@ function run(cmd: string, args: string[]) {
   return r.stdout
 }
 const install = () => run(path.join(repo, 'server', 'install.sh'), ['main'])
+// On a Linux host that runs systemd, the installer waits up to 10 s for the user's bus before going on. Where that bus
+// is not visible (a container, an automation's sandbox, a shell opened without a login), the wait runs to its end.
+const INSTALL_MS = 30_000
 const service = (...a: string[]) => run(path.join(repo, 'server', 'weevils-service'), a)
 const loads = (log: string) => log.split('\n').filter((l) => /^(bootstrap|bootout) /.test(l) && l.includes('weevilsd'))
 
@@ -73,7 +76,7 @@ it.skipIf(!hasJq)('a first install loads the agent once, and it runs weevilsd (i
   expect(plist).not.toMatch(/node|<key>PATH<\/key>/)
   expect(fs.statSync(wrapper).mode & 0o777).toBe(0o755)
   expect(fs.readFileSync(path.join(home, '.config', 'weevils', 'service.conf'), 'utf8')).toMatch(/^WEEVILS_NODE=.*node/m)
-})
+}, INSTALL_MS)
 
 it.skipIf(!hasJq)('an update that changes nothing: files left as they are, weevilsd restarted in place, nothing loaded again', () => {
   const old = new Date('2026-01-01T00:00:00Z')
@@ -90,7 +93,7 @@ it.skipIf(!hasJq)('an update that changes nothing: files left as they are, weevi
   resetCalls()
   service('restart')
   expect(calls().trim()).toBe(`print gui/${uid}\nprint gui/${uid}/${label}\nkickstart -k gui/${uid}/${label}`)
-})
+}, INSTALL_MS)
 
 it.skipIf(!hasJq)('an agent file that changed is loaded again, once; a stop then start loads it again', () => {
   fs.appendFileSync(agentFile, '<!-- changed -->\n')

@@ -111,6 +111,12 @@ describe('settings band', () => {
     await click([...host.querySelectorAll('button.row')].find((r) => r.textContent!.startsWith('requests')))
     expect(pushed).toEqual([{ kind: 'requests' }])
   })
+
+  it("weevils next's settings: no line to the old interface, only theme, language, requests and log out", () => {
+    render(<FootBand toNext={false} factory />, snap([{ id: 'm-7f3a9c', name: 'vps', online: true }], { asksOpen: 3 }))
+    expect(rows()).toEqual(['themelight', 'languageEnglish', 'requests3', 'log out'])
+    expect(host.textContent).not.toMatch(/classic|interface/)
+  })
 })
 
 describe('open project band', () => {

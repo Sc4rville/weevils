@@ -669,14 +669,15 @@ function machinesMeta(machines: { online?: boolean }[]) {
   return t.onlineOf(on, machines.length)
 }
 
-/** switchTo: the other interface its last line opens (weevils next from here; next shows this band with « classic »).
+/** toNext: its last line opens weevils next (the classic app's band); next shows this band without it, the classic app
+ *  being only an address away (?ui=classic), no button (Scarville, 2026-11-26).
  *  factory: machines, subscriptions and Tempo live in Your factory instead (weevils next's side bar). */
 const SETTINGS_FOLD = 'weevils-settings-open'
 /** Settings stay folded to their one band unless this device last left them open. */
 export const settingsFolded = () => { try { return localStorage.getItem(SETTINGS_FOLD) !== '1' } catch { return true } }
 const saveSettingsFolded = (folded: boolean) => { try { if (folded) localStorage.removeItem(SETTINGS_FOLD); else localStorage.setItem(SETTINGS_FOLD, '1') } catch { /* private mode: this visit only */ } }
 
-export function FootBand({ switchTo = 'next', factory = false, mark }: { switchTo?: 'next' | 'classic'; factory?: boolean; mark?: ReactNode } = {}) {
+export function FootBand({ toNext = true, factory = false, mark }: { toNext?: boolean; factory?: boolean; mark?: ReactNode } = {}) {
   const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   // The relay writes « until 6 pm » in this device's time zone (the Codex relay row moved to the subscriptions page).
@@ -720,10 +721,12 @@ export function FootBand({ switchTo = 'next', factory = false, mark }: { switchT
           {tr(RM).menu}
         </Line>
       )}
-      {/* weevils next is the app's interface; the classic one stays as its fallback: this line goes to the other. */}
-      <Line ch="→" go={null} onClick={() => { location.href = `/?ui=${switchTo}` }}>
-        {switchTo === 'next' ? t.toNext : t.toClassic}
-      </Line>
+      {/* weevils next is the app's interface; from the classic app, this line goes back to it. */}
+      {toNext && (
+        <Line ch="→" go={null} onClick={() => { location.href = '/?ui=next' }}>
+          {t.toNext}
+        </Line>
+      )}
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}
       </Line>

@@ -318,8 +318,8 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
           {/* Your factory: machines, intelligence, projects and the global Tempo (factory.tsx). */}
           <FactorySection snap={snap} colors={colors} page={page} toBoss={close} />
           {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
-              shows here too; machines, subscriptions and Tempo live in Your factory; its last line goes to the classic app. */}
-          <div className="nx-settings"><FootBand switchTo="classic" factory mark={<span className="nx-repo-mark" aria-hidden><Icon name="settings" /></span>} /></div>
+              shows here too; machines, subscriptions and Tempo live in Your factory; no line to the classic app (an address away). */}
+          <div className="nx-settings"><FootBand toNext={false} factory mark={<span className="nx-repo-mark" aria-hidden><Icon name="settings" /></span>} /></div>
         </div>
       </motion.nav>
     </>

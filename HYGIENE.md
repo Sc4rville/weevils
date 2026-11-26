@@ -22,6 +22,7 @@ file too: a rule changed here applies from the next run.
 | H-11 | Entry points are declared in `knip.json`, including every app (`src/`, `next/src/`) and every file another program starts by path (shell wrappers, shims, spawned scripts); dead-code findings count only when knip runs with it and a plain text search agrees. | Without them knip called the server itself, the service worker, the `get/` scripts and a lazily imported dependency unused (13 false files, 2 false dependencies); with them, zero. 2026-11-24: tightened, the `next/` app and three path-started files were missing (3 false files, 1 false dependency, 3 live components called unused). | `npx knip` with `knip.json`, section 2. Introduced 2026-11-14, tightened 2026-11-24. |
 | H-12 | The full check passes inside an automation's own session as it is (sandbox, push guard, young pid 1); a test that needs the host's process table, sandbox or push rights injects them, or says it skips. | 2026-11-21: 39 tests failed only because of the session they ran in (36 pushing to temporary local repos through the no-push guard, 2 probing the real sandbox, 1 assuming an old pid 1), which hid whether the code was green; 3 fixed here, the push helper is a proposal. | Section 4: run the check as is first and list the failures that disappear outside the session; until the push proposal lands, the run reruns with the guard's two local-path rules neutralised (network pushes stay blocked). Introduced 2026-11-21. |
 | H-13 | Every folder `npm run typecheck` covers is in knip's `project`, and every entry file `knip.json` names exists. | 2026-11-24: the `next/` app, the default UI, was typechecked but invisible to knip, so knip's dead-code list was wrong in both directions (live code called unused, dead code in `next/` never seen). | `test/knip-coverage.test.ts`, in `npm test`. Introduced 2026-11-24. |
+| H-14 | A run ends only after its full check has finished and its last commit is made, and each run first checks that the previous run's `chore(hygiene)` commits reached `main`; any that did not are reported as stranded, with why. | 2026-11-26: the 2026-11-24 cleanup (4 commits) never landed: that run ended its turn while the full check was still running in the background, so weevils closed the run before the commits existed and nothing was offered for merge. | Section 0: `git log --oneline main..HEAD --grep '^chore(hygiene)'` at the start (beyond tonight's own); section 4: run lint, tests and build in the foreground, one call each. Introduced 2026-11-26. |
 
 ## Accepted exceptions
 
@@ -48,6 +49,19 @@ None yet.
 
 Newest first, last 10 runs (older ones in `docs/hygiene/history.md`).
 
+- 2026-11-26 · main 21835b1 · full
+  - Cleaner: the 2026-11-24 cleanup had never reached `main` (its run ended while its check was still running); it
+    rides along on this branch. On top of `main`: lint and build green, the whole test suite passes outside an
+    automation's session; 7 tests fail only inside one (H-12). No secret, no new personal trace, no known
+    vulnerability, no real TODO, no tracked junk.
+  - Invented: H-14, a run never ends before its check, and checks that the previous run's cleanup landed.
+  - Proposed (unchanged unless said): night-lens is still on the old history and committed there again tonight;
+    find-ux too; the 146 old-history branches; 16 merged branches still hold a worktree (new: `feat/onboarding-journey`),
+    so none could be pruned; the push-guard-aware git helper for tests (78 failures inside the session); the Darwin
+    guard for the installer's linger block; `SECRET_KEYS` and `voiceBusy`; motion and ws minor updates.
+  - Held: the unused `useSession` hook of the `next/` app (`next/src/data.ts`): `main` rewrote it the same day, so its
+    removal was dropped at landing and waits for the next full pass. Not run: the copy check (reading the mirror
+    refused again, third run in a row).
 - 2026-11-24 · main 8bc3f2a · full
   - Cleaner: 61 local branches already merged into `main` are pruned (no worktree, no live session; names and tips
     in the report); knip now sees the `next/` app and the three files started by path, so its false alarms (3 files,
@@ -89,4 +103,4 @@ Newest first, last 10 runs (older ones in `docs/hygiene/history.md`).
   - Held: real home paths in two other test fixtures, both being edited by live work.
 - 2026-11-14 · set up · rules H-1 to H-10 written from the owner's brief; no run yet.
 
-<!-- hygiene:last-full main=8bc3f2ae71c6d8421e46721a2dfa9ca4f2c1e71c branches=121e9bd16b4f at=2026-11-24T01:00:55.360Z -->
+<!-- hygiene:last-full main=21835b1cdd897610e779db592985c75327c1fabc branches=c8c8a639956d at=2026-11-26T01:00:40.918Z -->

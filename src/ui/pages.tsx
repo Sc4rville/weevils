@@ -43,6 +43,7 @@ import M from '../i18n/pages'
 import PM from '../i18n/plain-steps'
 import { MemoryPage } from './memory'
 import { RequestsPage } from './requests'
+import { AgentKeysPage } from './agent-keys'
 import { ProjectPage } from './project-screen'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
@@ -107,6 +108,8 @@ export function PageView({ page }: { page: Page }) {
       return <MemoryPage />
     case 'requests':
       return <RequestsPage />
+    case 'agent-keys':
+      return <AgentKeysPage />
     case 'formats':
       return <FormatsPage />
     case 'foryou':

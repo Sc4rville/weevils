@@ -40,6 +40,8 @@ export type Page =
   | { kind: 'memory' }
   /** weevboss's request ledger, goals and work trace (src/ui/requests.tsx). */
   | { kind: 'requests' }
+  /** Agent keys: bots and web agents that write to weevboss (src/ui/agent-keys.tsx, docs/agents.md). */
+  | { kind: 'agent-keys' }
   /** « Pour toi » en plein écran ; who : le participant isolé à l'ouverture. */
   | { kind: 'formats' }
   | { kind: 'foryou'; who?: string }

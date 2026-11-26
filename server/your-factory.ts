@@ -380,7 +380,7 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
       })
       json(res, 200, { ok: true })
     }],
-    // One of the side bar's other drawers (misc, autonomous, pages, settings) pinned in it or taken out of it.
+    // One of the side bar's other drawers (requests, autonomous, pages, settings) pinned in it or taken out of it.
     ['POST', /^\/api\/factory\/drawer$/, async (req, res) => {
       const b = await readBody(req)
       if (!DRAWERS.includes(b.id as Drawer) || typeof b.shown !== 'boolean') return json(res, 400, { error: t().cantSwitch })

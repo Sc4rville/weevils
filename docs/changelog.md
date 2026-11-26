@@ -36,6 +36,38 @@ A short summary of what changed after the first working version.
 - The e-mail bridge is deprecated and off by default, even with an address and a password: `WEEVILS_MAIL_BRIDGE=on`
   turns it back on. weevboss now offers agent keys first.
 
+### Requests
+- A request where nothing moves any more (no progress for a day, or its session is gone) says **paused** and for how
+  long (`paused · 3d`) in place of the quarter bar it shared with a request just sent, quieter than **needs you**.
+  The list runs: what runs now, then what needs you, then everything else, newest first, on the page of all
+  requests and under each session of a repo's page. What runs and what needs you is always shown: "earlier · N"
+  counts only the rows after them, so a request you just made is never hidden behind the ones that wait.
+
+### An automation's page
+- **Last run** says how the run went in the first whole sentence of what it told you, as plain words
+  ("I checked one new price list, which holds 4 items."): no stars, no folded list, no word cut in the middle,
+  no heading of ids and dates. A run that went well loses its "Done:" (the check says it); "Stopped:" and "Skipped:"
+  stay. A run that did not go well says first the reason noted when it stopped ("no progress for 52 min"), before
+  what its session said last. The sentence is shown whole, no longer clamped to two lines. On the classic page, a
+  task's run lines lose their stars and their cut word the same way (its newest run still opens on its report's
+  first line).
+
+### The side bar
+- An automation that reruns is one row under its own name in its project's band (`Price watch · 5 runs`), with
+  what came out of its newest run and when, instead of one row per run, each under a freshly written title. A tap
+  unfolds its runs, newest first, and each opens its own conversation; when one of its runs waits for you, the tap
+  opens that run. A run you wrote into is yours: it stays a row of its own. "N done" counts an automation once,
+  whatever its runs.
+- A conversation that is over but whose last message still ends on a real "Needs you:" line no longer wears the
+  check of a finished one: it shows the mark of one that waits, with its question, and sits with the active rows
+  instead of behind "N done". It wears no coloured band: that stays for a conversation that waits for you right
+  now. For an automation only its newest run counts, so an old question does not come back at every run. Nothing
+  new notifies: no notification, no For you card. The classic app shows the same mark on the row.
+- Your open requests have a band of their own right under weevboss, above its conversations, so it shows without
+  scrolling: **requests**, how many are open, and under the name how many wait on you (`12 need you`), counted by
+  the same rule as the list. One tap opens the list, in the band's colour. It shows while a request is open; its
+  switch in Your factory takes it out or pins it. The line in settings stays where it was.
+
 ## 2026-11-23
 
 ### Tests and builds

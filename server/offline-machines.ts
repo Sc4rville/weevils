@@ -66,6 +66,8 @@ export function offlineRow(s: Session): Session {
     choices: undefined,
     attention: undefined,
     attentionDetail: undefined,
+    // Nothing can be answered from here: what its last message asked is not shown as waiting for you.
+    asksYou: undefined,
   }
 }
 

@@ -163,6 +163,12 @@ body { overflow: hidden; }
 .nx-project-line .nx-project-head > .spin, .nx-boss-row .nx-fold > .spin { flex: none; }
 .nx-row.nx-sub { min-height: 46px; padding-top: 7px; padding-bottom: 7px; background: transparent; }
 .nx-row.nx-sub.tone { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
+/* An automation that reruns is one row (side-rows.ts): its name takes the room and « · N runs » after it is never
+   cut. Its runs, unfolded under it, start under its name, a little smaller: they read as its own, not as the band's. */
+.nx-fold-title { display: flex; min-width: 0; }
+.nx-fold-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nx-fold-count { flex: none; white-space: pre; font-weight: 400; opacity: .75; }
+.nx-row.nx-sub.nx-run { min-height: 42px; padding-left: calc(var(--pad) + 34px); font-size: 15px; }
 .nx-row.nx-current { box-shadow: inset 3px 0 0 var(--ink); }
 
 /* The working line under the last message: the app's `.working` (green star, its three breathing dots). */
@@ -257,6 +263,11 @@ body { overflow: hidden; }
 .nx-loose .nx-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .nx-loose .nx-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-loose .nx-loose-sign { flex: none; margin-left: auto; padding-right: 10px; }
+/* The requests band (requests-band.tsx): a repo's head from edge to edge, the whole of it one tap target. Its name on
+   the name's line, « N need you » under it as a session row's sub line, the open count in bold just left of its « > ». */
+.nx-requests-line { width: 100%; }
+.nx-requests .nx-row-text { flex: 1 1 auto; min-width: 0; }
+.nx-requests-count { flex: none; padding-inline: 6px 0; font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 /* Autonomous at rest: its loop, still and in ink like the other marks; running, the app's AutoMark (colour, travelling). */
 .nx-autos-mark .auto-mark { width: 26px; height: 26px; }
 .nx-autos-mark .auto-mark path { stroke-width: 1.5; }
@@ -291,7 +302,10 @@ body { overflow: hidden; }
 .nx-auto-fact dd { margin: 2px 0 0; font-size: 1.0625rem; font-weight: 700; display: flex; flex-direction: column; align-items: center; }
 .nx-auto-fact dd .icon { width: 16px; height: 16px; vertical-align: -2px; }
 .nx-auto-fact.go { cursor: pointer; }
-.nx-auto-note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 34ch; margin-top: 2px; font-weight: 400; font-size: 0.9375rem; opacity: 0.8; }
+/* What the last run said: one sentence, shown whole (it is already one sentence, capped in auto.tsx), never clamped
+   to two lines with its end lost. As wide as the line above the facts (.nx-auto-what), so the page stays one column;
+   a long unbroken word (an address, a path) wraps instead of leaving the phone. */
+.nx-auto-note { display: block; max-width: 36ch; margin-top: 2px; font-weight: 400; font-size: 0.9375rem; line-height: 1.4; overflow-wrap: anywhere; text-wrap: balance; opacity: 0.8; }
 
 /* The settings band in the narrow side bar (bands.tsx FootBand): a line's name is never cut, its value gives way. */
 .nx-settings .row .stack-text { flex: 1 0 auto; }

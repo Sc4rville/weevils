@@ -47,9 +47,34 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **Pins: you choose what is in the side bar** (2026-11-26). A drawer pinned in it wears a small thin pin between its
   icon and its name (the name never moves); unpinned, the pin is gone. weevils and Your factory are always there and
   never pinned. **A repo is in the side bar only while it is pinned**, whatever its conversations do; it stays in Your
-  factory's **Projects**, one switch away (on pins it with the app's pin, off takes it out). autonomous, pages and
-  settings have the same switch there (shared/drawers.ts: on pins it, off takes it out; never touched, each keeps its
-  own rule: autonomous while it has automations, pages and settings always).
+  factory's **Projects**, one switch away (on pins it with the app's pin, off takes it out). requests, autonomous,
+  pages and settings have the same switch there (shared/drawers.ts: on pins it, off takes it out; never touched, each
+  keeps its own rule: requests while one is open, autonomous while it has automations, pages and settings always).
+- **Requests, one tap from the top** (2026-11-26): a band right under weevboss's head, above its sessions, so it is
+  seen without scrolling however many sessions weevboss has (where weevboss has no repo of its own, right under its
+  lone button); always before the repos. It is laid out like a band's head (the settings line's « ! » in the logo's
+  column, in ink; « requests » under the « w »; on the right the open count in bold, then « > »). The whole band is
+  one tap target and opens the list of all requests, which wears the same colour (the settings band's slot). Under
+  its name, as a session row's sub line, how many wait on you (« 12 need you »), counted by the server with the
+  list's own rule (Snapshot.asksWaiting); nothing there when none does. Out of the side bar when nothing is open
+  (unless pinned) and where the server keeps no ledger. Its switch in Your factory is listed only where the server
+  knows this drawer (it sends that count): elsewhere the choice would not be kept.
+  The requests line of the settings band stays: a second way in.
+- **One row per automation in a project's band** (2026-11-26). The runs of one automation are one row under the
+  automation's name, with « · N runs » after it (« Price watch · 5 runs ») and, under it, what came out of its newest
+  run and when (while a run works: what it is doing; while one waits for you: what it asks). A tap unfolds its runs,
+  the newest first, each under its own title, and each opens its own session; the fold stays as you left it while the
+  app is open. A fold holding a run that waits for you opens that run on the first tap, and is left unfolded. An
+  automation with a single run in the band is a plain row under the automation's name: a tap opens that run. A run
+  you wrote into is yours: a row of its own, under its own title, for good. « N done » counts rows after folding: an
+  automation takes one place, whatever its runs (next/src/side-rows.ts).
+- **A finished session that still asks** (2026-11-26). A session that is over (done or idle) and whose last message
+  ends on a real « Needs you: » line (shared/run-line.ts needsLine: a line that says « nothing » asks nothing) sits
+  with the active rows instead of behind « N done », with the needs-you mark and its question as its sub line. It
+  wears no coloured band and no bold: those stay for a live wait, an agent stopped right now on your answer. It is
+  not a live wait either: no notification, no For you card, weevboss is not woken. For a folded automation only its
+  newest run counts, so an old question does not come back at every run; unfolded, the run that asked keeps its mark.
+  The band's order: what waits for you live, what works, what still asks, what was cut, what rests.
 - **No catch-all band** (2026-11-26, « misc » is gone): a conversation started with no repo is its own band, titled by
   its topic, in a colour of its own, laid out like a repo's head (a speech bubble in the logo's column, its pin, its
   sign where a repo's working star sits), there while pinned; its switch is on its line in Your factory's Sessions.
@@ -107,9 +132,15 @@ once, and the code follows. Behaviour is never flipped back and forth.
   staircase (one colour, one small tone step per band, no lines, no gaps, no shadows). A band is a short title, a
   small star before it while its session works (the star's place is always kept, so titles never move), and a small
   bar for how far it is (not started, sent, being worked on, came back, done: facts, never a guessed percent). What
-  runs now sits on top, then every request ever asked, the newest first, whatever its state; nothing is folded away.
+  runs now sits on top, then what needs you, then every other request ever asked, the newest first, whatever its
+  state; nothing is folded away (2026-11-26: until then a request that needed you sank under every newer one). Two
+  states are said in words in place of the bar (2026-11-26): a request that waits on you says « needs you », and one
+  where nothing moves any more (no progress for a day, or its session is gone) says « paused » and for how long
+  (« paused · 1d »), quieter. No other status word. What runs and what needs you is always drawn: the list pages
+  only the rows after them (« earlier · N » counts those alone), so a request just asked is never hidden behind the
+  ones that wait.
   A tap opens a request in place (the whole sentence, your words, where it went, what came back, done / drop). No
-  status words, no conversations on this page: they stay under the project in the side bar. It is the classic app's
+  conversations on this page: they stay under the project in the side bar. It is the classic app's
   own column (`RequestColumn` in `src/ui/requests.tsx`), the same on its project page and its page of all requests.
 - **A For you post's step always leads somewhere** (2026-11-21, after « Look » did nothing on an automation's post):
   an automation opens on its own page; weevboss's thread brings weevboss's screen, on its thread; « the automations »

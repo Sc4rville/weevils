@@ -196,8 +196,8 @@ export function rowState(s: Session, state: ThreadState | undefined): Partial<Se
   if (!state) return {}
   const { interrupted: _i, ...rest } = s
   if (s.status === 'needs_user' && (s.attention || s.choices?.length || s.ask)) return {}
-  if (state === 'working') return { ...rest, interrupted: undefined, status: 'working', workStartedAt: s.workStartedAt ?? s.lastActivityAt }
-  if (state === 'paused') return { ...rest, interrupted: undefined, status: 'needs_user', workStartedAt: null }
+  if (state === 'working') return { ...rest, interrupted: undefined, asksYou: undefined, status: 'working', workStartedAt: s.workStartedAt ?? s.lastActivityAt }
+  if (state === 'paused') return { ...rest, interrupted: undefined, asksYou: undefined, status: 'needs_user', workStartedAt: null }
   return s.status === 'interrupted' || s.status === 'working' && !s.live ? { ...rest, interrupted: undefined, status: 'idle', workStartedAt: null } : {}
 }
 

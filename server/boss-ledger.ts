@@ -23,6 +23,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { Session, SessionDetail } from '../shared/api.ts'
 import type { Ask, Dispatch, Goal, Knowledge, KnowledgeKind, LedgerView, Outcome, TraceEntry } from '../shared/ledger.ts'
+import { waitingCount, type ChipSession } from '../shared/request-chip.ts'
 import { parseSigned } from './authors.ts'
 import type { LandedCommit } from './ledger-evidence.ts'
 import { shortId, tokensOf, type Entry } from './boss-view.ts'
@@ -452,6 +453,13 @@ export class Ledger {
     return (a.status === 'open' || a.status === 'dispatched') && t - a.progressAt > STALE_MS
   }
   get openCount() { return this.s.asks.filter((a) => a.status === 'open' || a.status === 'dispatched').length }
+  /** How many open requests wait on the person, by the list's own rule (shared/request-chip.ts), against the sessions
+   *  as they are now. Read on every snapshot, so it stays one pass over the rows as stored: no copy, no sort. The
+   *  closed rows are in that pass on purpose (a session's latest brief may be one of them), and only the open ones
+   *  are then read. */
+  waiting(sessions: readonly ChipSession[]): number {
+    return waitingCount(this.s.asks, sessions)
+  }
   get pending(): readonly Inbox[] { return this.s.inbox }
   goals(all = false): Goal[] {
     return this.s.goals.filter((g) => all || g.status !== 'done')

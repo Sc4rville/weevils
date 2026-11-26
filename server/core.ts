@@ -75,7 +75,8 @@ import { parseTimerShow } from './schedule.ts'
 import { extractLinks, journalRuns, tailLines, unitDescriptions, type JournalRun } from './auto-runs.ts'
 import { chipsInPlace, CONTEXT_BLOCK } from '../shared/setup.ts'
 import { threadWins } from '../shared/wins.ts'
-import { asksUser, type Ask } from '../shared/asks.ts'
+import { ASK_MAX, asksUser, clip, type Ask } from '../shared/asks.ts'
+import { needsLine } from '../shared/run-line.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { judgeAsk } from './asks-judge.ts'
 import { TranscriptStore, borrowedTitle, digestOf, brief, hasBrief, lastMessageOf, placeTitle, realTitle, titleOf } from './transcripts.ts'
@@ -1316,6 +1317,15 @@ export class Weevils {
     if (!interrupted && pane?.screenHold && status !== 'working' && status !== 'needs_user')
       interrupted = { at: pane.screenHold.since, reason: pane.screenHold.reason, detail: pane.screenHold.text }
     if (interrupted) status = 'interrupted'
+    // Over, and its last word is still a real « Needs you: » line (a run that stopped to ask, « tap Yes to resume »):
+    // the row says so instead of wearing a plain check. Never needs_user: that status notifies, makes a For you card
+    // and wakes weevboss, and nothing waits live here. Read on the final status, so never while it works or is cut.
+    let asksYou: string | undefined
+    if ((status === 'done' || status === 'idle') && !(pane && this.isOrchestratorPane(pane))) {
+      const last = t.messages.findLast((m) => m.role !== 'event')
+      const said = last?.role === 'assistant' ? needsLine(last.text) : null
+      if (said) asksYou = clip(said, ASK_MAX)
+    }
 
     // Ouverte dans un terminal que weevils ne pilote pas : on ne peut ni lui écrire ni la reprendre sans risque.
     const unmanagedLive = (live || (t.originator === 'codex-tui' && !!t.delegationSources?.size)) && !pane
@@ -1352,6 +1362,7 @@ export class Weevils {
       // Continue / Go back, never a card that blocks without a button. With an input box, the composer is the answer.
       ...(status === 'needs_user' && !ask && !pane?.screenDialog?.options.length && pane?.screenFallback ? { choices: pane.screenFallback } : {}),
       ...(ask && status === 'needs_user' ? { ask } : {}),
+      ...(asksYou ? { asksYou } : {}),
       ...(interrupted ? { interrupted } : {}),
       cwd: t.cwd,
       branch: t.branch,
@@ -1565,6 +1576,8 @@ export class Weevils {
       pinnedSessions: this.factory.pinnedSessions ?? [],
       memoryCount: this.memory?.count,
       asksOpen: this.ledger?.openCount,
+      // Read against the very sessions this snapshot lists, as the requests list does: the two never disagree.
+      asksWaiting: this.ledger?.waiting(sessions),
       optimizers: this.optimizers?.list() ?? [],
       autoMachine: this.optimizers?.machine(),
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),

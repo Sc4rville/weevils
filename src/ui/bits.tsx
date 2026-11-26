@@ -151,7 +151,10 @@ export function SessionRow({ session }: { session: Session }) {
   const rt = useT(RM)
   useSeen()
   const unread = isUnread(session)
-  const st = status[session.status]
+  // Over, and its last message still asks something (Session.asksYou): the mark and the state of a session that
+  // waits, never the check of a finished one. The row itself stays where it is.
+  const asking = (session.status === 'done' || session.status === 'idle') && !!session.asksYou
+  const st = status[asking ? 'needs_user' : session.status]
   const waiting = session.status === 'needs_user'
   const ref = session.status === 'working' && session.workStartedAt ? session.workStartedAt : session.lastActivityAt
   // Un seul texte, en entier : la question qui t'attend, sinon l'activité en cours quand ça travaille, sinon le titre.
@@ -170,7 +173,7 @@ export function SessionRow({ session }: { session: Session }) {
     >
       <span className="in line" aria-hidden>
         <span className="st">
-          <StatusChar s={session.status} auto={!!autoOfSession(snap, session.id)} />
+          <StatusChar s={asking ? 'needs_user' : session.status} auto={!!autoOfSession(snap, session.id)} />
         </span>
         {/* Threads on, a row has no tool icon: no empty column either, the title sits right by its state. */}
         {!thread && (

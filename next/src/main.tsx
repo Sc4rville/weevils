@@ -5,7 +5,7 @@ import '../../src/styles.css'
 import '../../src/ui/living-link.css'
 import '../../src/ui/foryou.css'
 import './next.css'
-import { StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AnimatePresence, MotionConfig, animate, motion, useMotionValue, useTransform, type PanInfo } from 'motion/react'
 import type { Optimizer, Project, Session, Snapshot } from '../../shared/api.ts'
@@ -23,6 +23,7 @@ composerLook.multiline = true
 threadLook.authorsInSessions = true
 import { useT } from '../../src/i18n/index.ts'
 import BM from '../../src/i18n/bands.ts'
+import SR from '../../src/i18n/side-rows.ts'
 import { AutoMark, G, Icon } from '../../src/ui/icons.tsx'
 import { WeevbossLogo } from '../../src/ui/logo.tsx'
 import { api } from '../../src/api.ts'
@@ -31,6 +32,7 @@ import { Sky } from './sky.tsx'
 import { Chat } from './chat.tsx'
 import { slide } from './moves.ts'
 import { foldPrefs, saveFold } from './fold.ts'
+import { bandRows, holds, runRows, sessionState, sessionSub, type RowState } from './side-rows.ts'
 import { closesSideBar } from './keys.ts'
 import { registerWorker, useWorker } from './worker.ts'
 import { keepFresh } from './fresh.ts'
@@ -41,6 +43,7 @@ import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
 import { drawerOn, drawerPinned, FactorySection, looseSessions, NextMachinePage, pinnedProject, pinSession, sessionPinned, showDrawer, showProject, shownNow, slotOf, useFlips } from './factory.tsx'
 import { PinMark } from './pin.tsx'
+import { RequestsBand } from './requests-band.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
 import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
@@ -115,11 +118,13 @@ function useScreen() {
 const working = (s: Session) => s.status === 'working'
 const live = (s: Session) => s.status === 'working' || s.status === 'needs_user'
 
-function StatusMark({ s }: { s: Session }) {
-  if (s.status === 'working') return <span className="spin fluo"><Icon name="star" /></span>
-  if (s.status === 'needs_user') return <Icon name="waits" />
-  if (s.status === 'interrupted') return <Icon name="pause" />
-  if (s.status === 'done') return <Icon name="check" />
+/** The mark of a row's state (side-rows.ts). « asks »: over, and its last message still asks something; it wears the
+ *  mark of a session that waits, never the check of a finished one. */
+function StateMark({ state }: { state: RowState }) {
+  if (state === 'working') return <span className="spin fluo"><Icon name="star" /></span>
+  if (state === 'needs_user' || state === 'asks') return <Icon name="waits" />
+  if (state === 'interrupted') return <Icon name="pause" />
+  if (state === 'done') return <Icon name="check" />
   return <Icon name="idle" />
 }
 
@@ -127,7 +132,7 @@ function StatusMark({ s }: { s: Session }) {
  *  StatusChar; any other working session, background tasks included, has the green star. */
 function Sign({ snap, s }: { snap: Snapshot; s: Session }) {
   if (s.status === 'working' && autoOfSession(snap, s.id)) return <AutoMark />
-  return <StatusMark s={s} />
+  return <StateMark state={sessionState(s)} />
 }
 const alone = (snap: Snapshot, s: Session) => s.status === 'working' && !!autoOfSession(snap, s.id)
 
@@ -139,18 +144,32 @@ const alone = (snap: Snapshot, s: Session) => s.status === 'working' && !!autoOf
  *  (never a band of its own: each of them is one, LooseBand). */
 const AUTO_DIR = 'auto'
 const MISC = 'divers'
+/** The automations whose runs are unfolded under their row, as `<project id>/<automation id>`. Kept outside the
+ *  component: the choice holds while the snapshot refreshes, and while the side bar is closed (on a phone it closes
+ *  each time a run is opened, and going through an automation's runs one by one is the point of unfolding it). */
+const unfoldedRuns = new Set<string>()
 
-function ProjectGroup({ snap, project, color, current, open, page, boss, pinned = false }: { snap: Snapshot; project: Project; color: string; current: string | null; open: (id: string | null) => void; page: (p: Page) => void; boss?: boolean; pinned?: boolean }) {
+export function ProjectGroup({ snap, project, color, current, open, page, boss, pinned = false, under }: { snap: Snapshot; project: Project; color: string; current: string | null; open: (id: string | null) => void; page: (p: Page) => void; boss?: boolean; pinned?: boolean
+  /** Drawn right under its head, above its sessions, folded or not (the requests band under weevboss). */
+  under?: React.ReactNode }) {
   const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === project.id)
-  const rank = (s: Session) => (s.status === 'needs_user' ? 0 : s.status === 'working' ? 1 : s.status === 'interrupted' ? 2 : 3)
-  const active = sessions.filter((s) => s.status !== 'done').sort((a, b) => rank(a) - rank(b) || b.openedAt - a.openedAt)
-  const done = sessions.filter((s) => s.status === 'done').sort((a, b) => b.lastActivityAt - a.lastActivityAt).slice(0, 8)
+  // Its rows (side-rows.ts): an automation that reruns is one row under its own name, and a session that is over but
+  // still asks something sits with the active ones. « N done » counts the finished rows after that folding.
+  const now = Date.now()
+  const { active, done } = bandRows(snap, project.id, now)
+  const t = useT(SR)
   const [more, setMore] = useState(false)
+  const [, redraw] = useState(0)
+  const toggleRuns = (autoId: string) => {
+    const key = `${project.id}/${autoId}`
+    if (!unfoldedRuns.delete(key)) unfoldedRuns.add(key)
+    redraw((n) => n + 1)
+  }
   // A tap on its name folds its sessions away or brings them back, as on the app's home (bands.tsx: same key, so the
   // choice is kept from one visit to the next).
   const [folded, setFolded] = useState(() => !!foldPrefs()[project.id])
   const fold = () => setFolded((v) => (saveFold(project.id, !v), !v))
-  const busy = active.some(working)
+  const busy = sessions.some(working)
   const recursive = selfProject(project)
   const improving = improvingProject(project, sessions)
   return (
@@ -162,7 +181,7 @@ function ProjectGroup({ snap, project, color, current, open, page, boss, pinned 
             <button className="nx-boss-logo" onClick={() => open(null)} aria-label="Open weevboss"><WeevbossLogo className="nx-logo" /></button>
             <button className="nx-fold" onClick={fold} aria-expanded={!folded}>
               <span className="nx-row-title nx-project-name">weevils</span>
-              {active.some((s) => working(s) && !alone(snap, s)) && <span className="spin fluo"><Icon name="star" /></span>}
+              {sessions.some((s) => working(s) && !alone(snap, s)) && <span className="spin fluo"><Icon name="star" /></span>}
             </button>
           </div>
         ) : (
@@ -170,7 +189,7 @@ function ProjectGroup({ snap, project, color, current, open, page, boss, pinned 
           {/* In the weevils logo's column, its name under the « w » of weevils. */}
           <span className="nx-repo-mark"><Icon name="repo" />{pinned && <PinMark name={project.name} onUnpin={() => showProject(project, false)} />}</span>
           <span className="nx-row-title nx-project-name">{project.name}</span>
-          {active.some((s) => working(s) && !alone(snap, s)) && <span className="spin fluo"><Icon name="star" /></span>}
+          {sessions.some((s) => working(s) && !alone(snap, s)) && <span className="spin fluo"><Icon name="star" /></span>}
         </button>
         )}
         {/* As on the original home band: « / » its files, « > » its page (what runs, its requests, its sessions). */}
@@ -185,25 +204,59 @@ function ProjectGroup({ snap, project, color, current, open, page, boss, pinned 
           </button>
         </div>
       </div>
+      {under}
       <Collapse open={!folded}>
-      {[...active, ...(more ? done : [])].map((s) => (
-        <button key={s.id} className={`nx-row nx-sub ${s.status === 'needs_user' ? 'tone' : ''} ${live(s) ? 'nx-active' : ''} ${current === s.id ? 'nx-current' : ''}`} onClick={() => open(s.id)}>
-          <span className="nx-mark"><Sign snap={snap} s={s} /></span>
-          <span className="nx-row-text">
-            <span className="nx-row-title">{s.title || 'Untitled'}</span>
-            {(s.status === 'needs_user' ? s.attention : s.status === 'working' ? s.now : undefined) && (
-              <span className="nx-row-sub">{s.status === 'needs_user' ? s.attention : s.now}</span>
+      {[...active, ...(more ? done : [])].map((r) => {
+        // A row holding several runs unfolds them; any other row opens its session.
+        const many = r.runs.length > 1
+        const unfolded = many && unfoldedRuns.has(`${project.id}/${r.autoId}`)
+        // The tone band and bold are for what is alive: an agent stopped right now on your answer. A session that is
+        // over with a question left says it with its mark and its line only, so a dozen of them stay calm to read.
+        const waits = r.state === 'needs_user'
+        const alive = r.state === 'working' || r.state === 'needs_user'
+        // A fold holding a run that waits live: the tap goes to that run (one tap, as before the fold), runs unfolded.
+        const waiting = many ? r.runs.find((s) => s.status === 'needs_user') : undefined
+        return (
+          <Fragment key={r.key}>
+            <button className={`nx-row nx-sub ${waits ? 'tone' : ''} ${alive ? 'nx-active' : ''} ${holds(r, current) ? 'nx-current' : ''}`}
+              onClick={() => {
+                if (waiting && r.autoId) { unfoldedRuns.add(`${project.id}/${r.autoId}`); redraw((n) => n + 1); open(waiting.id) }
+                else if (many && r.autoId) toggleRuns(r.autoId)
+                else open(r.runs[0].id)
+              }} {...(many ? { 'aria-expanded': unfolded } : {})}>
+              {/* An automation at work turns its own loop, whichever of its runs it is. */}
+              <span className="nx-mark">{r.autoId ? (r.state === 'working' ? <AutoMark /> : <StateMark state={r.state} />) : <Sign snap={snap} s={r.runs[0]} />}</span>
+              <span className="nx-row-text">
+                {many ? (
+                  <span className="nx-row-title nx-fold-title"><span className="nx-fold-name">{r.title}</span><span className="nx-fold-count"> · {t.runs(r.runs.length)}</span></span>
+                ) : <span className="nx-row-title">{r.title || t.untitled}</span>}
+                {r.sub && <span className="nx-row-sub">{r.sub}</span>}
+              </span>
+            </button>
+            {many && (
+              <Collapse open={unfolded}>
+                {/* Built only while open: this band is drawn again every second. */}
+                {unfolded && runRows(r, now).map((x) => (
+                  <button key={x.session.id} className={`nx-row nx-sub nx-run ${x.state === 'needs_user' ? 'tone' : ''} ${live(x.session) ? 'nx-active' : ''} ${current === x.session.id ? 'nx-current' : ''}`} onClick={() => open(x.session.id)}>
+                    <span className="nx-mark">{x.state === 'working' ? <AutoMark /> : <StateMark state={x.state} />}</span>
+                    <span className="nx-row-text">
+                      <span className="nx-row-title">{x.session.title || t.untitled}</span>
+                      <span className="nx-row-sub">{x.sub}</span>
+                    </span>
+                  </button>
+                ))}
+              </Collapse>
             )}
-          </span>
-        </button>
-      ))}
+          </Fragment>
+        )
+      })}
       {/* Its last line: the finished sessions waiting under « N done », and a small « + » right under its « > »
           that opens a new conversation in this repo, its box ready to write in (2026-11-26). */}
       <div className="nx-project-line nx-project-foot">
         {done.length > 0 ? (
           <button className="nx-row nx-sub nx-more" onClick={() => setMore((v) => !v)} aria-expanded={more}>
             <span className="nx-mark" />
-            <span className="nx-row-text"><span className="nx-row-sub">{more ? 'Hide done' : `${done.length} done`}</span></span>
+            <span className="nx-row-text"><span className="nx-row-sub">{more ? t.hideDone(done.length) : t.done(done.length)}</span></span>
           </button>
         ) : <span className="nx-row nx-sub nx-more" aria-hidden />}
         <div className="chars">
@@ -219,15 +272,17 @@ function ProjectGroup({ snap, project, color, current, open, page, boss, pinned 
 
 /** A conversation started with no repo, as its own band (2026-11-26): laid out like a repo's head (its mark in the
  *  logo's column, its pin, its title, its sign where a repo's working star sits), in a colour of its own; a tap opens it. */
-function LooseBand({ snap, s, current, open }: { snap: Snapshot; s: Session; current: string | null; open: (id: string | null) => void }) {
-  const sub = s.status === 'needs_user' ? s.attention : s.status === 'working' ? s.now : undefined
+export function LooseBand({ snap, s, current, open }: { snap: Snapshot; s: Session; current: string | null; open: (id: string | null) => void }) {
+  // Over, with a question left in its last message: that question under its title, and the mark of one that waits.
+  const sub = sessionSub(s)
+  const t = useT(SR)
   return (
     <section className="nx-project nx-loose band" style={{ '--c': `var(--${slotOf(s.id)})` } as React.CSSProperties}>
       <div className="nx-project-line">
         <button className={`nx-row nx-project-head nx-repo-row ${live(s) ? 'nx-active' : ''} ${current === s.id ? 'nx-current' : ''}`} onClick={() => open(s.id)}>
           <span className="nx-repo-mark"><Icon name="bubble" /><PinMark name={s.title || 'Untitled'} onUnpin={() => pinSession(s.id, false)} /></span>
           <span className="nx-row-text">
-            <span className="nx-row-title nx-project-name">{s.title || 'Untitled'}</span>
+            <span className="nx-row-title nx-project-name">{s.title || t.untitled}</span>
             {sub && <span className="nx-row-sub">{sub}</span>}
           </span>
           <span className="nx-mark nx-loose-sign"><Sign snap={snap} s={s} /></span>
@@ -309,14 +364,19 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
         <div className="nx-side-scroll" onClick={(e) => { if (e.target === e.currentTarget) close() }}>
           {/* weevboss and weevils' own repo are one block at the top (weevils improving itself). Where weevboss has no
               repo of its own (anyone else's install), the block is its logo and « weevils » alone. */}
+          {/* The person's open requests (requests-band.tsx), in the colour of the page it opens (RequestsPage wears
+              the same slot): right under weevboss's head, above its sessions, so it is seen without scrolling
+              however long that list is. */}
           {self ? (
-            <ProjectGroup snap={snap} project={self} color={colors[self.id] ?? 'p0'} current={current} open={open} page={page} boss />
+            <ProjectGroup snap={snap} project={self} color={colors[self.id] ?? 'p0'} current={current} open={open} page={page} boss
+              under={<RequestsBand snap={snap} color={colors.__foot ?? 'p3'} page={page} />} />
           ) : (
             <button className={`nx-row nx-boss-row band recursive-identity recursive-active ${current === null ? 'nx-active' : ''}`} onClick={() => open(null)} aria-label="weevboss">
               <WeevbossLogo className="nx-logo" />
               <span className="nx-row-title">weevils</span>
             </button>
           )}
+          {!self && <RequestsBand snap={snap} color={colors.__foot ?? 'p3'} page={page} />}
           {projects.filter((p) => p !== self).map((p) => (
             <ProjectGroup key={p.id} snap={snap} project={p} color={colors[p.id] ?? 'p0'} current={current} open={open} page={page}
               pinned={pinnedProject(snap, p)} />

@@ -399,8 +399,6 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
 export interface Supervision { at: number; action: 'relaunch' | 'gave-up' | 'asked'; why: string }
 
 type Stored = Optimizer & {
-  /** Its runs' sessions the person took over by writing to them (core.ts sendOne): ordinary sessions of theirs since. */
-  handedOver?: string[]
   proposalPreparation?: { at: number; source: 'conversation' | 'review'; revision: number; requestHash?: string }
   lifecycle?: {at:number;action:'refuse'|'restore-draft';source?:'api'|'internal';priorEndedAt?:number;wasDraft?:boolean}[]
   creationKey?: string

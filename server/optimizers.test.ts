@@ -358,6 +358,9 @@ describe('auto — the runner', () => {
     expect(run.state).toBe('done')
     expect(run.lastEvent).toBe(O.en.handedOver)
     expect(run.runs?.at(-1)).toMatchObject({ sessionId: 'sess-1', handedOver: T0 + IDLE_MS + MIN })
+    // The app reads the take-over on the listed automation itself: a run's line leaves the list after 30 runs,
+    // the session stays the person's. The field is never stripped from what the app is sent.
+    expect(run.handedOver).toContain('sess-1')
     // An ordinary session of the person's from now on: not the automation's any more.
     expect(o.autoSession('sess-1')).toBeUndefined()
     expect(o.owns('sess-1')).toBe(false)

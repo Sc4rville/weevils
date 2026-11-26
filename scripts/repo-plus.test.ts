@@ -13,7 +13,8 @@ it('sits on every repo drawer’s last line, in the column of its « > »', () =
   const group = main.slice(main.indexOf('function ProjectGroup'), main.indexOf('function SideBar'))
   const foot = group.slice(group.indexOf('nx-project-foot'))
   expect(group).toMatch(/<div className="nx-project-line nx-project-foot">/)
-  expect(foot).toMatch(/done\.length > 0 \?[\s\S]*?done`[\s\S]*?<div className="chars">[\s\S]*?<Icon name="plus" \/>/)
+  // « N done » comes from the catalog since 2026-11-26 (src/i18n/side-rows.ts).
+  expect(foot).toMatch(/done\.length > 0 \?[\s\S]*?t\.done\(done\.length\)[\s\S]*?<div className="chars">[\s\S]*?<Icon name="plus" \/>/)
   expect(foot).toMatch(/page\(\{ kind: 'new', projectId: project\.id \}\)/)
 })
 

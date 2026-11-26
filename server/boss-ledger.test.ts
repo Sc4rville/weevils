@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Session } from '../shared/api.ts'
 import { actionsOf, Ledger, readTurn, relevance, similar, verbatim, type LedgerHost, type Model } from './boss-ledger.ts'
+import { chipOf, stateIn, waitingCount } from '../shared/request-chip.ts'
 import type { LandedCommit } from './ledger-evidence.ts'
 import type { Entry } from './boss-view.ts'
 import { BossTurns } from './boss-turns.ts'
@@ -531,5 +532,67 @@ describe('request titles', () => {
     tick(61 * 60_000)
     fail = false
     expect(await ledger.titleAsks()).toBe(1)
+  })
+})
+
+describe('what waits on the person', () => {
+  // The count the side bar shows beside « requests » (Snapshot.asksWaiting): the rows the requests list marks
+  // « needs you », by the list's own rule and against the same sessions.
+  it('counts the open requests that read « needs you », as the list reads them row by row', () => {
+    const sessions = [session('ask11111', { status: 'needs_user' }), session('work2222', { status: 'working' })]
+    const { ledger, tick } = rig({ sessions })
+    const asked = ledger.add('Pick a colour for the shop')
+    ledger.link(asked.id, 'ask11111')
+    const older = ledger.add('Which price list is the right one?')
+    ledger.link(older.id, 'work2222')
+    older.dispatches[0].outcome = 'question'
+    tick(10 * 60_000)
+    const inHand = ledger.add('Fix the checkout link')
+    ledger.link(inHand.id, 'work2222')
+    ledger.add('Write the welcome page')
+    const paused = ledger.add('Tidy the settings')
+    ledger.link(paused.id, 'gone3333')
+    const lost = ledger.add('Choose the photo for the home page')
+    ledger.link(lost.id, 'gone4444')
+    lost.dispatches[0].outcome = 'question'
+    const closed = ledger.add('Rename the shop')
+    ledger.link(closed.id, 'gone4444')
+    closed.dispatches[0].outcome = 'question'
+    ledger.setStatus(closed.id, 'done', 'user')
+
+    // A session that needs you, an older question on a session now busy with something else, a question whose session is gone.
+    expect(ledger.waiting(sessions)).toBe(3)
+    expect(ledger.openCount).toBe(6)
+    const rows = ledger.view().asks
+    const state = stateIn(rows, sessions)
+    expect(rows.filter((a) => chipOf(a, state(a)) === 'needs').map((a) => a.text).sort()).toEqual(['Choose the photo for the home page', 'Pick a colour for the shop', 'Which price list is the right one?'])
+    expect(ledger.waiting(sessions)).toBe(waitingCount(rows, sessions))
+  })
+
+  it('still counts an older question once the work in hand on its session is closed (the closed row is read too)', () => {
+    const sessions = [session('work2222', { status: 'working' })]
+    const { ledger, tick } = rig({ sessions })
+    const older = ledger.add('Which price list is the right one?')
+    ledger.link(older.id, 'work2222')
+    older.dispatches[0].outcome = 'question'
+    tick(10 * 60_000)
+    const inHand = ledger.add('Fix the checkout link')
+    ledger.link(inHand.id, 'work2222')
+    ledger.setStatus(inHand.id, 'done', 'weevboss')
+    expect(ledger.waiting(sessions)).toBe(1)
+    // The open rows alone would read the question as the work in hand: running, nobody waited on.
+    expect(waitingCount(ledger.asks('open'), sessions)).toBe(0)
+  })
+
+  it('is 0 with nothing open, and follows the sessions it is given', () => {
+    const { ledger } = rig()
+    expect(ledger.waiting([])).toBe(0)
+    const a = ledger.add('Pick a colour for the shop')
+    ledger.link(a.id, 'ask11111')
+    expect(ledger.waiting([session('ask11111', { status: 'needs_user' })])).toBe(1)
+    expect(ledger.waiting([session('ask11111', { status: 'working' })])).toBe(0)
+    expect(ledger.waiting([])).toBe(0)
+    ledger.setStatus(a.id, 'dropped', 'user')
+    expect(ledger.waiting([session('ask11111', { status: 'needs_user' })])).toBe(0)
   })
 })

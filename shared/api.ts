@@ -155,6 +155,9 @@ export interface Session {
   attentionDetail?: string
   /** status = needs_user sans dialogue : le tour fini sur une question ou une demande (shared/asks.ts), pour l'action rapide. */
   ask?: Ask
+  /** status = done or idle, and its last message still ends on a real « Needs you: » line (shared/run-line.ts
+   *  needsLine): what it asks, one plain sentence. The row shows it waits; never a notification, a card or a wake-up. */
+  asksYou?: string
   /** status = interrupted : quand et pourquoi (detail : le message d'erreur de l'outil, s'il y en a un). */
   interrupted?: { at: number; reason: InterruptReason; detail?: string }
   cwd: string
@@ -417,6 +420,9 @@ export interface Optimizer {
   userCreated?: boolean
   /** Session de l'agent qui la fait tourner (visible dans son projet). */
   sessionId?: string
+  /** Its runs' sessions the person took over by writing into them (server/optimizers.ts handOver): ordinary sessions
+   *  of theirs since, never folded back under the automation. Absent from an older server. */
+  handedOver?: string[]
   createdAt: number
   startedAt?: number
   endedAt?: number
@@ -611,6 +617,9 @@ export interface Snapshot {
   memoryCount?: number
   /** Open requests in weevboss's ledger (server/boss-ledger.ts), main machine only. */
   asksOpen?: number
+  /** Of those, the ones that wait on the person: the rows the requests list marks « needs you », counted by the same
+   *  rule (shared/request-chip.ts waitingCount). Main machine only; absent from a server older than 2026-11-26. */
+  asksWaiting?: number
   /** Tâches du h24 proposées, en attente, en cours ou finies récemment (server/optimizers.ts). Les refusées n'y sont pas. */
   optimizers?: Optimizer[]
   /** La machine vue par la bande auto (server/optimizers.ts), sur la machine principale. */

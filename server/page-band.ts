@@ -202,6 +202,7 @@ export function pageData(snap: Snapshot, requests: unknown[]): unknown {
     status: s.status,
     ...(s.now ? { now: s.now } : {}),
     ...(s.attention ? { attention: s.attention } : {}),
+    ...(s.asksYou ? { asksYou: s.asksYou } : {}),
     openedAt: s.openedAt,
     lastActivityAt: s.lastActivityAt,
     ...(s.workStartedAt != null ? { workStartedAt: s.workStartedAt } : {}),

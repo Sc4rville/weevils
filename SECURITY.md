@@ -39,6 +39,15 @@ On your own computer, weevils works the same way, but its agents can reach every
 - programs on the computer don't get in without the code either, unless they can read weevils' local token
   (`~/.local/share/weevils/local-token`, readable by your user only), which weevils' own commands send.
 
+## Other ways in
+
+Besides the app and your access code, two optional ways in, both closed until you open them. The connector for
+ChatGPT or Claude.ai (`/mcp`): you sign it in with your access code, and its tokens reach only the weevbook, never
+`/api`. Agent keys (`/agent/v1`, [docs/agents.md](docs/agents.md)): made in the app's settings, each one can only
+send messages to weevboss, signed with its own name (never yours), and read the replies to them; weevils keeps only
+their SHA-256, and a revoked key stops working at once. The e-mail bridge is deprecated and off unless
+`WEEVILS_MAIL_BRIDGE=on`.
+
 ## What the install does
 
 The command from the setup page is `curl -fsSL https://get.scarville.tech/install.sh | bash -s <setup id>`. Every

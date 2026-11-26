@@ -111,10 +111,11 @@ Sessions opened in a plain terminal (without `wv`) are hidden: weevils can't wri
 With an OpenAI key, quick answers and spoken summaries also use OpenAI; without one they use Claude on your
 subscription.
 
-## E-mail
+## Other agents
 
-Other agents (a CI bot, another assistant) can write to your sessions by e-mail, through an alias of your inbox.
-Only senders you declare get through. Setup and rules: [docs/email.md](docs/email.md).
+Other agents (a bot, a web agent, a CI job) can write to weevboss and read its replies with an agent key made in the
+app's settings; ChatGPT and Claude.ai go through the connector. How: [docs/agents.md](docs/agents.md). The older
+e-mail bridge ([docs/email.md](docs/email.md)) is deprecated and off by default.
 
 ## Settings
 

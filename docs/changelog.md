@@ -12,6 +12,15 @@ A short summary of what changed after the first working version.
   the name at install; `weevils address claim <name>` changes it, `weevils address release` gives it back. A
   computer on a quick tunnel moves over by itself at its next start and tells the phone. docs/stable-address.md.
 
+### Agents
+- Agent keys: a bot or a web agent writes to weevboss and reads its replies with a key of its own, made in the app's
+  settings (**agent keys**): `POST /agent/v1/messages`, then `GET /agent/v1/messages/<id>?wait=25`. Each key is one
+  author, named by you and set by weevils (never by what the agent writes), with one scope, shown once, kept as a
+  hash, revocable at once. ChatGPT and Claude.ai keep the connector, whose address the same page shows.
+  [agents.md](agents.md).
+- The e-mail bridge is deprecated and off by default, even with an address and a password: `WEEVILS_MAIL_BRIDGE=on`
+  turns it back on. weevboss now offers agent keys first.
+
 ## 2026-11-23
 
 ### Tests and builds

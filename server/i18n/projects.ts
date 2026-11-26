@@ -3,11 +3,11 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
-    misc: 'divers',
+    misc: 'à-côtés',
     general: 'général',
   },
   en: {
-    misc: 'misc',
+    misc: 'side quests',
     general: 'general',
   },
 })

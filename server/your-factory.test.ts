@@ -125,10 +125,20 @@ describe('what the factory switches', () => {
   it('pins a drawer of the side bar or takes it out, and refuses anything else', async () => {
     const d = deps()
     await route(d, 'POST', '/api/factory/drawer', { id: 'pages', shown: false })
-    await route(d, 'POST', '/api/factory/drawer', { id: 'misc', shown: true })
-    expect(d.st.drawers).toEqual({ pages: false, misc: true })
+    await route(d, 'POST', '/api/factory/drawer', { id: 'autonomous', shown: true })
+    expect(d.st.drawers).toEqual({ pages: false, autonomous: true })
+    expect((await route(d, 'POST', '/api/factory/drawer', { id: 'misc', shown: true })).status).toBe(400)
     expect((await route(d, 'POST', '/api/factory/drawer', { id: 'weevils', shown: false })).status).toBe(400)
     expect((await route(d, 'POST', '/api/factory/drawer', { id: 'pages' })).status).toBe(400)
+  })
+  it('pins a conversation started with no repo in the side bar, its own band, or takes it out', async () => {
+    const d = deps()
+    await route(d, 'POST', '/api/factory/session', { id: '0c3dea6a-eca6-4dac-aab1-870fdbb63208', pinned: true })
+    expect(d.st.pinnedSessions).toEqual(['0c3dea6a-eca6-4dac-aab1-870fdbb63208'])
+    await route(d, 'POST', '/api/factory/session', { id: '0c3dea6a-eca6-4dac-aab1-870fdbb63208', pinned: false })
+    expect(d.st.pinnedSessions).toEqual([])
+    expect(d.st.metSessions).toEqual(['0c3dea6a-eca6-4dac-aab1-870fdbb63208'])
+    expect((await route(d, 'POST', '/api/factory/session', { id: '../x', pinned: true })).status).toBe(400)
   })
   it('shares tests and builds between two machines or more, on until turned off', async () => {
     const d = deps({ away: () => [{ name: 'laptop', n: 2 }] })

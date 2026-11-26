@@ -248,6 +248,11 @@ body { overflow: hidden; }
 .nx-pin { position: absolute; right: -5px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; }
 .nx-repo-mark .nx-pin .ic { width: 15px; height: 15px; }
 .nx-repo-mark .nx-pin .ic path { stroke-width: 1.5; }
+/* A conversation started with no repo, its own band (main.tsx LooseBand): a repo's head, its title on the name's line,
+   what it waits for under it, its sign in the working star's column. */
+.nx-loose .nx-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.nx-loose .nx-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-loose .nx-loose-sign { flex: none; margin-left: auto; padding-right: 10px; }
 /* Autonomous at rest: its loop, still and in ink like the other marks; running, the app's AutoMark (colour, travelling). */
 .nx-autos-mark .auto-mark { width: 26px; height: 26px; }
 .nx-autos-mark .auto-mark path { stroke-width: 1.5; }

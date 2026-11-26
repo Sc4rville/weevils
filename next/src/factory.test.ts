@@ -1,5 +1,5 @@
-// Which projects the side bar shows (factory.tsx): switched off in Your factory, never (at once, whatever its
-// conversations do); pinned, always; the others while they have conversations. A flip shows at once and holds until
+// Which repos the side bar shows (factory.tsx): only the pinned ones (2026-11-26), whatever their conversations do;
+// weevils itself always. A flip shows at once and holds until
 // the server agrees. Your factory's Projects keeps an off project listed, in place, to switch it back on.
 import { afterEach, expect, it } from 'vitest'
 import type { Project, Snapshot } from '../../shared/api.ts'
@@ -13,11 +13,15 @@ it('shows a pinned project even with no conversation', () => {
   expect(inSideBar(snap({ pinnedRepos: ['shop'] }), p('shop'))).toBe(true)
   expect(inSideBar(snap({}), p('shop'))).toBe(false)
 })
-it('switched off, a project leaves at once, even while its conversation works or needs you', () => {
+it('a repo not pinned stays out, even while its conversation works or needs you; switched off, it leaves at once', () => {
   const s = { id: 's', projectId: 'shop', status: 'done', archived: false }
-  expect(inSideBar(snap({ sessions: [s] as never }), p('shop', ['shop-web']))).toBe(true)
-  for (const status of ['done', 'working', 'needs_user', 'interrupted'])
-    expect(inSideBar(snap({ sessions: [{ ...s, status }] as never, hiddenProjects: ['shop'] }), p('shop', ['shop-web']))).toBe(false)
+  for (const status of ['done', 'working', 'needs_user', 'interrupted']) {
+    expect(inSideBar(snap({ sessions: [{ ...s, status }] as never }), p('shop', ['shop-web']))).toBe(false)
+    expect(inSideBar(snap({ sessions: [{ ...s, status }] as never, pinnedRepos: ['shop-web'], hiddenProjects: ['shop'] }), p('shop', ['shop-web']))).toBe(false)
+  }
+})
+it('weevils itself is always there, pinned or not', () => {
+  expect(inSideBar(snap({}), { ...p('weevils'), installation: {} } as never)).toBe(true)
 })
 it('a flipped switch shows at once and is not undone by a snapshot that does not know it yet', () => {
   const s = snap({ sessions: [{ id: 's', projectId: 'shop', status: 'working', archived: false }] as never })

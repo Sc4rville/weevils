@@ -879,6 +879,13 @@ a, a:hover, a:focus, a:active, a:visited, button, [role='link'] {
 .md th { font-weight: 700; }
 .md tr + tr td, .md tbody tr:first-child td { border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
 .md td { min-width: 5.5em; max-width: 16em; }
+/* A fold in a message (« +++ See the details »): a quiet line that opens in place, its inside a touch smaller. */
+.md-fold > summary { cursor: pointer; opacity: .75; list-style: none; padding-block: 6px; }
+.md-fold > summary::-webkit-details-marker { display: none; }
+.md-fold > summary::after { content: ' ›'; }
+.md-fold[open] > summary::after { content: ' ⌄'; }
+.md-fold > :not(summary) { font-size: .9375em; opacity: .9; }
+.md-fold > * + * { margin-top: .5em; }
 .md-code { position: relative; }
 .md-code pre { margin: 0 32px 0 0; padding-block: 2px; white-space: pre; overflow-x: auto; font-size: .8125rem; line-height: 1.5; }
 .md-code > button.copy { position: absolute; top: -8px; inset-inline-end: -6px; }

@@ -10,10 +10,13 @@ export type Block =
   | { kind: 'table'; head: string[]; rows: string[][] }
   | { kind: 'code'; body: string; lang: string }
   | { kind: 'rule' }
+  /** « +++ Voir le détail » … « +++ »: a fold, closed at first, its inside read as blocks again. */
+  | { kind: 'fold'; summary: string; body: Block[] }
 
 export type ListItem = { text: string; sub: string[] }
 
 const FENCE = /^\s*(```|~~~)\s*([\w+-]*)/
+const FOLD = /^\s*\+\+\+\s*(.*?)\s*$/
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/
 const ITEM = /^(\s*)(?:([-*+•])|(\d{1,3})[.)])\s+(.*)$/
 const QUOTE = /^\s{0,3}>\s?(.*)$/
@@ -42,6 +45,15 @@ export function blocks(text: string): Block[] {
       i++
       while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++])
       out.push({ kind: 'code', body: body.join('\n').replace(/\s+$/, ''), lang: fence[2] })
+      continue
+    }
+    const fold = FOLD.exec(line)
+    if (fold && fold[1]) {
+      flush()
+      const body: string[] = []
+      i++
+      while (i < lines.length && !(FOLD.test(lines[i]) && !FOLD.exec(lines[i])![1])) body.push(lines[i++])
+      out.push({ kind: 'fold', summary: fold[1], body: blocks(body.join('\n')) })
       continue
     }
     if (!line.trim()) { flush(); continue }

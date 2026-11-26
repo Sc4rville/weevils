@@ -11,8 +11,8 @@
 #   wv @<hôte> a | ls        s'y rattacher / lister là-bas
 #   wv main …                pareil sur la machine principale (machine secondaire installée avec --secondary)
 #
-# Les agents demandent la permission avant d'agir ; WV_SAFE=0 wv … (ou WEEVILS_SAFE=0 dans ~/.config/weevils/env)
-# pour qu'ils agissent sans demander.
+# Les agents bossent en autonomie, comme ceux que weevils lance ; WV_SAFE=1 wv … (ou « Me demander » dans l'app, qui écrit
+# WEEVILS_SAFE=1 dans ~/.config/weevils/env) pour qu'ils demandent avant d'agir.
 # Tourne aussi sous le bash 3.2 de macOS : un tableau vide s'écrit ${a[@]+"${a[@]}"} (set -u).
 set -euo pipefail
 
@@ -39,10 +39,11 @@ fi
 
 # WV_SAFE gagne ; sinon WEEVILS_SAFE du fichier de config, comme weevilsd : les deux interrupteurs disent la même chose.
 WV_SAFE=${WV_SAFE:-$(sed -n 's/^[[:space:]]*WEEVILS_SAFE[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([0-9]*\).*/\1/p' "${WEEVILS_CONFIG:-$HOME/.config/weevils/env}" 2>/dev/null | head -1 || true)}
-# Par défaut les agents demandent la permission ; seul un 0 explicite (WV_SAFE=0 ou WEEVILS_SAFE=0) les fait agir sans demander.
+# Par défaut les agents agissent sans demander ; seul un 1 explicite (WV_SAFE=1 ou WEEVILS_SAFE=1) les fait demander. En
+# root, Claude Code refuse de sauter ses demandes : ils demandent toujours.
 # Demander se dit explicitement : sans option, le mode par défaut de la personne (bypassPermissions dans
 # ~/.claude/settings.json, approval_policy = "never" dans ~/.codex/config.toml) l'emporterait et rien ne serait demandé.
-if [ "${WV_SAFE:-}" = 0 ]; then claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox)
+if [ "${WV_SAFE:-}" != 1 ] && [ "$(id -u)" != 0 ]; then claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox)
 else claude_flags=(--permission-mode default); codex_flags=(-a on-request -s workspace-write); fi
 
 # Serveur tmux dédié, comme weevilsd (server/mux.ts) : un « tmux kill-server » lancé ailleurs ne ferme pas les sessions.

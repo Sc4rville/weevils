@@ -65,10 +65,10 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    - Missing system tools come from the distribution's own packages, unpacked in the home folder
      (`apt-get download`, no root). Elsewhere, one shown `sudo` command, then `sudo -k`.
    - cloudflared is checked against GitHub's published digest.
-   - Agents keep their permission prompts (the installer's default, on a computer as on a server).
+   - Agents work on their own (the installer's default, on a computer as on a server); the app switches them to asking.
    - The computer's phone link (a Cloudflare quick tunnel) makes it answer from the Internet, behind the access code:
      the page and the script say so before the install; `--no-link` avoids it.
-   - Options after the id: `--no-link`, `--no-auto-update`, `--no-permission-prompts` (→ `install.sh --no-ask-permissions`).
+   - Options after the id: `--no-link`, `--no-auto-update`, `--no-permission-prompts` (→ `install.sh --no-ask-permissions`, the default anyway).
 
    `follow-main.sh` rebuilds (and signs) the bundle and the main manifest before restarting the service.
 3. A live progress screen follows the install (the installer's step names). Its address is the setup's resume link:

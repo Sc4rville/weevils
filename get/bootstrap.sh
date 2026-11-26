@@ -3,12 +3,12 @@
 # https://get.scarville.tech/install.sh (SHA-256: https://get.scarville.tech/install.sh.sha256). Full security notes:
 # https://get.scarville.tech/security (SECURITY.md). Written for bash 3.2 and BSD tools as well as Linux.
 # Usage: curl -fsSL https://get.scarville.tech/install.sh | bash -s <setup id> [--no-link] [--no-auto-update]
-#        [--no-permission-prompts]
+#        [--no-permission-prompts]   (still accepted: agents already work on their own by default)
 # The setup id only lets this script tell the page that opened it how far the install is.
 #
 # WHAT IT IS: weevils lets you watch and drive the Claude Code / Codex sessions of this machine from your phone. Its
-# agents run HERE, as you, with your files. They ask before acting (you answer from the app), on a computer as on a
-# rented server; --no-permission-prompts lets them act without asking.
+# agents run HERE, as you, with your files. They work on their own by default (no permission prompt at each command),
+# on a computer as on a rented server; in the app, you can have them ask before acting, for everything or one session.
 #
 # WHAT IT DOES, as you, in your home folder:
 #   1. Downloads the weevils code, checks its signature against the release key pinned below (refused if it does not
@@ -54,7 +54,7 @@ _weevils_get() {
   # The shared copy (get.scarville.tech/install.sh): the setup id comes as the argument, and this setup's settings
   # are read as plain values, checked one by one (nothing fetched here is run).
   # Options after the setup id: --no-link (no public link for the phone: weevils stays on this machine only),
-  # --no-auto-update (never fetch a new version by itself), --no-permission-prompts (agents act without asking, on a
+  # --no-auto-update (never fetch a new version by itself), --no-permission-prompts (agents act without asking: the default now; on a
   # computer as on a server).
   local opt link=1 extra=() prompts=1
   for opt in "${@:2}"; do
@@ -328,6 +328,8 @@ _weevils_get() {
   # ------------------------------------------------------------ 3. the install, its step names reported
   run_install() {
     : >"$log"
+    if [ "$UI_LANG" = fr ]; then say "j'installe weevils : quelques minutes, la page suit. Tout est noté dans ~/weevils-install.log." # i18n-ignore
+    else say "installing weevils: a few minutes, the page follows along. Everything is written to ~/weevils-install.log."; fi
     # The installer never asks anything; neither does git when the repository is not readable from here.
     (cd "$dir" && GIT_TERMINAL_PROMPT=0 ./install.sh --agent --lang "$UI_LANG" "$@") >>"$log" 2>&1 &
     local pid=$! line t seen=0 total alive
@@ -341,7 +343,8 @@ _weevils_get() {
         while IFS= read -r line; do
           [[ $line =~ ^\ ([^\ ].{0,70}[^\ ])\ $ ]] || continue
           t=${BASH_REMATCH[1]}
-          case "$TITLES" in *"|$t|"*) report --data-urlencode event=step --data-urlencode "title=$t" ;; esac
+          # Each step, on the page and in this terminal (a quiet terminal for minutes looks stuck).
+          case "$TITLES" in *"|$t|"*) report --data-urlencode event=step --data-urlencode "title=$t"; say "… $t" ;; esac
         done < <(sed -n "$((seen + 1)),${total}p" "$log")
         seen=$total
       fi
@@ -361,8 +364,8 @@ _weevils_get() {
     esac
   }
 
-  # Agents ask before acting (answered from the app), the installer's default everywhere, unless the person said
-  # otherwise.
+  # Agents work on their own by default (the installer's default everywhere); the person switches that in the app.
+  # --no-permission-prompts still says it explicitly.
   [ "$prompts" = 1 ] || extra+=(--no-ask-permissions)
   case $MODE in
     vps) run_install --domain "$REACH" ${extra[@]+"${extra[@]}"} ;;
@@ -536,10 +539,17 @@ EOF
   report --data-urlencode event=done --data-urlencode "url=$url" --data-urlencode "mode=$mode" \
     --data-urlencode "ready=$ready" --data-urlencode "sealed=$enc" --data-urlencode "version=$version"
   echo
-  say "ready: $url"
-  [ -n "$enc" ] || say "open the link from $(sum link_file) on your phone (the setup page could not receive it)"
+  # The end: one clear sentence, back to the page (it shows the QR code for the phone), the link as well.
+  if [ -n "$enc" ]; then
+    if [ "$UI_LANG" = fr ]; then say "C'est bon ✓ Retourne sur la page weevils : ton téléphone s'y connecte en un geste." # i18n-ignore
+    else say "All set ✓ Head back to the weevils page: your phone connects from there in one tap."; fi
+  else
+    if [ "$UI_LANG" = fr ]; then say "C'est bon ✓ Ton lien de connexion est dans $(sum link_file) (la page n'a pas pu le recevoir)." # i18n-ignore
+    else say "All set ✓ Your login link is in $(sum link_file) (the page could not receive it)."; fi
+  fi
   if [ "$MODE" = pc ]; then
-    say "on your phone, open this link (it logs you in, keep it to yourself):"
+    if [ "$UI_LANG" = fr ]; then say "ou ouvre ce lien sur ton téléphone (il te connecte, garde-le pour toi) :" # i18n-ignore
+    else say "or open this link on your phone (it logs you in, keep it to yourself):"; fi
     printf '\n  %s\n\n' "$link"
     ! command -v qrencode >/dev/null || qrencode -t ANSIUTF8 -m 2 "$link" | sed 's/^/  /' || true
   fi

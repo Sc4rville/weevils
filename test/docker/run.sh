@@ -36,6 +36,8 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
+# LOGS=<dir> keeps a copy of what each pasted line printed (join.log, join4.log…), as a newcomer's terminal shows it.
+keep_log() { [ -z "${LOGS:-}" ] || { mkdir -p "$LOGS" && cp "$work/$1" "$LOGS/$1"; }; }
 
 say() { printf '\n\e[30;43m %s \e[0m\n' "$*"; }
 # The VPS this runs on has 'heavy' (waits for a calm machine, then nice); anywhere else, the command runs as is.
@@ -196,7 +198,7 @@ run_systemd() {
   check "main: still a single remote entry" as_test '[ "$(grep -c "^WEEVILS_REMOTES=" ~/.config/weevils/env)" = 1 ] && grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
 
   say "systemd: a third machine plugged in from weevboss's one line (join.sh), its key held to the tunnel"
-  local c3=weevils-test-sd3-$tag ip line
+  local c3=weevils-test-sd3-$tag ip line rc
   containers+=("$c3")
   docker run -d --name "$c3" --hostname desk --network "$net" --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock "$image" >/dev/null
   docker exec "$c3" systemctl is-system-running --wait >/dev/null 2>&1
@@ -234,7 +236,8 @@ run_systemd() {
     check "  … that line: our https address, a code" true
     check "  … only the code's hash is kept on the main machine" as_test "test -s ~/.local/share/weevils/join.json && ! grep -qF -- '${line##* }' ~/.local/share/weevils/join.json"
     echo "  \$ $line"
-    if as_3 "$line" >"$work/join.log" 2>&1; then
+    as_3 "$line" >"$work/join.log" 2>&1; rc=$?; keep_log join.log
+    if [ "$rc" = 0 ]; then
       passes=$((passes + 1)); echo "  ok   the line ran on the third machine"; sed 's/^/  │ /' "$work/join.log" | tail -15
     else fails=$((fails + 1)); echo "  FAIL the line"; tail -30 "$work/join.log"; fi
     check "third: a secondary named after its host, its tunnel on the next free port" as_3 'systemctl --user is-active weevilsd weevils-tunnel && grep -qx WEEVILS_MACHINE=desk ~/.config/weevils/env && grep -qx "WEEVILS_TUNNEL_PORT=4193" ~/.config/weevils/service.conf'

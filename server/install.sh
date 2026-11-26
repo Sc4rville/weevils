@@ -97,18 +97,18 @@ jq --arg cmd "$HOME/.local/bin/weevils-hook" '
     else .hooks[$e] = ((.hooks[$e] // []) + [{"hooks":[{"type":"command","command":$cmd}]}]) end)
 ' "$settings" >"$tmp" && put_settings "$tmp"
 
-# Claude Code's one-time warning about bypass-permissions mode: skipped only for someone who turned permission prompts
-# off (WEEVILS_SAFE=0, install.sh --no-ask-permissions), or it would end the first session (weevboss included) before
-# anyone sees it. Never as root (the flag is refused there). Agents ask by default, and then this setting is not
-# written; one weevils wrote earlier (marked by $skip_mark, or absent from the settings as they were before weevils,
-# $settings.bak-weevils) is taken back. install.sh --uninstall takes it back too.
+# Claude Code's one-time warning about bypass-permissions mode: skipped when agents work on their own (the default:
+# WEEVILS_SAFE unset or 0; the person switches it in the app), or it would end the first session (weevboss included)
+# before anyone sees it. Never as root (the flag is refused there, agents ask). When the person chose « ask me »
+# (WEEVILS_SAFE=1), one weevils wrote earlier (marked by $skip_mark, or absent from the settings as they were before
+# weevils, $settings.bak-weevils) is taken back. install.sh --uninstall takes it back too.
 skip_mark=$HOME/.local/share/weevils/claude-skip-prompt
 weevils_skip() {
   [ -f "$skip_mark" ] && return 0
   [ -f "$settings.bak-weevils" ] && [ "$(jq -r '.skipDangerousModePermissionPrompt // false' "$settings.bak-weevils" 2>/dev/null)" != true ]
 }
 skip_now=$(jq -r '.skipDangerousModePermissionPrompt // false' "$settings")
-if [ "$(cfg get WEEVILS_SAFE)" = 0 ] && [ "$(id -u)" != 0 ]; then
+if [ "$(cfg get WEEVILS_SAFE)" != 1 ] && [ "$(id -u)" != 0 ]; then
   if [ "$skip_now" != true ]; then
     tmp=$(mktemp)
     jq '.skipDangerousModePermissionPrompt = true' "$settings" >"$tmp" && put_settings "$tmp"

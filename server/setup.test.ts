@@ -267,9 +267,15 @@ describe('never a command for the user to type', () => {
       const t = M[lang]
       // npx first; the curl line under it for a machine without Node.js.
       const join = t.joinLine('npx weevils join weevils.example.com CODE', 'curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE')
-      expect(join.match(/`[^`]+`/g)).toEqual(['`npx weevils join weevils.example.com CODE`', '`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
-      // Before the npm package is published: the curl line alone.
-      expect(t.joinLine(null, 'curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE').match(/`[^`]+`/g)).toEqual(['`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
+      // Then what it does (its folder, ~/weevils, in code), the script to read, and the one line that removes it all.
+      const undo = '`~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils`'
+      expect(join.match(/`[^`]+`/g)).toEqual(['`npx weevils join weevils.example.com CODE`', '`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`', '`~/weevils`', undo])
+      expect(join).toContain('](https://weevils.example.com/api/join.sh)')
+      expect(join).toMatch(/\n\+\+\+ \S.*\n[\s\S]*npx[\s\S]*\n\+\+\+\n/)
+      // Before the npm package is published: the curl line alone, and no word about npx in the details.
+      const curlOnly = t.joinLine(null, 'curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE')
+      expect(curlOnly.match(/`[^`]+`/g)).toEqual(['`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`', '`~/weevils`', undo])
+      expect(curlOnly).not.toMatch(/npx/)
       expect(t.claudeTerminal('no answer', 'claude').match(/`[^`]+`/g)).toEqual(['`claude`'])
       expect(t.codexTerminal('no answer', 'codex login').match(/`[^`]+`/g)).toEqual(['`codex login`'])
       // Another computer that did not install, or that stopped answering: the one command to run on it.

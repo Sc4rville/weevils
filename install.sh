@@ -48,18 +48,18 @@ ORIG_PATH=$PATH
 # ---------------------------------------------------------------- messages (English, French)
 
 # One plain variable per message (EN_<key>, FR_<key>), read by t(): bash 3.2 has no associative array.
-EN_title="weevils installer"
-FR_title="installation de weevils"
+EN_title="let's set weevils up on this machine: a few minutes, nothing for you to do"
+FR_title="on installe weevils sur cette machine : quelques minutes, tu n'as rien à faire"
 EN_usage="usage: install.sh [--yes | --agent] [--name <first name>] [--lang en|fr] [--domain <host> | --url <https://…> | --lan] [--port <n>] [--dir <path>] [--secondary <ssh-host>] [--machine <id>] [--no-update] [--ask-permissions | --no-ask-permissions] [--no-auto-update] | --uninstall [--purge]"
 FR_usage="usage : install.sh [--yes | --agent] [--name <prénom>] [--lang en|fr] [--domain <hôte> | --url <https://…> | --lan] [--port <n>] [--dir <dossier>] [--secondary <hôte-ssh>] [--machine <id>] [--no-update] [--ask-permissions | --no-ask-permissions] [--no-auto-update] | --uninstall [--purge]"
-EN_s_system="checking the system"
-FR_s_system="vérification du système"
+EN_s_system="the tools weevils needs"
+FR_s_system="les outils dont weevils a besoin"
 EN_no_tty="no terminal to ask questions: default answers, and no to anything that installs (run with --yes or from a terminal)"
 FR_no_tty="pas de terminal pour poser des questions : réponses par défaut, et non à tout ce qui installe (lance avec --yes ou depuis un terminal)"
 EN_no_tty_no="no terminal to answer: taken as no. Run with --yes or from a terminal."
 FR_no_tty_no="pas de terminal pour répondre : je prends ça pour un non. Lance avec --yes ou depuis un terminal."
-EN_root_warn="running as root: Claude Code refuses to skip permission prompts as root, so agents here will ask before acting (WEEVILS_SAFE=1). A regular user with sudo is better (adduser me && usermod -aG sudo me)."
-FR_root_warn="lancé en root : Claude Code refuse de sauter les demandes de permission en root, donc les agents demanderont avant d'agir (WEEVILS_SAFE=1). Mieux vaut un utilisateur normal avec sudo (adduser moi && usermod -aG sudo moi)."
+EN_root_warn="running as root: Claude Code wants a regular user to work on its own, so here your agents will ask before acting. A regular user with sudo is better."
+FR_root_warn="lancé en root : Claude Code veut un utilisateur normal pour bosser en autonomie, donc ici tes agents te demanderont avant d'agir. Un utilisateur normal avec sudo, c'est mieux."
 EN_wsl="WSL detected: your phone can't reach WSL as is. Use Tailscale (on Windows or in WSL), or networkingMode=mirrored in %UserProfile%\\.wslconfig; add vmIdleTimeout=-1 there too, or WSL stops (and weevilsd with it) when no terminal is open."
 FR_wsl="WSL détecté : ton téléphone ne peut pas joindre WSL tel quel. Passe par Tailscale (sous Windows ou dans WSL), ou networkingMode=mirrored dans %UserProfile%\\.wslconfig ; ajoute aussi vmIdleTimeout=-1, sinon WSL s'arrête (et weevilsd avec) quand aucun terminal n'est ouvert."
 EN_no_sudo="installing packages needs root: run as root, or install sudo."
@@ -72,18 +72,18 @@ EN_agent_mode="run by an agent: no questions, no colours, a summary at the end"
 FR_agent_mode="lancé par un agent : pas de questions, pas de couleurs, un résumé à la fin"
 EN_no_pm="no supported package manager (apt, dnf, pacman, zypper, apk). Install these by hand, then run me again:"
 FR_no_pm="pas de gestionnaire de paquets connu (apt, dnf, pacman, zypper, apk). Installe-les à la main, puis relance-moi :"
-EN_pm_failed="weevils could not install a package it needs on this computer:"
-FR_pm_failed="weevils n'a pas pu installer un paquet dont il a besoin sur cet ordinateur :"
-EN_step_failed="the installation stopped at this step:"
+EN_pm_failed="one tool weevils needs didn't install on this computer:"
+FR_pm_failed="un outil dont weevils a besoin ne s'est pas installé sur cet ordinateur :"
+EN_step_failed="the install paused at this step:"
 FR_step_failed="l'installation s'est arrêtée à cette étape :"
-EN_fix_it="To fix it, run:"
-FR_fix_it="Pour corriger, lance :"
-EN_missing="missing:"
-FR_missing="manquant :"
-EN_ask_pkgs="install them now?"
-FR_ask_pkgs="je les installe ?"
-EN_installing="installing"
-FR_installing="installation de"
+EN_fix_it="This should sort it out:"
+FR_fix_it="Ça devrait régler ça :"
+EN_missing="missing here:"
+FR_missing="il manque ici :"
+EN_ask_pkgs="add them now?"
+FR_ask_pkgs="je les ajoute ?"
+EN_installing="adding"
+FR_installing="j'ajoute"
 EN_refused="can't go on without them. Install them, then run me again."
 FR_refused="impossible de continuer sans eux. Installe-les, puis relance-moi."
 EN_node_old="needs Node.js >= 22.18 (found:"
@@ -98,14 +98,14 @@ EN_tmux_old="tmux >= 3.2 is needed (found"
 FR_tmux_old="il faut tmux >= 3.2 (trouvé :"
 EN_tmux_hint="install a newer tmux (your distribution's backports, or build it), then run me again."
 FR_tmux_hint="installe un tmux plus récent (backports de ta distribution, ou compilé), puis relance-moi."
-EN_no_claude="Claude Code is not installed. weevils needs it: weevboss runs on it (Codex is optional)."
-FR_no_claude="Claude Code n'est pas installé. weevils en a besoin : weevboss tourne dessus (Codex est optionnel)."
+EN_no_claude="Claude Code isn't here yet: weevils runs your agents on it, so I'm adding it (Anthropic's official installer)."
+FR_no_claude="Claude Code n'est pas encore là : weevils fait tourner tes agents dessus, donc je l'ajoute (installateur officiel d'Anthropic)."
 EN_ask_claude="install Claude Code now (official installer, into ~/.local/bin)?"
 FR_ask_claude="j'installe Claude Code maintenant (installateur officiel, dans ~/.local/bin) ?"
-EN_claude_failed="Claude Code could not be installed. Install it by hand, then log in once:"
-FR_claude_failed="Claude Code n'a pas pu être installé. Installe-le à la main, puis connecte-toi une fois :"
-EN_claude_later="later, to install Claude Code:"
-FR_claude_later="plus tard, pour installer Claude Code :"
+EN_claude_failed="Claude Code didn't install this time. No worries: weevboss offers it again in the app."
+FR_claude_failed="Claude Code ne s'est pas installé cette fois. Pas grave : weevboss te le repropose dans l'app."
+EN_claude_later="Claude Code can come later: weevboss offers it in the app."
+FR_claude_later="Claude Code peut venir plus tard : weevboss te le propose dans l'app."
 EN_codex_opt="Codex (optional), to install it:"
 FR_codex_opt="Codex (optionnel), pour l'installer :"
 EN_s_source="getting weevils"
@@ -128,24 +128,24 @@ EN_ask_domain="domain for HTTPS, pointing to this machine (empty: none, I'll sho
 FR_ask_domain="domaine pour le HTTPS, qui pointe vers cette machine (vide : aucun, je te montrerai les autres accès)"
 EN_port_busy="port taken, weevils uses the next free pair:"
 FR_port_busy="port déjà pris, weevils prend la paire libre suivante :"
-EN_cfg_new="created"
-FR_cfg_new="créé"
-EN_cfg_kept="kept your values in"
-FR_cfg_kept="tes valeurs gardées dans"
-EN_s_build="dependencies and app build"
-FR_s_build="dépendances et construction de l'app"
-EN_deps_ok="dependencies up to date"
-FR_deps_ok="dépendances à jour"
-EN_build_ok="app already built for this version"
-FR_build_ok="app déjà construite pour cette version"
-EN_s_service="weevilsd service"
-FR_s_service="service weevilsd"
-EN_bg_mode="no systemd here (container, WSL…): weevilsd runs in the background, without auto-start at boot. Control it with: weevils-service start|stop|status|logs"
-FR_bg_mode="pas de systemd ici (conteneur, WSL…) : weevilsd tourne en arrière-plan, sans démarrage auto au boot. Pour le piloter : weevils-service start|stop|status|logs"
+EN_cfg_new="settings saved"
+FR_cfg_new="réglages enregistrés"
+EN_cfg_kept="your settings are kept"
+FR_cfg_kept="tes réglages sont gardés"
+EN_s_build="getting it ready"
+FR_s_build="préparation"
+EN_deps_ok="everything it needs is already in place"
+FR_deps_ok="tout ce qu'il lui faut est déjà là"
+EN_build_ok="the app is already built for this version"
+FR_build_ok="l'app est déjà prête pour cette version"
+EN_s_service="the background service"
+FR_s_service="le service en fond"
+EN_bg_mode="no service manager here (a container, WSL…): weevils runs in the background, and comes back after a restart through a line in your crontab."
+FR_bg_mode="pas de gestionnaire de services ici (un conteneur, WSL…) : weevils tourne en fond, et revient après un redémarrage grâce à une ligne dans ta crontab."
 EN_cron_added="auto-start at boot added to your crontab (@reboot)"
 FR_cron_added="démarrage au boot ajouté à ta crontab (@reboot)"
-EN_s_https="HTTPS with Caddy"
-FR_s_https="HTTPS avec Caddy"
+EN_s_https="a secure address (HTTPS)"
+FR_s_https="une adresse sécurisée (HTTPS)"
 EN_caddy_nopm="Caddy could not be installed here: install it by hand (https://caddyserver.com/docs/install), then run me again."
 FR_caddy_nopm="Caddy n'a pas pu être installé ici : installe-le à la main (https://caddyserver.com/docs/install), puis relance-moi."
 EN_caddy_nosudo="the HTTPS site in /etc/caddy needs sudo: kept as it is."
@@ -160,26 +160,16 @@ EN_caddy_bad="Caddy refuses the new config: previous Caddyfile restored, HTTPS s
 FR_caddy_bad="Caddy refuse la nouvelle config : ancien Caddyfile remis, HTTPS laissé de côté."
 EN_web_busy="already answers on ports 80/443 of this server: weevils leaves it as it is and installs no Caddy (to reach weevils through it, have it forward to 127.0.0.1:4179, then run me again with --url https://<your domain>)."
 FR_web_busy="répond déjà sur les ports 80/443 de ce serveur : weevils n'y touche pas et n'installe pas Caddy (pour passer par lui, fais-le renvoyer vers 127.0.0.1:4179, puis relance-moi avec --url https://<ton domaine>)."
-EN_waiting="waiting for weevilsd"
-FR_waiting="j'attends weevilsd"
+EN_waiting="starting weevils"
+FR_waiting="weevils démarre"
 EN_down="weevilsd does not answer. Look at: weevils-service status, weevils-service logs"
 FR_down="weevilsd ne répond pas. Regarde : weevils-service status, weevils-service logs"
 EN_ready="weevils is ready"
 FR_ready="weevils est prêt"
-EN_almost_login="almost ready: run claude once in a terminal to log in, then open the link"
-FR_almost_login="presque prêt : lance claude une fois dans un terminal pour te connecter, puis ouvre le lien"
-EN_almost_install="almost ready: install Claude Code and log in once, then open the link"
-FR_almost_install="presque prêt : installe Claude Code et connecte-toi une fois, puis ouvre le lien"
-EN_codex_login="Codex is not logged in: run codex once in a terminal (optional)"
-FR_codex_login="Codex n'est pas connecté : lance codex une fois dans un terminal (optionnel)"
-EN_safe_off="agents run WITHOUT permission prompts, as you chose (WEEVILS_SAFE=0): they can run any command as you. To bring the prompts back: install.sh --ask-permissions"
-FR_safe_off="les agents tournent SANS demande de permission, comme tu l'as choisi (WEEVILS_SAFE=0) : ils peuvent lancer n'importe quelle commande en ton nom. Pour les remettre : install.sh --ask-permissions"
-EN_safe_on="agents ask before acting: answer them from the app (install.sh --no-ask-permissions to turn the prompts off)"
-FR_safe_on="les agents demandent avant d'agir : réponds-leur depuis l'app (install.sh --no-ask-permissions pour couper les demandes)"
-EN_safe_new="new default: agents now ask before acting (you answer from the app). To keep them acting without asking, as before: install.sh --no-ask-permissions"
-FR_safe_new="nouveau réglage par défaut : les agents demandent maintenant avant d'agir (tu réponds depuis l'app). Pour qu'ils continuent sans demander, comme avant : install.sh --no-ask-permissions"
-EN_root_noask="--no-ask-permissions ignored: Claude Code refuses to skip permission prompts as root."
-FR_root_noask="--no-ask-permissions ignoré : Claude Code refuse de sauter les demandes de permission en root."
+EN_almost_login="almost there: Claude Code still has to be signed in, weevboss does it with you in the app"
+FR_almost_login="presque fini : il reste à connecter Claude Code, weevboss le fait avec toi dans l'app"
+EN_almost_install="almost there: Claude Code is still missing, weevboss helps you add it in the app"
+FR_almost_install="presque fini : il manque encore Claude Code, weevboss t'aide à l'ajouter dans l'app"
 EN_no_qr="(no QR code: install qrencode to get one)"
 FR_no_qr="(pas de QR code : installe qrencode pour en avoir un)"
 EN_no_path="~/.local/bin is not in your PATH: wv won't be found. Fix:"
@@ -225,10 +215,10 @@ EN_try_projects='"what are my projects up to?"'
 FR_try_projects="« où en sont mes projets ? »"
 EN_try_new='"make me a small notes app"'
 FR_try_new="« fais-moi une petite app de notes »"
-EN_secondary_ok="this machine reports to"
-FR_secondary_ok="cette machine remonte vers"
-EN_secondary_next="its sessions show up in the app of the main machine. Start one here with: wv"
-FR_secondary_next="ses sessions apparaissent dans l'app de la machine principale. Lances-en une ici avec : wv"
+EN_secondary_ok="All set ✓ Head back to your phone, in the weevils app: your machine “{n}” is there."
+FR_secondary_ok="C'est bon ✓ Retourne sur ton téléphone, dans l'app weevils : ta machine « {n} » y est."
+EN_secondary_next="Claude Code isn't signed in here yet: weevboss offers to do it with you, right in the app."
+FR_secondary_next="Claude Code n'est pas encore connecté ici : weevboss te propose de le faire avec toi, directement dans l'app."
 EN_ssh_fail="can't reach the main machine without a password. Set up an SSH key, then run me again:"
 FR_ssh_fail="impossible de joindre la machine principale sans mot de passe. Mets une clé SSH en place, puis relance-moi :"
 EN_bad_opt="invalid value:"
@@ -266,6 +256,31 @@ FR_un_done="weevils est désinstallé"
 EN_aborted="nothing changed."
 FR_aborted="rien n'a changé."
 
+# The newcomer's words (a line pasted from the app or the setup page): plain steps, no settings names, no package
+# manager jargon. What the background service setup prints goes to ~/.cache/weevils/service.log.
+EN_sudo_ask="I'll add them with your package manager: sudo may ask for your password (nothing shows while you type)."
+FR_sudo_ask="je les ajoute avec le gestionnaire de paquets : sudo va peut-être te demander ton mot de passe (rien ne s'affiche quand tu tapes)."
+EN_in_dir="weevils is in"
+FR_in_dir="weevils est rangé dans"
+EN_deps_done="everything it needs is in place"
+FR_deps_done="tout ce qu'il lui faut est là"
+EN_app_built="the app is built"
+FR_app_built="l'app est prête"
+EN_svc_systemd="weevils runs in the background and starts again with this machine"
+FR_svc_systemd="weevils tourne en fond et redémarre tout seul avec la machine"
+EN_svc_launchd="weevils runs in the background and starts again each time you log in"
+FR_svc_launchd="weevils tourne en fond et redémarre à chaque ouverture de session"
+EN_svc_bg="weevils runs in the background"
+FR_svc_bg="weevils tourne en fond"
+EN_linger_ask="so weevils keeps running when you log out, sudo may ask for your password once."
+FR_linger_ask="pour que weevils continue quand tu fermes ta session, sudo va peut-être te demander ton mot de passe, une fois."
+EN_answers="weevils answers"
+FR_answers="weevils répond"
+EN_fail_calm="Nothing is broken: once that's sorted, run the same line again, it picks up where it stopped."
+FR_fail_calm="Rien de cassé : une fois réglé, relance la même ligne, elle reprend où elle en était."
+EN_fail_log="The details are in"
+FR_fail_log="Le détail est dans"
+
 EN_mac_root="on macOS, run the installer as your own user, without sudo: Homebrew refuses to run as root."
 FR_mac_root="sur macOS, lance l'installation avec ton utilisateur, sans sudo : Homebrew refuse de tourner en root."
 EN_mac_domain="--domain is not available on macOS (it sets up Caddy on a server). Use --url with something that already serves HTTPS to this Mac (Tailscale serve, your own reverse proxy), or --lan."
@@ -282,10 +297,10 @@ EN_brew_failed="Homebrew did not install (it needs an administrator account on t
 FR_brew_failed="Homebrew ne s'est pas installé (il faut un compte administrateur sur ce Mac)."
 EN_mac_intel="Homebrew no longer installs on Intel Macs, and some tools weevils needs are missing here. Install them with MacPorts (https://www.macports.org) or an existing Homebrew (git and python3 also come with Apple's developer tools: xcode-select --install), then run me again. Missing:"
 FR_mac_intel="Homebrew ne s'installe plus sur les Mac Intel, et il manque ici des outils dont weevils a besoin. Installe-les avec MacPorts (https://www.macports.org) ou un Homebrew déjà présent (git et python3 viennent aussi avec les outils de développement d'Apple : xcode-select --install), puis relance-moi. Il manque :"
-EN_mac_bg="no desktop session on this Mac (installed over SSH?): weevilsd runs in the background until the next restart. Log in on the Mac's screen and run this installer again: launchd then starts it at every login."
-FR_mac_bg="pas de session ouverte sur l'écran de ce Mac (installation par SSH ?) : weevilsd tourne en arrière-plan jusqu'au prochain redémarrage. Ouvre une session sur le Mac et relance cette installation : launchd le démarrera alors à chaque ouverture de session."
-EN_mac_awake="on a Mac, weevils runs while your session is open; it keeps the Mac awake while an agent works and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0 to turn that off). A closed laptop lid still puts it to sleep."
-FR_mac_awake="sur un Mac, weevils tourne tant que ta session est ouverte ; il garde le Mac éveillé tant qu'un agent travaille et qu'il est branché (WEEVILS_KEEP_AWAKE=0 pour l'éviter). Un portable au capot fermé s'endort quand même."
+EN_mac_bg="no desktop session on this Mac (installed over SSH?): weevils runs in the background until the next restart. Log in on the Mac's screen and run this installer again: launchd then starts it at every login."
+FR_mac_bg="pas de session ouverte sur l'écran de ce Mac (installation par SSH ?) : weevils tourne en arrière-plan jusqu'au prochain redémarrage. Ouvre une session sur le Mac et relance cette installation : launchd le démarrera alors à chaque ouverture de session."
+EN_mac_awake="on a Mac, weevils runs while your session is open; it keeps the Mac awake while an agent works and the Mac is plugged in. A closed laptop lid still puts it to sleep."
+FR_mac_awake="sur un Mac, weevils tourne tant que ta session est ouverte ; il garde le Mac éveillé tant qu'un agent travaille et qu'il est branché. Un portable au capot fermé s'endort quand même."
 
 # ---------------------------------------------------------------- options
 
@@ -396,13 +411,26 @@ FAIL_WHY='' FAIL_FIX='' FAIL_AT='' FAIL_DONE=0
 fail_report() {
   [ "$FAIL_DONE" = 0 ] || return 0
   FAIL_DONE=1
-  printf '\n  %s✗ %s%s\n' "$E$B" "$FAIL_WHY" "$R" >&2
+  # Said calmly: what paused, what sorts it out, and that running the line again picks up where it stopped (the
+  # installer is idempotent). join.sh says its own next step (a new line from weevboss).
+  printf '\n  %s! %s%s\n' "$O$B" "$FAIL_WHY" "$R" >&2
   [ -z "$FAIL_FIX" ] || printf '\n  %s\n\n      %s%s%s\n' "$(t fix_it)" "$B" "$FAIL_FIX" "$R" >&2
+  [ "$AGENT" = 1 ] || [ -n "${WEEVILS_FAIL_FILE:-}" ] || printf '\n  %s\n' "$(t fail_calm)" >&2
   printf '\n' >&2
   [ -z "${WEEVILS_FAIL_FILE:-}" ] || printf '%s\n%s\n' "$FAIL_WHY" "$FAIL_FIX" >"$WEEVILS_FAIL_FILE" 2>/dev/null || true
   summary failed "$FAIL_WHY${FAIL_FIX:+ $(t fix_it) $FAIL_FIX}"
 }
+# fail_step <exit code> — the sentence for a step that stopped on its own: for an agent, the step and the command; for
+# a person, the step in plain words, the command kept in ~/.cache/weevils/step.log.
+fail_step() {
+  local at=${FAIL_AT:-exit code $1}
+  if [ "$AGENT" = 1 ]; then printf '%s %s%s' "$(t step_failed)" "${CUR_STEP:+$CUR_STEP — }" "$at"; return 0; fi
+  mkdir -p "$HOME/.cache/weevils" && printf '%s\n' "$at" >>"$HOME/.cache/weevils/step.log" 2>/dev/null || true
+  printf '%s %s. %s ~/.cache/weevils/step.log.' "$(t step_failed)" "${CUR_STEP:-?}" "$(t fail_log)"
+}
 die() { FAIL_WHY="$*" FAIL_FIX=''; fail_report; exit 1; }
+# pretty <path> — a path as a person reads it: ~/weevils, not /home/someone/weevils.
+pretty() { case "$1" in "$HOME") printf '~' ;; "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac; }
 star() { printf '  %s★ %s%s\n' "$M$B" "$*" "$R"; }
 # tn key n — a message with its {n} replaced by a number.
 tn() { local m; m=$(t "$1"); printf '%s' "${m//\{n\}/$2}"; }
@@ -687,10 +715,12 @@ check_system() {
   local root=$SUDO
   [ "$PM" != brew ] || root=brew
   if [ ${#missing[@]} -gt 0 ]; then
-    warn "$(t missing) ${missing[*]}"
+    info "$(t missing) ${missing[*]}"
     [ -n "$PM" ] || die "$(t no_pm) ${missing[*]}"
     [ "$root" != none ] || no_root "${missing[*]}"
     confirm "$(t ask_pkgs)" || die "$(t refused)"
+    # Never a password prompt out of the blue: said first, with why.
+    [ "$root" != sudo ] || sudo -n true 2>/dev/null || info "$(t sudo_ask)"
   fi
   if [ ${#pkgs[@]} -gt 0 ] || [ ${#extra[@]} -gt 0 ]; then
     [ "$root" != none ] || { [ ${#pkgs[@]} -eq 0 ] || no_root "${missing[*]}"; }
@@ -707,7 +737,7 @@ check_system() {
   ok "git, curl, tmux${tv:+ $tv}, jq, python3"
 
   if ! node_ok; then
-    warn "$(t node_old) $(node -v 2>/dev/null || echo —))"
+    info "$(t node_old) $(node -v 2>/dev/null || echo —))"
     if [ "$PM" = brew ]; then
       confirm "$(t ask_node_brew)" || die "$(t node_hint)"
       pkg_install node
@@ -754,7 +784,7 @@ check_system() {
     pkg_install npm
     command -v npm >/dev/null || die "npm: $(t node_hint)"
   fi
-  ok "node $(node -v), npm $(npm -v)"
+  ok "Node.js $(node -v | sed 's/^v//')"
 
   check_agents
 }
@@ -765,23 +795,24 @@ CLAUDE_INSTALLER='curl -fsSL https://claude.ai/install.sh | bash'
 check_agents() {
   if ! command -v claude >/dev/null && [ -x "$HOME/.local/bin/claude" ]; then PATH=$HOME/.local/bin:$PATH; export PATH; fi
   if ! command -v claude >/dev/null; then
-    warn "$(t no_claude)"
+    info "$(t no_claude)"
     if confirm "$(t ask_claude)"; then
       info "$(t installing) Claude Code"
       if quiet bash -c "set -o pipefail; $CLAUDE_INSTALLER" </dev/null; then PATH=$HOME/.local/bin:$PATH; export PATH; hash -r; fi
-      command -v claude >/dev/null || { warn "$(t claude_failed)"; info "$CLAUDE_INSTALLER"; info "claude"; }
+      command -v claude >/dev/null || info "$(t claude_failed)"
     else
-      info "$(t claude_later) $CLAUDE_INSTALLER"
+      info "$(t claude_later)"
     fi
   fi
-  if command -v claude >/dev/null; then ok "claude $(claude --version 2>/dev/null | head -1 | awk '{print $1}' || true)"; fi
-  if command -v codex >/dev/null; then ok "codex"
+  if command -v claude >/dev/null; then ok "Claude Code $(claude --version 2>/dev/null | head -1 | awk '{print $1}' || true)"; fi
+  if command -v codex >/dev/null; then ok "Codex"
   else
     # NodeSource's npm installs globally into /usr: without write access there, it takes sudo.
     local prefix sudo_npm=''
     prefix=$(npm prefix -g 2>/dev/null || true)
     [ -n "$prefix" ] && [ -w "$prefix/lib" ] || [ "$(id -u)" = 0 ] || sudo_npm='sudo '
-    info "$(t codex_opt) ${sudo_npm}npm i -g @openai/codex"
+    # Optional, and weevboss offers it in the app: a hint for an agent's log only.
+    [ "$AGENT" = 0 ] || info "$(t codex_opt) ${sudo_npm}npm i -g @openai/codex"
   fi
 }
 
@@ -799,12 +830,12 @@ get_source() {
   case "$DIR" in /*) ;; *) DIR=$PWD/$DIR ;; esac
 
   if [ ! -e "$DIR" ]; then
-    info "$(t cloning) $DIR"
+    [ "$AGENT" = 0 ] || info "$(t cloning) $DIR"
     git clone -q "$REPO_URL" "$DIR"
   elif [ -f "$DIR/server/install.sh" ] && [ -d "$DIR/.git" ]; then
     if [ "$NO_UPDATE" = 0 ]; then
       if [ -z "$(git -C "$DIR" status --porcelain --untracked-files=no)" ] && git -C "$DIR" rev-parse -q --verify '@{u}' >/dev/null 2>&1; then
-        info "$(t updating) $DIR"
+        [ "$AGENT" = 0 ] || info "$(t updating) $DIR"
         local before; before=$(git -C "$DIR" rev-parse HEAD)
         if git -C "$DIR" pull -q --ff-only; then
           # A newer installer came with the update: hand over to it.
@@ -815,7 +846,7 @@ get_source() {
       else info "$(t no_pull)"; fi
     fi
   else die "$DIR $(t not_repo)"; fi
-  ok "$DIR ($(git -C "$DIR" log -1 --format='%h %cs' 2>/dev/null || echo '?'))"
+  ok "$(t in_dir) $(pretty "$DIR")"
 }
 
 # ---------------------------------------------------------------- config
@@ -855,19 +886,12 @@ configure() {
   [ "$LAN" = 0 ] || cfg set WEEVILS_HOST 0.0.0.0
   # --domain after an earlier --lan: back to 127.0.0.1, Caddy is the only way in (no plain http on every interface).
   [ -z "$DOMAIN" ] || [ "$(cfg get WEEVILS_HOST)" != 0.0.0.0 ] || cfg set WEEVILS_HOST 127.0.0.1
-  # Permission prompts: agents ask before acting (answered from the app) unless the person turns that off,
-  # --no-ask-permissions (WEEVILS_SAFE=0). A flag given now is written; without one, a value already there is kept (an
-  # explicit 0 or 1 stays), and an install that never chose gets the default, 1, said once on the end screen.
-  # Claude Code refuses --dangerously-skip-permissions as root: agents always keep their prompts there.
-  SAFE_NEW=0
-  if [ "$(id -u)" = 0 ]; then
-    [ "$ASK_PERMS" != 0 ] || warn "$(t root_noask)"
-    cfg set WEEVILS_SAFE 1
-  elif [ -n "$ASK_PERMS" ]; then cfg set WEEVILS_SAFE "$ASK_PERMS"
-  elif [ -z "$(cfg get WEEVILS_SAFE)" ]; then
-    cfg set WEEVILS_SAFE 1
-    [ "$fresh" = 1 ] || SAFE_NEW=1
-  fi
+  # Agents work on their own by default (Claude Code and Codex without permission prompts); the person switches that in
+  # the app, for every session or one at a time. --ask-permissions / --no-ask-permissions still write the choice (join.sh
+  # passes the main machine's); without one, nothing is written and a value already there is kept. As root, Claude Code
+  # refuses to skip its prompts: agents ask there.
+  if [ "$(id -u)" = 0 ]; then cfg set WEEVILS_SAFE 1
+  elif [ -n "$ASK_PERMS" ]; then cfg set WEEVILS_SAFE "$ASK_PERMS"; fi
   # --no-auto-update: weevils never fetches a new version by itself (an update from the app, by hand, still works).
   [ "$NO_AUTO_UPDATE" = 0 ] || cfg set WEEVILS_AUTO_UPDATE 0
   # --url: HTTPS is served by something else in front (tailscale serve…): weevilsd back on 127.0.0.1, behind it.
@@ -891,8 +915,7 @@ configure() {
   # The access code (weevilsd would create it too): here, so the end screen always has it.
   local secret=$CONF_DIR/secret
   [ -s "$secret" ] || (umask 077 && head -c 9 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n' >"$secret")
-  if [ "$fresh" = 1 ]; then ok "$(t cfg_new) $conf"; else ok "$(t cfg_kept) $conf"; fi
-  info "WEEVILS_USER_NAME=$(cfg get WEEVILS_USER_NAME)  WEEVILS_LANG=$(cfg get WEEVILS_LANG)  WEEVILS_PORT=$(cfg get WEEVILS_PORT)  WEEVILS_MACHINE=$(cfg get WEEVILS_MACHINE)"
+  if [ "$fresh" = 1 ]; then ok "$(t cfg_new)"; else ok "$(t cfg_kept)"; fi
 }
 
 # ---------------------------------------------------------------- build
@@ -909,7 +932,7 @@ build() {
   else
     quiet npm ci --no-audit --no-fund --no-update-notifier $omit
     echo "$stamp" >node_modules/.weevils-stamp
-    ok "npm ci"
+    ok "$(t deps_done)"
   fi
   # A secondary machine serves no app: only the main one builds it.
   [ -z "$SECONDARY" ] || return 0
@@ -921,7 +944,7 @@ build() {
     quiet npx --no-update-notifier vite build
     quiet npx --no-update-notifier vite build -c next/vite.config.ts
     echo "$stamp" >dist/.weevils-stamp
-    ok "vite build → dist/, next/dist/"
+    ok "$(t app_built)"
   fi
 }
 
@@ -929,24 +952,43 @@ build() {
 
 service() {
   step "$(t s_service)"
+  local role=(main) log=$HOME/.cache/weevils/service.log
   if [ -n "$SECONDARY" ]; then
     ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$SECONDARY" true 2>/dev/null || {
       warn "$(t ssh_fail)"
       info "ssh-keygen -t ed25519 && ssh-copy-id $SECONDARY"
       exit 1
     }
-    WEEVILS_NO_PROMPT=$AGENT bash "$DIR/server/install.sh" secondary "$SECONDARY" | sed 's/^/  · /'
+    role=(secondary "$SECONDARY")
+  fi
+  if [ "$AGENT" = 1 ]; then
+    WEEVILS_NO_PROMPT=1 bash "$DIR/server/install.sh" "${role[@]}" | sed 's/^/  · /'
   else
-    WEEVILS_NO_PROMPT=$AGENT bash "$DIR/server/install.sh" main | sed 's/^/  · /'
+    # Its own lines (units, hooks, the tunnel) go to a log: the newcomer reads one line per outcome. A password sudo
+    # may ask for (linger: weevils running after logout) is said first.
+    if [ "$OS" = Linux ] && [ -d /run/systemd/system ] && [ "$(id -u)" != 0 ] && command -v loginctl >/dev/null &&
+      ! loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -qx 'Linger=yes' && ! sudo -n true 2>/dev/null; then
+      info "$(t linger_ask)"
+    fi
+    mkdir -p "$(dirname "$log")"
+    if ! WEEVILS_NO_PROMPT=0 bash "$DIR/server/install.sh" "${role[@]}" >"$log" 2>&1; then
+      FAIL_WHY="$(t step_failed) $CUR_STEP. $(t fail_log) $(pretty "$log")."
+      exit 1
+    fi
+    # What it had to say (linger still off, a machine that could not register), as it said it.
+    local l
+    while IFS= read -r l; do info "$l"; done < <(sed -n 's/^WARNING: //p' "$log")
   fi
   local svc_mode; svc_mode=$("$DIR/server/weevils-service" mode)
   if [ "$OS" = Darwin ]; then
     # No crontab on a Mac (it asks for a privacy permission): launchd starts weevilsd, at every login.
-    [ "$svc_mode" = launchd ] || warn "$(t mac_bg)"
-  elif [ "$svc_mode" != systemd ]; then
-    warn "$(t bg_mode)"
+    if [ "$svc_mode" = launchd ]; then ok "$(t svc_launchd)"; else ok "$(t svc_bg)"; info "$(t mac_bg)"; fi
+  elif [ "$svc_mode" = systemd ]; then ok "$(t svc_systemd)"
+  else
+    ok "$(t svc_bg)"
+    info "$(t bg_mode)"
     if command -v crontab >/dev/null && ! crontab -l 2>/dev/null | grep -q 'weevils-service start'; then
-      { crontab -l 2>/dev/null || true; echo "@reboot $HOME/.local/bin/weevils-service start"; } | crontab - && info "$(t cron_added)"
+      { crontab -l 2>/dev/null || true; echo "@reboot $HOME/.local/bin/weevils-service start"; } | crontab - && { [ "$AGENT" = 0 ] || info "$(t cron_added)"; }
     fi
   fi
 }
@@ -1114,12 +1156,9 @@ private_ip() {
 
 # What is left to do on the end screen: notes on agents, permissions, PATH.
 agent_notes() {
-  local svc="$DIR/server/weevils-service"
-  if ! command -v claude >/dev/null; then info "$(t claude_later) $CLAUDE_INSTALLER"; fi
-  if command -v codex >/dev/null && [ ! -s "$HOME/.codex/auth.json" ]; then info "$(t codex_login)"; fi
-  if [ "$("$svc" config get WEEVILS_SAFE)" = 0 ]; then warn "$(t safe_off)"
-  elif [ "${SAFE_NEW:-0}" = 1 ]; then warn "$(t safe_new)"
-  else info "$(t safe_on)"; fi
+  if ! command -v claude >/dev/null; then info "$(t claude_later)"; fi
+  # (The PATH matters to someone who types wv in a terminal: said in an agent's log, never on a newcomer's screen.)
+  [ "$AGENT" = 1 ] || return 0
   case ":$ORIG_PATH:" in
     *":$HOME/.local/bin:"*) ;;
     *) local rc=.bashrc
@@ -1220,9 +1259,9 @@ sum_found() {
   kv sudo "$(if [ -z "$SUDO" ] || [ "$SUDO" = 'sudo -n' ]; then echo yes; elif [ "$SUDO_PW" = 1 ]; then echo password; else echo no; fi)"
   kv name "$("$DIR/server/weevils-service" config get WEEVILS_USER_NAME)"
   kv dir "$DIR"
-  kv ask_permissions "$([ "$("$DIR/server/weevils-service" config get WEEVILS_SAFE)" = 0 ] && echo no || echo yes)"
-  # yes: this run switched an install that had never chosen to the new default (weevils-update says so in For you).
-  kv ask_permissions_new "$([ "${SAFE_NEW:-0}" = 1 ] && echo yes || echo no)"
+  kv ask_permissions "$([ "$("$DIR/server/weevils-service" config get WEEVILS_SAFE)" = 1 ] && echo yes || echo no)"
+  # Kept for agents that read it (AGENTS.md): no run switches the choice any more, it lives in the app.
+  kv ask_permissions_new no
   kv service "$("$DIR/server/weevils-service" mode 2>/dev/null || echo unknown)"
 }
 
@@ -1233,10 +1272,12 @@ finish() {
   elif ! claude_logged; then title=almost_login; fi
   detect
   if [ -n "$SECONDARY" ]; then
-    step "$(t "$title")"
-    ok "$(t secondary_ok) $SECONDARY"
-    info "$(t secondary_next)"
+    # The end of a line pasted from the app: one clear sentence, back to the phone, where this machine now shows.
+    local name; name=$("$svc" config get WEEVILS_MACHINE_NAME); name=${name:-$("$svc" config get WEEVILS_MACHINE)}
+    [ "$AGENT" = 0 ] || step "$(t "$title")"
     agent_notes
+    [ "$HAVE_CLAUDE" = no ] || [ "$CLAUDE_OK" = yes ] || info "$(t secondary_next)"
+    printf '\n  %s%s%s\n\n' "$G$B" "$(tn secondary_ok "${name:-$(hostname -s 2>/dev/null || echo computer)}")" "$R"
     kv role secondary; kv main_host "$SECONDARY"; sum_found
     summary ok
     return 0
@@ -1245,7 +1286,7 @@ finish() {
   local up=0
   for _ in $(seq 1 60); do curl -sf -m 2 "http://127.0.0.1:$port/api/me" >/dev/null 2>&1 && { up=1; break; }; sleep 0.5; done
   [ "$up" = 1 ] || die "$(t down)"
-  ok "http://127.0.0.1:$port"
+  ok "$(t answers)"
 
   code=$(cat "$CONF_DIR/secret")
   host_cfg=$("$svc" config get WEEVILS_HOST)
@@ -1448,6 +1489,15 @@ uninstall() {
     if [ -f "$ak" ] && grep -q ' weevils-join:[a-z0-9-]*$' "$ak"; then
       { grep -v ' weevils-join:[a-z0-9-]*$' "$ak" || true; } >"$ak.weevils.tmp" && chmod 600 "$ak.weevils.tmp" && mv "$ak.weevils.tmp" "$ak"
     fi
+    # A computer plugged in from a line (server/join.sh): its weevils key and the main machine's alias in ~/.ssh/config.
+    rm -f "$HOME/.ssh/weevils_ed25519" "$HOME/.ssh/weevils_ed25519.pub"
+    local sc="$HOME/.ssh/config"
+    if [ -f "$sc" ] && grep -qx '# weevils (join.sh): the main machine' "$sc"; then
+      awk '/^# weevils \(join\.sh\): the main machine$/ { skip = 1; next }
+        skip == 1 && /^Host / { skip = 2; next }
+        skip == 2 && /^[[:space:]]+[^[:space:]]/ { next }
+        { skip = 0; print }' "$sc" >"$sc.weevils.tmp" && chmod 600 "$sc.weevils.tmp" && mv "$sc.weevils.tmp" "$sc"
+    fi
     ok "$(t un_purged)"
   else info "$(t un_kept)"; fi
   [ -z "$clone" ] || info "$(t un_clone) $clone"
@@ -1459,15 +1509,16 @@ main() {
   [ -z "${HELP:-}" ] || { echo "$(t usage)"; exit 0; }
   [ -z "$BAD_VAL" ] || { echo "$(t bad_opt) $BAD_VAL" >&2; BAD=1; }
   [ -z "${BAD:-}" ] || { echo "$(t usage)" >&2; summary failed "$(t usage)"; exit 2; }
+  if [ "$UNINSTALL" = 1 ]; then printf '%s weevils %s\n' "$Y$B" "$R"; uninstall; exit 0; fi
   printf '%s weevils %s %s\n' "$Y$B" "$R" "$(t title)"
-  if [ "$UNINSTALL" = 1 ]; then uninstall; exit 0; fi
   # Any step that fails on the way (set -e) is said like die says it: what stopped, and the command to run again.
   # ERR only notes the failing command (errtrace: inside functions too); it changes nothing to what stops the script.
   set -o errtrace
   # A command run through quiet is named as it ran; a function's own 'return' leaves the word to its caller.
   trap 'case $BASH_COMMAND in "quiet "*) FAIL_AT="$QUIET_CMD (~/.cache/weevils/step.log)" ;; "return "*) ;; *) FAIL_AT=$BASH_COMMAND ;; esac' ERR
   # Run by join.sh (WEEVILS_FAIL_FILE), the way to try again is a new line from weevboss, which join.sh says.
-  trap 'rc=$?; [ "$rc" = 0 ] || { [ -n "$FAIL_WHY" ] || FAIL_WHY="$(t step_failed) ${CUR_STEP:+$CUR_STEP — }${FAIL_AT:-exit code $rc}"; [ -n "$FAIL_FIX" ] || [ -n "${WEEVILS_FAIL_FILE:-}" ] || FAIL_FIX=$(retry_cmd); fail_report; }' EXIT
+  # A person gets no retry command (their line, pasted again, is it); an agent gets the exact one.
+  trap 'rc=$?; [ "$rc" = 0 ] || { [ -n "$FAIL_WHY" ] || FAIL_WHY=$(fail_step "$rc"); [ -n "$FAIL_FIX" ] || [ -n "${WEEVILS_FAIL_FILE:-}" ] || [ "$AGENT" = 0 ] || FAIL_FIX=$(retry_cmd); fail_report; }' EXIT
   check_system
   get_source
   configure

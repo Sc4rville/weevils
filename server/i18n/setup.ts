@@ -5,6 +5,11 @@ import { defineMessages } from '../i18n.ts'
 import type { MachineInfo, SetupState } from '../setup.ts'
 import { secretBrand } from '../../shared/setup.ts'
 
+/** The script behind a pasted line, readable before it runs: the curl line's address (…/api/join.sh). */
+const scriptOf = (curl: string): string => /https?:\/\/\S+\.sh/.exec(curl)?.[0] ?? ''
+/** Everything weevils put on a computer, removed in one line (install.sh --uninstall --purge, then its folder). */
+const UNINSTALL = '~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils'
+
 const gb = (n: number) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10)
 /** Créer un jeton GitHub avec les bons droits, pré-rempli. */
 const GH_TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=weevils'
@@ -141,8 +146,23 @@ export default defineMessages({
       `Pour connecter Codex à ton compte ChatGPT : ouvre [cette page](${url}), connecte-toi et tape le code ${code} (valable 15 minutes). Je te fais signe dès que c’est bon.`,
     codexFail: (why: string): string => `La connexion de Codex n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
     // ---- Un autre ordinateur, d'une ligne (server/join.ts) ; le connecteur ; un travail confié à une session.
+    // Ce que fait la ligne, dit avant qu'on la colle (server/join.sh puis install.sh --secondary) : quatre lignes, le
+    // script lisible, tout retirer en une ligne ; le reste replié. Vrai pour la ligne npx comme pour la ligne curl.
     joinLine: (npx: string | null, curl: string): string =>
-      `Sur ton autre ordinateur, ouvre un terminal et colle cette ligne :\n\n\`${npx ?? curl}\`\n\n${npx ? `Pas de Node.js dessus (un Mac ou un serveur tout neuf) ? Celle-ci fait la même chose : \`${curl}\`\n\n` : ''}Elle marche une fois, pendant une heure. Je te dis ici quand il est branché.`,
+      `Sur ton autre ordinateur, ouvre un terminal et colle cette ligne :\n\n\`${npx ?? curl}\`\n\n${npx ? `Pas de Node.js dessus (un Mac ou un serveur tout neuf) ? Celle-ci fait la même chose : \`${curl}\`\n\n` : ''}` +
+      `**Ce qu’elle fait, en clair**\n` +
+      `- Elle range weevils dans un seul dossier, \`~/weevils\`, et ajoute ce qui manque (git, tmux, Node.js, Claude Code).\n` +
+      `- Elle lance un petit service en fond qui relie cet ordinateur à **ton** weevils, et à personne d’autre.\n` +
+      `- Elle ne fouille pas tes fichiers : weevils lit tes conversations Claude Code et Codex pour te les montrer ici, et rien de toi ne part chez nous.\n` +
+      `- Pas de mot de passe surprise : s’il en faut un, elle te dit pourquoi avant.\n\n` +
+      `[Lire le script](${scriptOf(curl)}) · Tout retirer en une ligne : \`${UNINSTALL}\`\n\n` +
+      `+++ Voir le détail\n` +
+      `- Une clé rien que pour weevils (dans ~/.ssh) tient le lien avec ton weevils : pas de shell, aucune autre commande.\n` +
+      `- Node.js, version officielle vérifiée, va dans ton dossier perso (via Homebrew sur un Mac) ; Claude Code vient de l’installateur d’Anthropic.\n` +
+      `- Tes agents y tournent en ton nom, en autonomie par défaut : dans ton usine, tu peux leur demander de valider avant d’agir.\n` +
+      `- weevils se met à jour tout seul, avec des versions signées. Hors de ton dossier perso, il ne change que ce qu’il t’annonce (outils système, démarrage automatique).\n` +
+      `${npx ? '- La ligne npx télécharge ce même script et le lance avec bash, rien de plus.\n' : ''}+++\n\n` +
+      `Elle marche une fois, pendant une heure. Je te dis ici quand il est branché.`,
     joinKey: (id: string): string => `${id} se branche : weevils s’installe dessus, quelques minutes.`,
     joinOnline: (name: string): string => `[[win]]**${name} est branché** : je peux y lancer des agents.`,
     linkDown: (name: string): string => `${name} ne répond plus depuis 10 minutes. S’il est allumé, lance \`weevils-service restart\` dessus.`,
@@ -391,8 +411,23 @@ export default defineMessages({
     codexCode: (url: string, code: string): string =>
       `To sign Codex in to your ChatGPT account: open [this page](${url}), sign in and type the code ${code} (valid 15 minutes). I’ll let you know as soon as it’s done.`,
     codexFail: (why: string): string => `Codex didn’t sign in (${why}). Tell me when you want to try again.`,
+    // What the line does, said before it is pasted (server/join.sh, then install.sh --secondary): four lines, the script
+    // to read, everything removed in one line; the rest folded. True of the npx line as of the curl one.
     joinLine: (npx: string | null, curl: string): string =>
-      `On your other computer, open a terminal and paste this line:\n\n\`${npx ?? curl}\`\n\n${npx ? `No Node.js on it (a brand-new Mac or server)? This one does the same: \`${curl}\`\n\n` : ''}It works once, for an hour. I’ll tell you here when that computer is plugged in.`,
+      `On your other computer, open a terminal and paste this line:\n\n\`${npx ?? curl}\`\n\n${npx ? `No Node.js on it (a brand-new Mac or server)? This one does the same: \`${curl}\`\n\n` : ''}` +
+      `**What it does, plainly**\n` +
+      `- It puts weevils in one folder, \`~/weevils\`, and adds what’s missing (git, tmux, Node.js, Claude Code).\n` +
+      `- It starts a small background service that links this computer to **your** weevils, and nobody else’s.\n` +
+      `- It doesn’t dig through your files: weevils reads your Claude Code and Codex conversations to show them here, and nothing of yours goes to us.\n` +
+      `- No surprise password: if one is needed, it tells you why first.\n\n` +
+      `[Read the script](${scriptOf(curl)}) · Remove everything in one line: \`${UNINSTALL}\`\n\n` +
+      `+++ See the details\n` +
+      `- A key just for weevils (in ~/.ssh) holds the link to your weevils: no shell, no other command.\n` +
+      `- Node.js, the official build, checked, goes in your home folder (through Homebrew on a Mac); Claude Code comes from Anthropic’s installer.\n` +
+      `- Your agents run there as you, on their own by default: in your factory, you can have them check with you before acting.\n` +
+      `- weevils keeps itself up to date with signed versions. Outside your home folder, it only changes what it tells you about (system tools, starting with the computer).\n` +
+      `${npx ? '- The npx line downloads this same script and runs it with bash, nothing more.\n' : ''}+++\n\n` +
+      `It works once, for an hour. I’ll tell you here when that computer is plugged in.`,
     joinKey: (id: string): string => `${id} is plugging in: weevils is installing there, a few minutes.`,
     joinOnline: (name: string): string => `[[win]]**${name} is plugged in**: I can run agents there now.`,
     linkDown: (name: string): string => `${name} has not answered for 10 minutes. If it is on, run \`weevils-service restart\` on it.`,

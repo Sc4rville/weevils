@@ -93,7 +93,7 @@ main() {
     (umask 077; printf '{%s}\n' "$choice" >"$conf/backfill.json")
   fi
 
-  say "Clé acceptée. J’installe weevils ici comme machine « $id », quelques minutes…" "Key accepted. Installing weevils here as machine \"$id\", a few minutes…" # i18n-ignore
+  say "C’est parti : cet ordinateur rejoint ton weevils sous le nom « $id »." "Here we go: this computer joins your weevils as \"$id\"." # i18n-ignore
   # The installer itself, piped as everywhere else (WEEVILS_INSTALL_SH: a local copy, for tests). When it stops, it
   # writes why in $fail (line 1: the sentence, line 2: the command that fixes it), and your weevils hears it: weevboss
   # says in its thread that this computer did not install, and why, instead of waiting for it.

@@ -17,7 +17,7 @@ import type { Author, Message, Session, Win } from '../../shared/api.ts'
 import { celebrateWin } from './celebrate'
 import { useApp } from './app-context'
 import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, status, step, userText, userPhotos, userCaption } from './format'
-import { blocks, spans, type ListItem } from './md'
+import { blocks, spans, type Block, type ListItem } from './md'
 import { copyText, useLongPress } from './copy'
 import { markSeen } from './hints'
 import { flash, reveal } from './follow'
@@ -752,9 +752,19 @@ export function Composer({
  * scroll sideways on a phone, short code open with its copy button, long code folded behind « code · n lines ». */
 export function Prose({ text }: { text: string }) {
   const parts = useMemo(() => blocks(text), [text])
+  return <div className="text md"><Blocks parts={parts} /></div>
+}
+
+function Blocks({ parts }: { parts: Block[] }) {
   return (
-    <div className="text md">
+    <>
       {parts.map((b, i) =>
+        b.kind === 'fold' ? (
+          <details key={i} className="md-fold">
+            <summary><Inline text={b.summary} /></summary>
+            <Blocks parts={b.body} />
+          </details>
+        ) :
         b.kind === 'heading' ? (
           <p key={i} className={`md-h md-h${b.level}`}><Inline text={b.text} /></p>
         ) : b.kind === 'para' ? (
@@ -792,7 +802,7 @@ export function Prose({ text }: { text: string }) {
           <hr key={i} />
         ),
       )}
-    </div>
+    </>
   )
 }
 

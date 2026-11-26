@@ -90,6 +90,12 @@
   .qr img, .qr svg { width: min(280px, 80vw); height: auto; background: #fff; padding: 10px; border: 2px solid #000; border-radius: 0; }
   .note { font-size: 14px; line-height: 1.4; opacity: .8; margin-top: 12px; }
   .note code { overflow-wrap: anywhere; }
+  /* What the line does: four short lines under the command, the rest in a fold that opens in place. */
+  .what { margin-top: 16px; }
+  .what-title { font-weight: 800; font-size: 16px; margin: 0 0 4px; }
+  .what ul { margin: 0; padding-left: 20px; } .what li { font-size: 15px; line-height: 1.4; margin: 4px 0; }
+  .what details { margin-top: 8px; } .what summary { cursor: pointer; font-size: 15px; font-weight: 700; padding: 6px 0; }
+  .what details li { font-size: 14px; opacity: .85; }
   /* The fine print ends the page on the chat's white, quiet, no panel of its own. */
   footer.band { background: #fff; color: #000; padding-top: 8px; padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
   footer p { font-size: 13px; line-height: 1.45; opacity: .55; margin: 6px 0; }
@@ -215,7 +221,17 @@ const W = FR ? {
   homes: { here: ['Sur mon PC', 'Une ligne à coller sur ton PC, copiée en un geste. Prêt en 2 minutes, gratuit.'], mac: ['Sur mon Mac', 'Une ligne à coller sur ton Mac, copiée en un geste. Prêt en 2 minutes, gratuit.'], pc: ['Sur mon PC', 'Une ligne à coller sur ton PC ou ton Mac. Prêt en 2 minutes, gratuit.'], vps: ['Sur mon VPS', 'Une ligne à coller sur ton VPS.'], new: ['Crée-moi un VPS', 'Chez Hetzner, facturé à l’heure. Tes agents bossent même PC éteint.'] },
   pcOnly: 'Bon à savoir : avec ton PC seul, tes agents ne travaillent *que quand il est allumé*. Un VPS les fait bosser même PC éteint.',
   thisPc: 'Colle ça sur ton PC', thisPcMac: 'Colle ça sur ton Mac', thisPcSub: 'Ouvre un terminal, colle la ligne, appuie sur Entrée (ou donne-la à ton assistant IA). Ensuite, un QR code ouvre weevils sur ton téléphone.',
-  pcWhat: 'Elle installe weevils dans ton dossier personnel et vérifie la signature du code. Ton mot de passe n’est demandé que s’il manque un outil système, pour cette seule commande. Les agents demandent avant d’agir. Elle se retire en une ligne.', pcNet: 'À savoir : pour que ton téléphone le joigne de partout, cet ordinateur reçoit un lien HTTPS public. Il répond alors depuis Internet, derrière ton code d’accès. Pour l’éviter, ajoute --no-link à la fin de la commande : weevils reste sur cet ordinateur, et Tailscale (un réseau privé entre tes appareils) pourra le relier à ton téléphone plus tard.', pcRead: 'Lire le script', pcSec: 'Notes de sécurité',
+  // What the line does, said before it is pasted: four lines, the script to read, everything removed in one line; the
+  // rest folded. True of the npx line as of the curl one (npx downloads the same script).
+  whatTitle: 'Ce que fait cette ligne, en clair',
+  whatPc: ['Elle range weevils dans un seul dossier, ~/weevils, et ajoute ce qui manque (git, tmux, Node.js, Claude Code).', 'Elle lance un petit service en fond, et donne à ton téléphone un lien HTTPS vers lui, protégé par ton code d’accès.', 'Elle ne fouille pas tes fichiers, et rien de toi ne part chez nous : juste où en est l’installation, pour que cette page suive.', 'Pas de mot de passe surprise : s’il en faut un pour un outil système, elle te montre la commande avant.'],
+  whatVps: ['Elle range weevils dans un seul dossier, ~/weevils, et ajoute ce qui manque (git, tmux, Node.js, Claude Code).', 'Elle lance un petit service en fond, et une adresse HTTPS pour ton téléphone, protégée par ton code d’accès.', 'Elle ne fouille pas tes fichiers, et rien de toi ne part chez nous : juste où en est l’installation, pour que cette page suive.', 'Aucun mot de passe ne quitte ton serveur, et tout ce qu’elle fait est noté dans ~/weevils-install.log.'],
+  undo: 'Tout retirer en une ligne :', more: 'Voir le détail',
+  morePc: ['Le code est signé : la ligne vérifie la signature avant de lancer quoi que ce soit.', 'Sur Debian et Ubuntu, les outils manquants sont déballés dans ton dossier perso, sans mot de passe. Node.js (version officielle, vérifiée) y va aussi ; Claude Code vient de l’installateur d’Anthropic.', 'Le lien pour ton téléphone passe par un tunnel Cloudflare : cet ordinateur répond alors depuis Internet, derrière ton code d’accès. Pour t’en passer, ajoute --no-link à la fin de la ligne : Tailscale (un réseau privé entre tes appareils) pourra relier ton téléphone plus tard.'],
+  moreVps: ['Le code est signé : la ligne vérifie la signature avant de lancer quoi que ce soit.', 'Node.js (version officielle, vérifiée) et les outils manquants viennent des sources officielles ; Claude Code vient de l’installateur d’Anthropic. L’adresse HTTPS passe par Caddy, sur ce serveur.'],
+  moreAll: ['Tes agents tournent sur cette machine, en ton nom, en autonomie par défaut : dans l’app, tu peux leur demander de valider avant d’agir, pour tout ou pour une seule session.', 'weevils lit tes conversations Claude Code et Codex pour te les montrer dans l’app ; elles restent chez toi.', 'weevils se met à jour tout seul, avec des versions signées (ça se coupe dans les réglages).'],
+  moreNpx: 'La ligne npx télécharge ce même script et le lance avec bash, rien de plus.',
+  pcRead: 'Lire le script', pcSec: 'Notes de sécurité',
   macNote: 'Sur un Mac, le terminal est l’app Terminal. Elle peut demander une fois le mot de passe du Mac (rien ne s’affiche quand tu le tapes).',
   winNote: 'Sous Windows, colle-la dans PowerShell : weevils s’installe dans Ubuntu (WSL). Un VPS reste le plus simple.',
   onWindows: 'Sous Windows (PowerShell) :', noNode: 'Pas de Node.js sur cet ordinateur (un Mac tout neuf, par exemple) ? Celle-ci fait exactement la même chose :',
@@ -304,7 +320,15 @@ const W = FR ? {
   homes: { here: ['On my PC', 'One line to paste on your PC, copied in one tap. Ready in 2 minutes, free.'], mac: ['On my Mac', 'One line to paste on your Mac, copied in one tap. Ready in 2 minutes, free.'], pc: ['On my PC', 'One line to paste on your PC or Mac. Ready in 2 minutes, free.'], vps: ['On my VPS', 'One line to paste on your VPS.'], new: ['Create a VPS for me', 'At Hetzner, billed by the hour. Your agents keep working with your PC off.'] },
   pcOnly: 'Good to know: with your PC alone, your agents work *only while it’s on*. A VPS keeps them working with your PC off.',
   thisPc: 'Paste this on your PC', thisPcMac: 'Paste this on your Mac', thisPcSub: 'Open a terminal, paste the line, press Enter (or give it to your AI assistant). Then a QR code opens weevils on your phone.',
-  pcWhat: 'It installs weevils in your home folder and checks the code’s signature. Your password is asked only if a system tool is missing, for that one command. Agents ask before acting. It comes off in one line.', pcNet: 'Good to know: so your phone can reach it from anywhere, this computer gets a public HTTPS link. It then answers from the Internet, behind your access code. To avoid that, add --no-link at the end of the command: weevils stays on this computer, and Tailscale (a private network between your devices) can link it to your phone later.', pcRead: 'Read the script', pcSec: 'Security notes',
+  whatTitle: 'What this line does, plainly',
+  whatPc: ['It puts weevils in one folder, ~/weevils, and adds what’s missing (git, tmux, Node.js, Claude Code).', 'It starts a small background service, and gives your phone an HTTPS link to it, behind your access code.', 'It doesn’t dig through your files, and nothing of yours goes to us: only how far the install is, so this page can follow.', 'No surprise password: if a system tool needs one, it shows you the command first.'],
+  whatVps: ['It puts weevils in one folder, ~/weevils, and adds what’s missing (git, tmux, Node.js, Claude Code).', 'It starts a small background service, and an HTTPS address for your phone, behind your access code.', 'It doesn’t dig through your files, and nothing of yours goes to us: only how far the install is, so this page can follow.', 'No password leaves your server, and everything it does is written to ~/weevils-install.log.'],
+  undo: 'Remove everything in one line:', more: 'See the details',
+  morePc: ['The code is signed: the line checks the signature before it runs anything.', 'On Debian and Ubuntu, missing tools are unpacked in your home folder, no password. Node.js (the official build, checked) goes there too; Claude Code comes from Anthropic’s installer.', 'Your phone’s link goes through a Cloudflare tunnel: this computer then answers from the Internet, behind your access code. To skip it, add --no-link at the end of the line: Tailscale (a private network between your devices) can link your phone later.'],
+  moreVps: ['The code is signed: the line checks the signature before it runs anything.', 'Node.js (the official build, checked) and missing tools come from their official sources; Claude Code comes from Anthropic’s installer. The HTTPS address goes through Caddy, on this server.'],
+  moreAll: ['Your agents run on this machine, as you, on their own by default: in the app, you can have them check with you before acting, for everything or for one session.', 'weevils reads your Claude Code and Codex conversations to show them in the app; they stay with you.', 'weevils keeps itself up to date with signed versions (you can turn that off in the settings).'],
+  moreNpx: 'The npx line downloads this same script and runs it with bash, nothing more.',
+  pcRead: 'Read the script', pcSec: 'Security notes',
   macNote: 'On a Mac, the terminal is the Terminal app. It may ask for your Mac password once (nothing shows while you type).',
   winNote: 'On Windows, paste it in PowerShell: weevils installs in Ubuntu (WSL). A VPS is still the simplest.',
   onWindows: 'On Windows (PowerShell):', noNode: 'No Node.js on this computer (a brand-new Mac, say)? This one does exactly the same:',
@@ -956,8 +980,25 @@ function ssh(given, reopened) {
   if (!given && !reopened) hit('chose', 'ssh')
   if (!given || reopened) step('vps')
   const err = errBox()
-  show(band('b2', h('h2', {}, W.vpsTitle), h('p', {}, W.vpsCmd), cmdBox(given ? Promise.resolve(given) : newJob('ssh'), err), h('p', { class: 'note' }, W.vpsWait), err))
+  show(band('b2', h('h2', {}, W.vpsTitle), h('p', {}, W.vpsCmd), cmdBox(given ? Promise.resolve(given) : newJob('ssh'), err), whatBox('vps'), h('p', { class: 'note' }, W.vpsWait), err))
   setBack(() => toStart())
+}
+
+// What the line does, before it is pasted: the four lines, the script to read, the one line that removes it all, and the
+// rest folded (a computer, kind 'pc'; a server, 'vps'). npxNote: the fold's npx line, shown once the page has one.
+const UNDO = '~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils'
+function whatBox(kind) {
+  const li = (t) => h('li', {}, t)
+  const npxNote = h('li', { hidden: true }, W.moreNpx)
+  const box = h('div', { class: 'what' },
+    h('p', { class: 'what-title' }, W.whatTitle),
+    h('ul', {}, (kind === 'pc' ? W.whatPc : W.whatVps).map(li)),
+    h('p', { class: 'note' }, h('a', { href: '/install.sh', target: '_blank', rel: 'noopener' }, W.pcRead), ' · ', W.undo, ' ', h('code', {}, UNDO)),
+    h('details', {}, h('summary', {}, W.more),
+      h('ul', {}, [...(kind === 'pc' ? W.morePc : W.moreVps), ...W.moreAll].map(li), npxNote),
+      h('p', { class: 'note' }, h('a', { href: '/security', target: '_blank', rel: 'noopener' }, W.pcSec))))
+  box.npx = () => { npxNote.hidden = false }
+  return box
 }
 
 // --- (c) a computer
@@ -970,7 +1011,8 @@ function pcBox(here) {
   const plain = h('code', {}, '')
   const plainCopy = h('button', { type: 'button' }, W.copy)
   const noNode = h('div', { hidden: true }, h('p', { class: 'note' }, W.noNode), h('div', { class: 'cmd alt' }, plain, plainCopy))
-  const box = h('div', {}, h('div', { class: 'cmd' }, code, copy), noNode, winLine, err)
+  const what = whatBox('pc')
+  const box = h('div', {}, h('div', { class: 'cmd' }, code, copy), noNode, winLine, err, what)
   let job
   ;(async () => {
     try {
@@ -978,7 +1020,7 @@ function pcBox(here) {
       job = s && s.kind === 'pc' && s.command ? s : await newJob('pc')
       // Windows: its own command (PowerShell, which hands the install to Ubuntu in WSL); a phone shows both.
       code.textContent = os === 'windows' && job.win ? job.win : job.npx || job.command
-      if (os !== 'windows' && job.npx) (plain.textContent = job.command), (noNode.hidden = false)
+      if (os !== 'windows' && job.npx) (plain.textContent = job.command), (noNode.hidden = false), what.npx()
       if (os === 'phone' && job.win) winLine.replaceChildren(W.onWindows, ' ', h('code', {}, job.win))
       // Back here from its install: the same command, no jump forward (the install stays one step ahead).
       if (!job.started) watch(job, () => progress(job, { push: true }))
@@ -997,7 +1039,7 @@ function pcBox(here) {
   copy.onclick = copyOf(copy, code)
   plainCopy.onclick = copyOf(plainCopy, plain)
   if (!here && navigator.share) box.append(h('button', { class: 'btn light', onclick: () => job && navigator.share({ text: code.textContent }).catch(() => {}) }, W.share))
-  box.append(h('p', { class: 'note' }, W.pcWhat, ' ', h('a', { href: '/install.sh', target: '_blank', rel: 'noopener' }, W.pcRead), ' · ', h('a', { href: '/security', target: '_blank', rel: 'noopener' }, W.pcSec)), h('p', { class: 'note' }, W.pcNet), h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
+  box.append(h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
   return box
 }
 function pc(reopened) {

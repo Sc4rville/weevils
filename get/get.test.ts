@@ -109,7 +109,7 @@ describe('helpers', () => {
   it('reads the step titles from install.sh, both languages', () => {
     const t = stepTitles(config().installer)
     expect(t['getting weevils']).toBe('s_source')
-    expect(t['dependencies and app build']).toBe('s_build')
+    expect(t['getting it ready']).toBe('s_build')
     expect(Object.values(t)).toContain('s_https')
     expect(Object.keys(t).some((k) => /é/.test(k))).toBe(true)
   })

@@ -1,6 +1,6 @@
 // Replies read like a chat app: the blocks an agent writes are recognised, emphasis never reaches into code or links.
 import { describe, expect, it } from 'vitest'
-import { blocks, spans } from './md'
+import { blocks, spans, type Block } from './md'
 
 describe('blocks', () => {
   it('headings, a bold line as heading, paragraphs, lists after a paragraph line, quote, rule', () => {
@@ -42,3 +42,14 @@ describe('a win weevboss marked', () => {
   })
 })
 
+
+it('a fold: « +++ Summary » … « +++ », closed at first, its inside read as blocks again', () => {
+  const b = blocks('What it does:\n\n- one\n- two\n\n+++ See the details\n- a key for weevils alone\n\n`~/weevils`\n+++\n\nAfter.')
+  expect(b.map((x) => x.kind)).toEqual(['para', 'list', 'fold', 'para'])
+  const f = b[2] as Extract<Block, { kind: 'fold' }>
+  expect(f.summary).toBe('See the details')
+  expect(f.body.map((x) => x.kind)).toEqual(['list', 'para'])
+  // A lone « +++ » with nothing open is plain text; an unclosed fold runs to the end.
+  expect(blocks('+++').map((x) => x.kind)).toEqual(['para'])
+  expect((blocks('+++ More\nrest') [0] as Extract<Block, { kind: 'fold' }>).body).toEqual([{ kind: 'para', text: 'rest' }])
+})

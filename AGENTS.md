@@ -81,7 +81,7 @@ The summary is `key=value` lines between `--- weevils summary ---` and `--- end 
 | `url`, `link_file` | the address the phone opens; the file that holds the login link `<url>/#k=<code>` (the access code is never in the log: `cat` that file only for your final message) |
 | `mode` | `public` (HTTPS from anywhere), `lan` (same Wi-Fi, http), `local` (this machine only) |
 | `https`, `port` | `yes`/`no`; the local port weevils listens on (127.0.0.1) |
-| `ask_permissions`, `ask_permissions_new` | `yes` when agents ask before acting (the default; `./install.sh --no-ask-permissions` turns it off, only if the user asks); `ask_permissions_new=yes` when this run switched an older install to asking: tell the user in one sentence |
+| `ask_permissions`, `ask_permissions_new` | `no` when agents work on their own (the default; the user switches it in the app, never you); `yes` when they ask before acting (root, or chosen earlier). `ask_permissions_new` is always `no` now |
 | `ready` | `yes` when Claude Code is installed and logged in |
 | `claude_installed`, `claude_logged` | Claude Code (required: weevboss runs on it) |
 | `codex_installed`, `codex_logged` | Codex (optional) |

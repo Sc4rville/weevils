@@ -77,7 +77,7 @@ How the phone reaches the machine:
 
 Other options: `--yes` (no questions), `--agent` (for an AI agent: no questions, a machine-readable summary at the
 end), `--url <https://…>` (HTTPS already served by something else, like `tailscale serve`), `--name`, `--lang en|fr`, `--port`, `--secondary <ssh host>` (add a second
-machine), `--no-ask-permissions` (agents act without asking, see Security), `--uninstall` (`--purge` also deletes
+machine), `--ask-permissions` (agents ask before acting; the app switches it any time, see Security), `--uninstall` (`--purge` also deletes
 settings and data). Everything the script does:
 [docs/install.md](docs/install.md).
 
@@ -126,11 +126,11 @@ which explains every setting. After a change: `weevils-service restart` (for the
 
 - **The access code is shell access.** Anyone with it can type into your agents. It lives in
   `~/.config/weevils/secret`; keep it private.
-- **Agents ask before acting**, everywhere: Claude Code's and Codex's permission prompts reach your phone and you
-  answer them there. `./install.sh --no-ask-permissions` (`WEEVILS_SAFE=0`) lets them act without asking
-  (`--dangerously-skip-permissions`): they never wait for you, and can run any command as you. weevils never accepts
-  Claude Code's safety warnings for you; it answers "do you trust this folder?" only inside your project folders.
-  An older install that never chose switches to asking on its next update, and says so.
+- **Agents work on their own by default**, everywhere: Claude Code and Codex run without a permission prompt at each
+  command (`--dangerously-skip-permissions`), as you, with your files, so they never sit waiting. In the app, Your
+  factory → Intelligence → Agents switches to « Ask me » (for every session, or one at a time): their prompts then
+  reach your phone and you answer there. As root, they always ask. weevils answers "do you trust this folder?" only
+  inside your project folders.
 - **Use HTTPS** (`--domain`, or Tailscale with `--url`) for anything beyond your home network.
 - **Programs on the machine need its local token**: weevils trusts a request from the machine itself without the
   code only when it carries `~/.local/share/weevils/local-token` (0600), which the `weevils` command, the updater

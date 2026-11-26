@@ -380,7 +380,7 @@ esac
       const laptop = path.join(w.root, 'laptop')
       fs.mkdirSync(laptop)
       const r = await w.paste(laptop, w.join.create('user@weevils.example.com'))
-      expect([r.code, r.err]).toEqual([0, expect.stringContaining('Key accepted')])
+      expect([r.code, r.err]).toEqual([0, expect.stringContaining('this computer joins your weevils')])
       // Nothing about the vault is said, and the installer ran as it always did.
       expect(r.err).not.toMatch(/vault|GitHub/i)
       const args = installed(laptop)
@@ -450,7 +450,7 @@ esac
       fs.mkdirSync(laptop)
       const r = await w.paste(laptop, w.join.create('user@weevils.example.com'))
       expect(r.code).toBe(0)
-      expect(r.err.trim().split('\n')).toHaveLength(1) // « Key accepted… » and nothing else
+      expect(r.err.trim().split('\n')).toHaveLength(1) // « Here we go… » and nothing else
       const args = installed(laptop)
       const id = args[args.indexOf('--machine') + 1]
       expect(args).toEqual(['--yes', '--lang', 'en', '--secondary', 'weevils-box', '--machine', id])

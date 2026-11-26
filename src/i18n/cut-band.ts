@@ -4,7 +4,7 @@ import { defineMessages } from './index'
 // an alarm (2026-11-26). The reason only when it tells the person something to do or to expect.
 export default defineMessages({
   fr: {
-    paused: 'En pause — on reprend ?',
+    paused: 'En pause, on reprend ?',
     cutWhy: (reason: string) =>
       ({ died: '', dirty: 'des changements attendent d’être enregistrés', quota: 'la limite d’usage est atteinte pour l’instant', auth: 'il faut se reconnecter', api: 'le service a fait une pause' })[reason] ?? '',
     /** Le message brut de l'outil, replié. */
@@ -15,7 +15,7 @@ export default defineMessages({
     signInAria: (tool: string) => `reconnecter ${tool} dans le fil de weevboss`,
   },
   en: {
-    paused: 'Paused — pick it back up?',
+    paused: 'Paused, pick it back up?',
     cutWhy: (reason: string) =>
       ({ died: '', dirty: 'some changes are waiting to be saved', quota: 'the usage limit is reached for now', auth: 'it needs a fresh sign-in', api: 'the service took a break' })[reason] ?? '',
     cutDetail: 'details',

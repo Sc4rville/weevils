@@ -2788,44 +2788,29 @@ button.copy.done {
   transform: translateY(-50%);
 }
 
-/* Fil de la session : une ligne tranquille dans les couleurs du thème (« En pause — on reprend ? »), « reprendre » en
-   mot doux et appuyé, « laisser » en simple texte pâle. Jamais une bande rouge. */
-.msg.cut-band .in {
-  padding-block: 14px 18px;
-}
-
-.cut-band .cut-line {
-  display: block;
-  font-weight: 600;
-  opacity: 0.85;
-}
-
-.cut-band .cut-why {
-  display: block;
-  margin-top: 2px;
+/* Fil de la session : la bande « En pause, on reprend ? », puis reprendre / laisser. Sa forme d'avant (pleine largeur,
+   ligne en gras, pastille « reprendre »), dans une couleur calme du thème : un cran de la bande, l'encre dessus. Jamais rouge. */
+.msg.band.cut-band {
+  background: oklch(from var(--c) calc(l + var(--dl) * 2) calc(c * 1.1) h);
+  color: var(--ink);
 }
 
 .cut-band .cut-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 22px;
-  margin-top: 6px;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 10px;
 }
 
 .cut-band .resume {
-  min-height: 32px;
-  padding: 4px 0;
-  border-radius: 0;
-  background: none;
-  color: inherit;
-  font-weight: 750;
+  background: var(--ink);
+  color: var(--c);
+  font-weight: 700;
 }
 
-.cut-band .cut-leave {
+.cut-band .link {
   color: inherit;
-  font-weight: 400;
-  opacity: 0.6;
 }
 
 /* Bande projet : le compteur des sessions en pause, une pastille douce (visible même repliée). */

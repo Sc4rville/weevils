@@ -161,13 +161,12 @@ describe('session coupée en plein travail', () => {
     expect(text(host.querySelector('.alert-pill'))).toBe('1 en pause')
   })
 
-  it('fil de la session : une ligne calme « En pause — on reprend ? » avec la raison utile, « reprendre » sur place et « laisser »', async () => {
+  it('fil de la session : la bande « En pause, on reprend ? » aux couleurs calmes du thème, avec la raison utile, « reprendre » sur place et « laisser »', async () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ interrupted: { at: NOW - MIN, reason: 'quota', detail: 'Claude usage limit reached' } })])
     await flush() // les bandes d'état arrivent avec le fil (ici : détail absent)
     const band = host.querySelector('.cut-band')!
-    expect(text(band.querySelector('.cut-line'))).toBe('En pause — on reprend ?')
-    expect(text(band.querySelector('.cut-why'))).toBe('la limite d’usage est atteinte pour l’instant')
-    expect(band.classList.contains('band')).toBe(false)
+    expect(text(band.querySelector('.who'))).toBe('En pause, on reprend ? · la limite d’usage est atteinte pour l’instant')
+    expect(text(band.querySelector('.who'))).not.toContain('—')
     // The tool's raw error stays one tap away, folded.
     expect(band.querySelector('details.cut-detail')?.hasAttribute('open')).toBe(false)
     expect(text(band.querySelector('.text'))).toBe('Claude usage limit reached')
@@ -192,7 +191,7 @@ describe('compte déconnecté', () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [out])
     await flush()
     const band = host.querySelector('.cut-band')!
-    expect(text(band.querySelector('.cut-why'))).toBe('il faut se reconnecter')
+    expect(text(band.querySelector('.who'))).toBe('En pause, on reprend ? · il faut se reconnecter')
     const sign = band.querySelector<HTMLButtonElement>('.sign-in')!
     expect(text(sign)).toBe('me reconnecter')
     expect(band.querySelector('.resume:not(.sign-in)')).not.toBeNull()

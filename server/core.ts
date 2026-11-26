@@ -4,7 +4,9 @@ import LivingResults from './i18n/living-results.ts'
 import { InstallationIdentity } from './recursive-identity.ts'
 import { isScratchDir } from './scratch.ts'
 import AgentMessages from './i18n/agent-messages.ts'
-import { askPermissions, bossClaude, bossCodexFlags, projectClaude, projectCodexFlags } from './agent-launch.ts'
+import { askPermissions, bossClaude, bossCodexFlags, launchAsks, projectClaude, projectCodexFlags, runsAsRoot, unattendedCodexFlags } from './agent-launch.ts'
+import { agentsChoice, effectiveAsk, SessionModes } from './agent-modes.ts'
+import { claudeSkip } from './ask-follow.ts'
 import { trustInClaudeJson } from './claude-json.ts'
 import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
@@ -27,7 +29,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AutoDetail, AutoRun, AutoRunDetail, BandPage, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, SessionStatus, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
+import type { AgentMode, AutoDetail, AutoRun, AutoRunDetail, BandPage, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, SessionStatus, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, internalCwd, madePageCwd, madePageTranscript, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS, WEEVBOOK_DIR } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { weevbookDetail } from './offline-machines.ts'
@@ -606,6 +608,11 @@ export class Weevils {
   private announced = new Map<string, number>()
   /** Fermées par weevils (bouton fermer, ménage des panes) : leur fin n'est pas une coupure. */
   private archived = new Set<string>()
+  /** Each session's own permission choice (server/agent-modes.ts), set from its page. */
+  modes = new SessionModes()
+  /** How each pane was launched, asking or not (in memory: after a restart it is not known, and the pane takes the
+   *  choice at its next start). */
+  private launchedAsk = new Map<string, boolean>()
   private closedByUs = new Map<string, number>()
   /** Dernier passage de watchCuts : la session vivait-elle, et dans quel état. */
   private lastSeen = new Map<string, { alive: boolean; status: Session['status'] }>()
@@ -861,7 +868,7 @@ export class Weevils {
       }
       try {
         const screen = await capture(p.name)
-        const reading = readScreen(screen, p.tool, { trustedFolder: insideRoots(p.cwd), allowAll: !askPermissions() })
+        const reading = readScreen(screen, p.tool, { trustedFolder: insideRoots(p.cwd), allowAll: !this.paneAsks(p) })
         const state = this.stuckOr(p, screen, reading)
         if (state.kind === 'question') {
           dialog = { question: state.question, ...(state.detail ? { detail: state.detail } : {}), options: state.choices, selected: state.menu?.selected ?? -1 }
@@ -883,6 +890,7 @@ export class Weevils {
       if (next.some((p) => p.name === old.name)) continue
       const t = old.sessionId ? this.store.get(old.sessionId) : undefined
       if (old.mode === 'structured') pumpForget(old.name)
+      this.launchedAsk.delete(old.name)
       console.log(`[sessions] ${old.name} disparue après ${Math.round((Date.now() - old.createdAt) / 1000)} s · ${t ? `${t.messages.length} messages` : 'aucun transcript'}${old.screenAttention ? ` · dernier écran : ${old.screenAttention}` : ''}`)
     }
     const changed = JSON.stringify(next) !== JSON.stringify(this.panes)
@@ -902,6 +910,7 @@ export class Weevils {
       if (t) {
         p.sessionId = t.id
         if (this.archived.delete(p.name)) { this.archived.add(t.id); this.persist() }
+        this.modes.move(p.name, t.id)
         void setOpt(p.name, '@wv_session_id', t.id).catch(() => undefined)
         this.bump()
       }
@@ -914,6 +923,26 @@ export class Weevils {
 
   private isOrchestratorPane(p: ManagedPane) {
     return internalCwd(p.cwd) || (!!this.orchestratorId && p.sessionId === this.orchestratorId)
+  }
+
+  /** Whether a session's agent asks before acting now: its own choice from its page (server/agent-modes.ts), else the
+   *  global one; weevboss always the global one; as root, always. */
+  askFor(id: string | undefined, boss = false): boolean {
+    return boss ? askPermissions() : effectiveAsk(this.modes.get(id), askPermissions(), runsAsRoot())
+  }
+
+  private paneAsks(p: ManagedPane) {
+    return this.askFor(p.sessionId ?? p.name, this.isOrchestratorPane(p))
+  }
+
+  /** An open Claude pane launched with the other choice, at rest (not working, no question on its screen, nothing in
+   *  the background, nothing queued): reopened with the new one before the next message. Never a working session; a
+   *  pane whose launch is not known (weevils restarted since) keeps going and takes the choice at its next start. */
+  private mustReopenForMode(pane: ManagedPane, s: Session): boolean {
+    if (pane.tool !== 'claude' || this.isOrchestratorPane(pane)) return false
+    const launched = this.launchedAsk.get(pane.name)
+    if (launched === undefined || launched === this.askFor(s.id)) return false
+    return !pane.screenWorking && !pane.screenDialog && !pane.screenQueued && s.status !== 'working' && !s.turnWorking && !s.background && !s.queued
   }
 
   /** Une pane weevils inactive depuis 2 h est fermée : la machine respire, la session reste reprenable par --resume. */
@@ -1397,7 +1426,14 @@ export class Weevils {
       if (!known.has(id) && !internalCwd(p.cwd)) list.push(this.placeholder(p, now))
     }
     // Les sessions ouvertes dans un terminal que weevils ne pilote pas polluent la liste sans servir : cachées.
-    return list.filter((s) => s.controllable || (this.store.get(s.id)?.originator === 'codex-tui' && !!this.store.get(s.id)?.delegationSources?.size)).map((s) => this.archived.has(s.id) ? { ...s, archived: true } : s).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    return list.filter((s) => s.controllable || (this.store.get(s.id)?.originator === 'codex-tui' && !!this.store.get(s.id)?.delegationSources?.size)).map((s) => this.withMode(this.archived.has(s.id) ? { ...s, archived: true } : s)).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+  }
+
+  /** A session of this machine with its own permission choice, and whether this machine locks it to asking (root). */
+  private withMode(s: Session): Session {
+    const m = this.modes.get(s.id)
+    const root = runsAsRoot()
+    return m || root ? { ...s, ...(m ? { agentMode: m } : {}), ...(root ? { agentLocked: true } : {}) } : s
   }
 
   /** Projets de cette machine seule (chaque weevilsd les calcule pour ses sessions). */
@@ -1500,6 +1536,7 @@ export class Weevils {
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
       ...(this.sleep ? { sleep: this.sleep.state() } : {}),
       ...(this.theme?.get() ? { theme: this.theme.get() } : {}),
+      agents: agentsChoice(),
       ...(this.pageBand ? { pageBand: this.pageBand() } : {}),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0', ...(this.threadRows ? { threads: true } : {}), ...(nextUrl() ? { nextUrl: nextUrl() } : {}) },
     }
@@ -1834,6 +1871,22 @@ export class Weevils {
     return { ok: true }
   }
 
+  /** A session's own permission choice (null: back to the global one), from its page. Applied to its next turns: its
+   *  next launch, the dialogs left on its screen now, and an open Claude pane at rest is reopened with it before its
+   *  next message (send). A session of another machine: set there. */
+  async setAgentMode(id: string, mode: AgentMode | null): Promise<{ ok: true; ask: boolean }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/agent-mode`, { mode })
+    const real = this.resolveId(id)
+    if (this.modes.set(real, mode)) {
+      // Claude Code's one-time warning about running without prompts would stop it at launch: skipped, as for the global choice.
+      if (mode === 'auto' && !runsAsRoot()) claudeSkip(true)
+      console.log(`[sessions] ${real.slice(0, 8)} : ${mode === null ? 'suit le choix global' : mode === 'ask' ? 'demande avant d’agir' : 'agit sans demander'}`)
+      this.bump()
+    }
+    return { ok: true, ask: this.askFor(real) }
+  }
+
   /**
    * Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils.
    * origin 'user': the person's own request, told by the route that received it (the app on a signed-in device, a For
@@ -1925,6 +1978,15 @@ export class Weevils {
       this.panes = this.panes.filter((p) => p.name !== pane!.name)
       pane = undefined
     }
+    // Its permission choice changed since it was launched, and it is at rest: reopened with the new one (--resume below).
+    if (pane && this.mustReopenForMode(pane, s)) {
+      console.log(`[sessions] ${pane.name} : rouverte pour ${this.askFor(s.id) ? 'demander avant d’agir' : 'agir sans demander'}`)
+      await killWv(pane.name).catch(() => undefined)
+      this.panes = this.panes.filter((p) => p.name !== pane!.name)
+      this.launchedAsk.delete(pane.name)
+      if (pane.mode === 'structured') pumpForget(pane.name)
+      pane = undefined
+    }
     if (pane) {
       console.log(`[sessions] ${pane.name} ← message${author ? ` (${author})` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
       await this.deliver(pane.name, real, text)
@@ -1934,7 +1996,8 @@ export class Weevils {
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
     // A project session gets the plain-voice rule back on every relaunch; a weevboss conversation never does.
     const boss = internalCwd(cwd) || this.isBossThread(s.id)
-    const command = s.tool === 'claude' ? [...(boss ? bossClaude() : projectClaude()), '--resume', s.id, text] : ['codex', 'resume', ...(boss ? bossCodexFlags() : projectCodexFlags()), s.id, text]
+    const ask = this.askFor(s.id, boss)
+    const command = s.tool === 'claude' ? [...(boss ? bossClaude() : projectClaude(undefined, ask)), '--resume', s.id, text] : ['codex', 'resume', ...(boss ? bossCodexFlags() : projectCodexFlags(undefined, ask)), s.id, text]
     const at = Date.now()
     await this.spawn(s.tool, cwd, s.title, command, s.id)
     // Rouverte : une coupure d'avant est réglée (une nouvelle, plus tard, comptera).
@@ -2152,6 +2215,7 @@ export class Weevils {
     if (trusted) acc?.trust(cwd)
     const extra = acc?.spawnEnv() ?? {}
     const mode = structuredFirst !== undefined && tool === 'claude' ? 'structured' as const : undefined
+    const asks = launchAsks(command)
     // Le message de départ (dernier argument) passe lui aussi par tmux ; en mode structuré, par un fichier.
     command = mode ? pumpCommand(name, command, structuredFirst) : command.map((a) => fitTerminal(a))
     try {
@@ -2163,6 +2227,7 @@ export class Weevils {
     }
     console.log(`[sessions] ${name} lancée · ${tool} · ${cwd} · ${sessionId?.slice(0, 8) ?? 'id à venir'} · « ${title.slice(0, 50)} »`)
     this.panes.push({ name, tool, sessionId, title, cwd, createdAt: Date.now(), ...(mode ? { mode } : {}) })
+    if (asks !== undefined) this.launchedAsk.set(name, asks)
     this.bump()
     return name
   }
@@ -2440,7 +2505,7 @@ export class Weevils {
    *  may answer folder trust (insideRoots). */
   private readPane = (screen: string, pane: string, tool?: Tool) => {
     const p = this.panes.find((x) => x.name === pane)
-    return readScreen(screen, tool ?? p?.tool, { trustedFolder: insideRoots(p?.cwd), allowAll: !askPermissions() })
+    return readScreen(screen, tool ?? p?.tool, { trustedFolder: insideRoots(p?.cwd), allowAll: !(p ? this.paneAsks(p) : askPermissions()) })
   }
 
   /**
@@ -3357,14 +3422,16 @@ export class Weevils {
    *  args : arguments de plus pour claude (les interdits de la tâche, --settings). env : variables posées (set) ou retirées
    *  (unset) pour cette session seulement (les barrières de la tâche : gh sans compte, git qui ne pousse pas…), par
    *  « env » devant claude : tmux lance la commande sans shell, une valeur n'est jamais interprétée. wrap : une commande
-   *  devant tout le reste (la prison bwrap de la tâche). */
-  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}, tool: Tool = preferredTool(), sessionId?: string): Promise<{ id: string }> {
+   *  devant tout le reste (la prison bwrap de la tâche). unattended : une automatisation, dont Codex garde son bac à sable
+   *  (unattendedCodexFlags). Permission prompts: the global choice, as every agent's, never a session's own (the run's
+   *  jail — deny list, bwrap, barriers, Codex's sandbox — holds the same either way). */
+  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[]; unattended?: boolean } = {}, tool: Tool = preferredTool(), sessionId?: string): Promise<{ id: string }> {
     this.assertSourceExecution(cwd)
     if (tool === 'codex') {
       const un = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
       const st = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)
       // Codex ne laisse pas choisir l'identifiant : c'est le nom de la pane, jusqu'à ce que son transcript apparaisse.
-      const name = await this.spawn('codex', cwd, title, [...(env.wrap ?? []), ...(un.length || st.length ? ['env', ...un, ...st] : []), 'codex', ...projectCodexFlags(), ...args, text])
+      const name = await this.spawn('codex', cwd, title, [...(env.wrap ?? []), ...(un.length || st.length ? ['env', ...un, ...st] : []), 'codex', ...(env.unattended ? unattendedCodexFlags() : projectCodexFlags()), ...args, text])
       void this.acceptTrust(name)
       return { id: name }
     }
@@ -3378,7 +3445,8 @@ export class Weevils {
 
   /** A provider session started again by its id in `cwd` (threads: a session rebuilt here from the weevbook). */
   async resumeIn(tool: Tool, cwd: string, id: string, text: string): Promise<void> {
-    const command = tool === 'claude' ? [...projectClaude(), '--resume', id, text] : ['codex', 'resume', ...projectCodexFlags(), id, text]
+    const ask = this.askFor(id)
+    const command = tool === 'claude' ? [...projectClaude(undefined, ask), '--resume', id, text] : ['codex', 'resume', ...projectCodexFlags(undefined, ask), id, text]
     await this.spawn(tool, cwd, '', command, id)
   }
 

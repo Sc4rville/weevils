@@ -155,8 +155,8 @@ describe('weevboss pendant la limite de Claude', () => {
     const [name, dir, tool, title, command] = mux.spawnWv.mock.calls[0] as [string, string, Tool, string, string[]]
     expect([dir, tool, title]).toEqual([ORCH_DIR, 'codex', 'weevboss'])
     expect(command[0]).toBe('codex')
-    // Agents ask for permission by default (WEEVILS_SAFE unset): no bypass flag.
-    expect(command.join(' ')).not.toContain('--dangerously')
+    // Agents work on their own by default (WEEVILS_SAFE unset): weevboss too, with the global choice's flags.
+    expect(command.slice(1, 2)).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
     expect(command.at(-1)).toMatch(/^où en sont mes sessions \? ⟦weevils — tu es weevboss, sur Codex pendant que Claude est indisponible \(limite d'usage atteinte jusqu'à 18 h\)/)
     expect(command.at(-1)).toContain('user: lance les tests du panier | you: c’est lancé dans demo')
     expect(command.join(' ')).not.toContain('claude')

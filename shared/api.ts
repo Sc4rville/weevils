@@ -4,6 +4,11 @@ import type { ForYouMark } from './foryou.ts'
 // Contrat entre weevilsd (VPS) et l'app. Horodatages en millisecondes, compteurs toujours dérivés côté app.
 
 export type Tool = 'claude' | 'codex'
+/** How agents work: on their own (no permission prompt, the default) or asking the person before acting. */
+export type AgentMode = 'auto' | 'ask'
+/** The global choice (Your factory > Intelligence > Agents), every machine follows the main one's. locked: this machine
+ *  runs weevils as root, where Claude Code refuses to work without asking. */
+export interface AgentsChoice { ask: boolean; locked?: 'root' }
 /** interrupted : coupée en plein travail (processus mort, pane fermée, erreur d'API ou quota), jamais confondue avec done. */
 export type SessionStatus = 'working' | 'needs_user' | 'idle' | 'done' | 'interrupted'
 
@@ -186,6 +191,10 @@ export interface Session {
   thread?: string
   /** Its machine does not answer now: the row is what was synced (server/offline-machines.ts), readable, not live. */
   offline?: boolean
+  /** Its own permission choice, set from its page (server/agent-modes.ts); absent: it follows the global one. */
+  agentMode?: AgentMode
+  /** Its machine runs weevils as root: it always asks (Claude Code refuses otherwise). */
+  agentLocked?: boolean
 }
 
 /** Relais Codex quand Claude atteint sa limite : auto (Codex écrit son plan puis l'exécute), ask (le plan attend un oui), never. */
@@ -612,6 +621,8 @@ export interface Snapshot {
   sleep?: SleepState
   /** The theme picked for every device (server/theme-pref.ts); absent until someone picks one. */
   theme?: string
+  /** How agents work, for every machine (server/ask-follow.ts); absent from an older weevilsd. */
+  agents?: AgentsChoice
   /** The « pages » band of next's side bar (server/page-band.ts), in the order its pages joined. */
   pageBand?: BandPage[]
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */

@@ -62,49 +62,69 @@ describe('the plain-voice rule', () => {
 })
 
 describe('permission prompts', () => {
-  it('agents ask by default; only an explicit WEEVILS_SAFE=0 turns that off', async () => {
+  it('agents work on their own by default; only WEEVILS_SAFE=1 (« Ask me ») or root makes them ask', async () => {
     const { askPermissions } = await import('./agent-launch.ts')
-    expect(askPermissions({})).toBe(true)
-    expect(askPermissions({ WEEVILS_SAFE: '' })).toBe(true)
-    expect(askPermissions({ WEEVILS_SAFE: '1' })).toBe(true)
-    expect(askPermissions({ WEEVILS_SAFE: '0' })).toBe(false)
-    expect(askPermissions({ WEEVILS_SAFE: ' 0 ' })).toBe(false)
+    expect(askPermissions({}, false)).toBe(false)
+    expect(askPermissions({ WEEVILS_SAFE: '' }, false)).toBe(false)
+    expect(askPermissions({ WEEVILS_SAFE: '0' }, false)).toBe(false)
+    expect(askPermissions({ WEEVILS_SAFE: '1' }, false)).toBe(true)
+    expect(askPermissions({ WEEVILS_SAFE: ' 1 ' }, false)).toBe(true)
+    // Claude Code refuses to skip its prompts as root: always asking there.
+    expect(askPermissions({}, true)).toBe(true)
+    expect(askPermissions({ WEEVILS_SAFE: '0' }, true)).toBe(true)
   })
-  it('with nothing set (a test HOME): sessions ask, said explicitly so the person\'s own default mode cannot skip it', () => {
+  it('with nothing set (a test HOME, not root): sessions and weevboss start without prompts', () => {
+    expect(CLAUDE).toEqual(['claude', '--dangerously-skip-permissions'])
+    expect(CODEX_FLAGS).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
+    expect(projectClaude('en').slice(0, 2)).toEqual(['claude', '--dangerously-skip-permissions'])
+    expect(projectCodexFlags('en')[0]).toBe('--dangerously-bypass-approvals-and-sandbox')
+  })
+  it('asking is said explicitly, so the person\'s own default mode cannot skip it', async () => {
     // No flag would let ~/.claude/settings.json (defaultMode: bypassPermissions) or ~/.codex/config.toml
     // (approval_policy = "never", sandbox_mode = "danger-full-access") decide, and the session would never ask.
-    expect(CLAUDE).toEqual(['claude', '--permission-mode', 'default'])
-    expect(CODEX_FLAGS).toEqual(['-a', 'on-request', '-s', 'workspace-write'])
-    expect(projectClaude('en').slice(0, 3)).toEqual(['claude', '--permission-mode', 'default'])
-    expect(projectCodexFlags('en').slice(0, 4)).toEqual(['-a', 'on-request', '-s', 'workspace-write'])
-    expect(projectClaude('en').join(' ')).not.toMatch(/dangerously/)
-    expect(projectCodexFlags('en').join(' ')).not.toMatch(/dangerously/)
-  })
-  it('turned off (WEEVILS_SAFE=0): the skip flags, as before', async () => {
     const { claudeCommand, codexFlags } = await import('./agent-launch.ts')
+    expect(claudeCommand(true)).toEqual(['claude', '--permission-mode', 'default'])
+    expect(codexFlags(true)).toEqual(['-a', 'on-request', '-s', 'workspace-write'])
     expect(claudeCommand(false)).toEqual(['claude', '--dangerously-skip-permissions'])
     expect(codexFlags(false)).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
-    expect(claudeCommand(true)).toEqual([...CLAUDE])
-    expect(codexFlags(true)).toEqual([...CODEX_FLAGS])
   })
-  it('read at each launch: a machine that follows the main one switches without a restart', () => {
+  it('a session\'s own choice overrides the global one at launch', () => {
+    expect(projectClaude('en', true).slice(0, 3)).toEqual(['claude', '--permission-mode', 'default'])
+    expect(projectClaude('en', true).join(' ')).not.toMatch(/dangerously/)
+    expect(projectCodexFlags('en', true).slice(0, 4)).toEqual(['-a', 'on-request', '-s', 'workspace-write'])
+    expect(projectClaude('en', false).slice(0, 2)).toEqual(['claude', '--dangerously-skip-permissions'])
+  })
+  it('an unattended Codex run keeps its sandbox: never the bypass flag, never waiting for an approval', async () => {
+    const { unattendedCodexFlags } = await import('./agent-launch.ts')
+    expect(unattendedCodexFlags('en', false).slice(0, 4)).toEqual(['-a', 'never', '-s', 'workspace-write'])
+    expect(unattendedCodexFlags('en', false).join(' ')).not.toMatch(/dangerously/)
+    expect(unattendedCodexFlags('en', true)).toEqual(projectCodexFlags('en', true))
+  })
+  it('a launched command says how it was launched', async () => {
+    const { launchAsks } = await import('./agent-launch.ts')
+    expect(launchAsks([...projectClaude('en', true), '--resume', 'x', 'hi'])).toBe(true)
+    expect(launchAsks([...projectClaude('en', false), '--session-id', 'x'])).toBe(false)
+    expect(launchAsks(['codex', ...projectCodexFlags('en', true), 'hi'])).toBe(true)
+    expect(launchAsks(['codex', ...projectCodexFlags('en', false), 'hi'])).toBe(false)
+    expect(launchAsks(['bash', '-lc', 'ls'])).toBeUndefined()
+  })
+  it('read at each launch: a switch in the app, or a machine that follows the main one, needs no restart', () => {
     const before = process.env.WEEVILS_SAFE
     try {
-      process.env.WEEVILS_SAFE = '0'
-      expect(bossClaude()).toEqual(['claude', '--dangerously-skip-permissions'])
-      expect(bossCodexFlags()).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
-      expect(projectClaude('en').slice(0, 2)).toEqual(['claude', '--dangerously-skip-permissions'])
-      expect(projectCodexFlags('en')[0]).toBe('--dangerously-bypass-approvals-and-sandbox')
       process.env.WEEVILS_SAFE = '1'
       expect(bossClaude()).toEqual(['claude', '--permission-mode', 'default'])
+      expect(bossCodexFlags()).toEqual(['-a', 'on-request', '-s', 'workspace-write'])
+      expect(projectClaude('en').slice(0, 3)).toEqual(['claude', '--permission-mode', 'default'])
+      process.env.WEEVILS_SAFE = '0'
+      expect(bossClaude()).toEqual(['claude', '--dangerously-skip-permissions'])
     } finally {
       if (before === undefined) delete process.env.WEEVILS_SAFE
       else process.env.WEEVILS_SAFE = before
     }
   })
-  it('wv, the terminal launcher, asks the same way', () => {
+  it('wv, the terminal launcher, works the same way: on its own unless « Ask me » (or root)', () => {
     const wv = src('wv')
-    expect(wv).toMatch(/else claude_flags=\(--permission-mode default\); codex_flags=\(-a on-request -s workspace-write\); fi/)
-    expect(wv).toMatch(/if \[ "\$\{WV_SAFE:-\}" = 0 \]; then claude_flags=\(--dangerously-skip-permissions\); codex_flags=\(--dangerously-bypass-approvals-and-sandbox\)/)
+    expect(wv).toMatch(/if \[ "\$\{WV_SAFE:-\}" = 1 \] \|\| \[ "\$\(id -u\)" = 0 \]; then claude_flags=\(--permission-mode default\); codex_flags=\(-a on-request -s workspace-write\)/)
+    expect(wv).toMatch(/else claude_flags=\(--dangerously-skip-permissions\); codex_flags=\(--dangerously-bypass-approvals-and-sandbox\); fi/)
   })
 })

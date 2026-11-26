@@ -97,9 +97,9 @@ export function appLink(href: string): { kind: 'session'; id: string } | { kind:
 
 /** What a link in weevboss's own words does where it is (server/setup.ts act): sign GitHub in, pick ChatGPT (Codex)
  *  instead of Claude, set a server up, « later », show the recovery code; the onboarding journey's steps (the tour,
- *  the phone, notifications, another computer) and its examples to try (try.<example>, server/journey.ts TRIES).
- *  Never a button: a living link in the sentence (2026-11-22). */
-export const DO_ACTIONS = ['github', 'codex', 'server', 'later', 'recovery', 'tour', 'phone', 'push', 'computer'] as const
+ *  the phone, notifications, another computer), its examples to try (try.<example>, server/journey.ts TRIES), and « ask
+ *  me first » (agents ask before acting). Never a button: a living link in the sentence (2026-11-22). */
+export const DO_ACTIONS = ['github', 'codex', 'server', 'later', 'recovery', 'tour', 'phone', 'push', 'computer', 'ask'] as const
 export type DoAction = (typeof DO_ACTIONS)[number] | `try.${Try}`
 const isDoAction = (x: string): x is DoAction =>
   (DO_ACTIONS as readonly string[]).includes(x) || (x.startsWith('try.') && (TRIES as readonly string[]).includes(x.slice(4)))

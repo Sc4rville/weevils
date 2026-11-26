@@ -14,7 +14,7 @@ import M from './i18n/app'
 import type { FsListing, InfraDetail, SpendSummary, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ForYouFeed, ForYouOpen } from '../shared/foryou.ts'
-import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
+import type { AgentMode, AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 import type { LedgerView } from '../shared/ledger.ts'
 
 export class ApiError extends Error {
@@ -108,6 +108,8 @@ export const api = {
   /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan (ses derniers pas). */
   subagent: (id: string, subId: string) => call<SubagentDetail>('GET', `/api/sessions/${enc(id)}/subagents/${enc(subId)}`),
   archive: (id: string, archived: boolean) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/archive`, { archived }),
+  /** A session's own permission choice (null: back to the global one, Your factory > Intelligence > Agents). */
+  agentMode: (id: string, mode: AgentMode | null) => call<{ ok: true; ask: boolean }>('POST', `/api/sessions/${enc(id)}/agent-mode`, { mode }),
   send: (id: string, text: string) => send<{ id: string }>(`/api/sessions/${enc(id)}/send`, { text }, id),
   /** Session coupée en plein travail : relancée (--resume + message de reprise), ou laissée. */
   resume: (id: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/resume`, {}),

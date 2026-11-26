@@ -191,6 +191,9 @@ export default defineMessages({
     syncDone: (n: number): string => `[[win]]**C’est fait** : ${n > 1 ? `tes ${n} conversations sont` : n === 1 ? 'ta conversation est' : 'tes conversations sont'} à toi maintenant, en sécurité sur ton GitHub. 🎉 Garde ton [code de secours](/#do=recovery) en lieu sûr : avec lui, une nouvelle machine récupère tout.`,
     vpsOffer: 'Pour que weevils travaille 24 h/24, même ordinateur éteint, je te conseille un serveur (environ 5 €/mois). Je peux [le mettre en place maintenant](/#do=server), ou [te le rappeler plus tard](/#do=later).',
     vpsLater: 'D’accord, je t’en reparlerai quand ce sera utile.',
+    /** First run: agents work on their own by default; the link switches every machine to asking first. */
+    autonomy: 'Tes agents bossent en autonomie : ils lancent les commandes sans te demander à chaque fois. Tu préfères valider avant ? [Me demander d’abord](/#do=ask), et tu peux changer ça quand tu veux dans ton usine.',
+    askFirstDone: 'C’est noté : tes agents te demandent avant d’agir, tu réponds depuis l’app. Ça se change quand tu veux dans ton usine.',
     recoveryCode: (words: string): string => `Ton code de secours, à garder comme un mot de passe (avec lui, une nouvelle machine récupère toutes tes conversations) :\n\n\`${words}\``,
     recoveryShown: 'Ton code de secours a déjà été montré, plus haut : je ne le réécris pas.',
     welcomeGithub: '[Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.',
@@ -454,6 +457,8 @@ export default defineMessages({
     syncDone: (n: number): string => `[[win]]**Done**: ${n > 1 ? `your ${n} conversations are` : n === 1 ? 'your conversation is' : 'your conversations are'} yours now, safe on your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe: with it, a new machine gets everything back.`,
     vpsOffer: 'To keep weevils working 24/7, even with your computer off, I recommend a server (about €5/month). I can [set it up now](/#do=server), or [remind you later](/#do=later).',
     vpsLater: 'Sure, I’ll bring it up again when it helps.',
+    autonomy: 'Your agents work on their own: they run commands without asking you each time. Rather check first? [Ask me first](/#do=ask), and you can change this any time in your factory.',
+    askFirstDone: 'Got it: your agents ask before acting, you answer from the app. Change it any time in your factory.',
     recoveryCode: (words: string): string => `Your recovery code, to keep like a password (with it, a new machine gets all your conversations back):\n\n\`${words}\``,
     recoveryShown: 'Your recovery code was already shown, above: I won’t write it again.',
     welcomeGithub: '[Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.',

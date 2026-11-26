@@ -218,3 +218,28 @@ it('a machine that is not the main one sends no permission choice', async () => 
   expect(urls.some((u) => u.endsWith('/api/machine/ask'))).toBe(false)
   r.stop()
 })
+
+it('a choice just switched in the app is sent at once, even right after the last one', async () => {
+  vi.useFakeTimers()
+  const asks: unknown[] = []
+  vi.stubGlobal('fetch', vi.fn(async (u: string, init?: RequestInit) => {
+    if (String(u).endsWith('/api/machine/ask')) {
+      asks.push(JSON.parse(String(init?.body)).ask)
+      return Response.json({ ok: true })
+    }
+    return Response.json({ version: 1, machines: [{ id: 'kusaila' }], sessions: [], h24: [] })
+  }))
+  let ask = false
+  const r = new Remote('kusaila', 'http://127.0.0.1:4193', vi.fn(), { askChoice: () => ask })
+  r.start()
+  await vi.advanceTimersByTimeAsync(10)
+  expect(asks).toEqual([false])
+  ask = true
+  await r.followAsk(Date.now())
+  expect(asks).toEqual([false]) // a look a few seconds later waits its minute…
+  await r.followAsk(Date.now(), true)
+  expect(asks).toEqual([false, true]) // …the app's switch does not
+  await r.followAsk(Date.now(), true)
+  expect(asks).toEqual([false, true]) // already there: not sent again
+  r.stop()
+})

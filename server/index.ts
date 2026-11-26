@@ -46,7 +46,7 @@ import { Hints, hintRoutes } from './hints.ts'
 import { softwareRoutes, softwareCatalog } from './softwares.ts'
 import { appWriteAllowed, browserSafe, clientAddress, configureLocalAuth, isLocal, localTokenProblem, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
-import { resetAuthors, threadAuthor } from './authors.ts'
+import { resetAuthors, setExtraAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, machineInput, readAny, startInfra } from './infra.ts'
 import { jailedAllowed, jailedPeer, ownPeer, sameUserPeer } from './jail-peer.ts'
@@ -103,7 +103,9 @@ import { Connector, reposUnder } from './connector/tools.ts'
 import { Join, joinRoute, remotesIn } from './join.ts'
 import { newProjectFolder } from './project-folder.ts'
 import { ConnectorAuth, codeFingerprint } from './connector/oauth.ts'
-import { connectorHttp } from './connector/http.ts'
+import { baseOf, connectorHttp } from './connector/http.ts'
+import { AgentKeyStore, AGENT_KEY_FILE } from './agent-keys.ts'
+import { agentHttp, agentKeyRoutes } from './agent-api.ts'
 import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 import { startMoves } from './moves-app.ts'
 
@@ -186,7 +188,8 @@ if (WEEVBOOK) {
 }
 startInfra()
 startDiskUsage()
-// Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.
+// Pont e-mail (deprecated: agent keys replace it) : sur la machine de l'orchestrateur, seulement avec WEEVILS_MAIL_BRIDGE=on
+// et WEEVILS_MAIL_ADDRESS / _PASSWORD remplis.
 let mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
 const restartMail = () => {
   mailBridge?.stop()
@@ -596,6 +599,17 @@ function connectorOn() {
 }
 if (CONNECTOR) connectorOn()
 
+// Agent keys (docs/agents.md): a bot or a web agent writes to weevboss at /agent/v1 with its own key, made in the app's
+// settings; its author (the key's name) is known to the app like a WEEVILS_AUTHOR_* line.
+const agentKeys = new AgentKeyStore({ file: path.join(DATA_DIR, AGENT_KEY_FILE) })
+setExtraAuthors(() => agentKeys.authors())
+const agentApi = agentHttp({
+  store: agentKeys, enabled: () => ORCHESTRATOR,
+  send: (text) => w.sendMain(text, undefined, 'server'),
+  waitReply: (since, ms) => w.waitMainReply(since, ms),
+  replyTimeoutMs: (Number(process.env.WEEVILS_MAIL_REPLY_MIN) || 45) * 60_000,
+})
+
 // Who may speak as the user into weevboss's thread: a signed-in browser, never a script on this machine (server/boss-door.ts).
 const door = bossDoor({ hasDevice: hasRealDevice, isBossTarget: (id) => w.isBossTarget(id), sourceAuthor, refusal: () => tr(M).bossUserOnly })
 /**
@@ -822,6 +836,8 @@ const routes: [string, RegExp, Handler][] = [
   // The chat apps connected to the weevbook (docs/spec/05-connector.md): listed, and revoked one by one, by app or all.
   ['GET', /^\/api\/connector$/, (_req, res) => json(res, 200, { enabled: !!connector, grants: connectorAuth?.list() ?? [] })],
   ['DELETE', /^\/api\/connector\/([\w-]+)$/, (_req, res, _url, [what]) => json(res, 200, { revoked: connectorAuth?.revoke(what) ?? 0 })],
+  // Agent keys (server/agent-api.ts): listed without secrets, created from a signed-in browser only, revoked at once.
+  ...agentKeyRoutes(agentKeys, { json, readBody, base: (req) => baseOf(req, PUBLIC_URL), connector: () => !!connector, enabled: () => ORCHESTRATOR, canCreate: hasRealDevice }),
   ['GET', /^\/api\/pages$/, (_req, res) => json(res, 200, { pages: pages.list() })],
   // weevils page (weevils-cli): a session or an automation on this machine publishes; never the phone.
   ['POST', /^\/api\/pages$/, async (req, res) => {
@@ -1555,6 +1571,8 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
   try {
     // The connector's own addresses (/mcp…, /.well-known/oauth-…), with their own sign-in.
     if (connector && (await connector.handle(req, res, url))) return
+    // The agents' address (/agent/v1…): an agent key only, never the app's cookie, never /api.
+    if (await agentApi.handle(req, res, url)) return
     // A page link: signed in, its keyed files; otherwise the app, which signs in and then opens it.
     const page = req.method === 'GET' || req.method === 'HEAD' ? pageLink(url.pathname) : undefined
     if (page) {

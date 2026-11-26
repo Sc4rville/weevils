@@ -48,6 +48,7 @@ import { ForYouPage } from '../../src/ui/foryou.tsx'
 import { Camera, type Spot } from './camera.tsx'
 import { NewPage, PageStudio, PagesSection, type NxPage } from './pages.tsx'
 import { TourLayer, useTour } from './tour.tsx'
+import { Syncing } from '../../src/ui/loading.tsx'
 
 const THEME_KEY = 'weevils-theme'
 /** One motion for every move in next (docs/next-interaction.md): the app's own page spring (bits.tsx spring), the
@@ -621,7 +622,8 @@ function App() {
 
   if (auth === 'checking') return <main className="nx-center" />
   if (auth === 'out') return <SignIn login={login} />
-  if (!snap) return <main className="nx-center"><span className="spin fluo"><Icon name="star" /></span></main>
+  // Before the first snapshot: the small turning « synchronisation… » line, never a blank screen with a lone mark.
+  if (!snap) return <main className="nx-center"><Syncing /></main>
 
   const stars = snap.sessions.filter((s) => !s.archived && working(s))
     // In the order they started, so a new agent's star takes the next slot and the others stay put.

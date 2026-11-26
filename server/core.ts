@@ -1491,6 +1491,7 @@ export class Weevils {
       setup: this.setup?.flags(),
       pinnedRepos: this.pinnedRepos,
       hiddenProjects: this.factory.hidden,
+      sideDrawers: this.factory.drawers ?? {},
       memoryCount: this.memory?.count,
       asksOpen: this.ledger?.openCount,
       optimizers: this.optimizers?.list() ?? [],

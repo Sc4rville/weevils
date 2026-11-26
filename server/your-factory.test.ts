@@ -122,6 +122,14 @@ describe('what the factory switches', () => {
     expect(pinned).toEqual([])
     expect(d.st.hidden).toEqual(['shop'])
   })
+  it('pins a drawer of the side bar or takes it out, and refuses anything else', async () => {
+    const d = deps()
+    await route(d, 'POST', '/api/factory/drawer', { id: 'pages', shown: false })
+    await route(d, 'POST', '/api/factory/drawer', { id: 'misc', shown: true })
+    expect(d.st.drawers).toEqual({ pages: false, misc: true })
+    expect((await route(d, 'POST', '/api/factory/drawer', { id: 'weevils', shown: false })).status).toBe(400)
+    expect((await route(d, 'POST', '/api/factory/drawer', { id: 'pages' })).status).toBe(400)
+  })
   it('shares tests and builds between two machines or more, on until turned off', async () => {
     const d = deps({ away: () => [{ name: 'laptop', n: 2 }] })
     expect((await factoryView(d)).share).toEqual({ on: true, away: [{ name: 'laptop', n: 2 }] })

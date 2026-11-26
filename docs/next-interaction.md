@@ -44,6 +44,14 @@ once, and the code follows. Behaviour is never flipped back and forth.
   and projects read in regular weight, their order told by size and colour alone. Each level wears a small solid mark
   left of its name, in ink, the weight of the Claude and Codex logos, in one column (2026-11-23): a graphics card
   (Machines), a brain (Intelligence), GitHub's mark (Projects), a lightning bolt (Tempo).
+- **Pins: you choose what is in the side bar** (2026-11-26). A drawer pinned in it wears a small thin pin between its
+  icon and its name (the name never moves); unpinned, the pin is gone. weevils and Your factory are always there and
+  never pinned. Every drawer has its switch in Your factory's **Projects**: each project (on pins it with the app's
+  pin, off takes it out), then misc, autonomous, pages and settings (shared/drawers.ts: on pins it, off takes it out;
+  never touched, each keeps its own rule: misc while a conversation needs you, autonomous while it has automations).
+- **Sessions** (2026-11-26): a fifth level of Your factory (a speech bubble), every session, the most recent first,
+  one band each in its repo's colour, its title and its state in a word; a tap opens it. Bands of one repo in a row
+  are told apart by tone alone, the Autonomous staircase going up three steps and back down: never a line or a strip.
   - **Machines**: one band per machine: a computer or a server icon (what the machine found out about itself), its
     name (hold it to rename it in place), a thin health bar under the name (the fullest of processor, memory and disk;
     ink, then orange, then red; no figures there), and on the right a plain rectangular switch. Off: nothing new starts
@@ -232,7 +240,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
 next takes the classic app's light features as they are, never as copies, so they follow by themselves
 (scripts/next-parity.test.ts keeps them):
 - **Settings**: the app's settings band (theme, language, requests, log out; machines, subscriptions and Tempo are in
-  Your factory); its last line goes to the classic app.
+  Your factory); no line to the classic app (2026-11-26: it stays an address away, `?ui=classic`).
 - **Notifications**: the app's service worker and push subscription; a tap opens its session, or weevboss.
 - **Page links** (/p/…) opened outside the app: the page, once signed in.
 

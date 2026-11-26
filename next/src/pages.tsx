@@ -15,6 +15,7 @@ import { selfProject } from '../../src/ui/recursive-identity.ts'
 import { Shell } from '../../src/ui/shell.tsx'
 import { call } from './data.ts'
 import { foldPrefs, saveFold } from './fold.ts'
+import { PinMark } from './pin.tsx'
 
 /** The band's colour, and its pages' (a new page, a page being built). */
 export const PAGES_SLOT = 'p10'
@@ -30,7 +31,7 @@ export function pageOf(p: BandPage): NxPage {
 
 // ---------------------------------------------------------------- the band
 
-export function PagesSection({ snap, page, openSlugs }: { snap: Snapshot; page: (p: NxPage) => void; openSlugs: Set<string> }) {
+export function PagesSection({ snap, page, openSlugs, pinned = false }: { snap: Snapshot; page: (p: NxPage) => void; openSlugs: Set<string>; pinned?: boolean }) {
   const list = snap.pageBand ?? []
   const [folded, setFolded] = useState(() => !!foldPrefs().__pages)
   // Its name folds its pages, like every band's; with no page yet there is nothing to fold: it starts the first one.
@@ -40,7 +41,7 @@ export function PagesSection({ snap, page, openSlugs }: { snap: Snapshot; page: 
     <section className="nx-project nx-autos nx-pages band" style={{ '--c': `var(--${PAGES_SLOT})` } as CSSProperties}>
       <div className="nx-project-line">
         <button className="nx-row nx-project-head nx-repo-row" onClick={head} aria-expanded={list.length ? !folded : undefined}>
-          <span className="nx-repo-mark" aria-hidden><Icon name="page" /></span>
+          <span className="nx-repo-mark" aria-hidden><Icon name="page" />{pinned && <PinMark />}</span>
           <span className="nx-row-title nx-project-name">pages</span>
         </button>
         <div className="chars">

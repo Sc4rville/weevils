@@ -592,6 +592,8 @@ export interface Snapshot {
   /** Projects taken out of the side bar in Your factory (they come back while one of their conversations works or
    *  needs you). */
   hiddenProjects?: string[]
+  /** The side bar's other drawers pinned (true) or taken out (false) in Your factory (shared/drawers.ts). */
+  sideDrawers?: Record<string, boolean>
   /** Nombre de souvenirs (server/memory.ts) ; la liste se lit avec GET /api/memory. Absent hors machine principale (pas de mémoire). */
   memoryCount?: number
   /** Open requests in weevboss's ledger (server/boss-ledger.ts), main machine only. */

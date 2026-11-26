@@ -6,7 +6,8 @@
 // setup flows (askSetup, openKey: a key is only ever typed in the masked field), Tempo (useTempo, TempoBand).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { Project, Snapshot } from '../../shared/api.ts'
+import type { Project, Session, Snapshot } from '../../shared/api.ts'
+import { DRAWERS, drawerShown, type Drawer } from '../../shared/drawers.ts'
 import { KEYS, type Brand, type FactoryIntel, type FactoryMachine, type FactoryOnDemand, type FactoryView } from '../../shared/your-factory.ts'
 import { TEMPO_MODES, type TempoMode } from '../../shared/tempo.ts'
 import { useT } from '../../src/i18n/index.ts'
@@ -15,7 +16,7 @@ import { useApp, type Page } from '../../src/ui/app-context.tsx'
 import { selfProject } from '../../src/ui/recursive-identity.ts'
 import { Collapse, Composer, ToolIcon } from '../../src/ui/bits.tsx'
 import { focusBoss } from '../../src/ui/follow.ts'
-import { G, Icon, Mark, type MarkName } from '../../src/ui/icons.tsx'
+import { G, Icon, Mark, type IconName, type MarkName } from '../../src/ui/icons.tsx'
 import { PageView } from '../../src/ui/pages.tsx'
 import { seedPending } from '../../src/ui/pending.ts'
 import { askSetup, openKey } from '../../src/ui/setup.tsx'
@@ -24,6 +25,7 @@ import { AwayLine } from '../../src/ui/away.tsx'
 import { TempoBand, useTempo } from '../../src/ui/tempo.tsx'
 import { call } from './data.ts'
 import { foldPrefs, saveFold } from './fold.ts'
+import { PAGES_SLOT } from './pages.tsx'
 
 // ---------------------------------------------------------------- data
 
@@ -88,6 +90,12 @@ export function inSideBar(snap: Snapshot, p: Project): boolean {
   return snap.sessions.some((s) => s.projectId === p.id && !s.archived)
 }
 
+/** A project carries its pin in the side bar: one of its repos (or itself) pinned, and not switched off. */
+export function pinnedProject(snap: Snapshot, p: Project): boolean {
+  if (snap.hiddenProjects?.includes(p.id) || flipped.get(p.id) === false) return false
+  return flipped.get(p.id) === true || p.repos.some((r) => snap.pinnedRepos.includes(r)) || snap.pinnedRepos.includes(p.id)
+}
+
 /** A switch just flipped, shown at once by the switch and by the side bar until the server's snapshot says the same
  *  (then forgotten): never undone by an unrelated snapshot arriving meanwhile. */
 const flipped = new Map<string, boolean>()
@@ -102,6 +110,25 @@ export function flipProject(id: string, on: boolean | null) {
 export function shownNow(snap: Snapshot, p: Project): boolean {
   return flipped.get(p.id) ?? inSideBar(snap, p)
 }
+/** A drawer's choice now: a switch just flipped, else the one kept (true pinned, false out, undefined its own rule). */
+export function drawerChoice(snap: Snapshot, id: Drawer): boolean | undefined {
+  return flipped.get(`drawer:${id}`) ?? snap.sideDrawers?.[id]
+}
+/** What the drawers hold now (shared/drawers.ts DrawerFacts). */
+export function drawerFacts(snap: Snapshot) {
+  const misc = snap.sessions.filter((s) => s.projectId === 'divers' && !s.archived)
+  return {
+    miscAny: misc.length > 0,
+    miscNeedsYou: misc.some((s) => s.status === 'needs_user' || s.status === 'interrupted'),
+    autonomous: (snap.optimizers ?? []).some((o) => o.state !== 'proposed' && o.state !== 'refused'),
+  }
+}
+/** Whether a drawer is in the side bar now, and whether it wears its pin. */
+export function drawerOn(snap: Snapshot, id: Drawer): boolean {
+  return drawerShown(drawerChoice(snap, id), id, drawerFacts(snap))
+}
+export const drawerPinned = (snap: Snapshot, id: Drawer) => drawerChoice(snap, id) === true
+
 /** Re-renders on a flip, and forgets the flips the snapshot now agrees with. */
 export function useFlips(snap: Snapshot) {
   const [, tick] = useState(0)
@@ -112,7 +139,10 @@ export function useFlips(snap: Snapshot) {
   }, [])
   useEffect(() => {
     let changed = false
-    for (const [id, on] of flipped) if (!!snap.hiddenProjects?.includes(id) === !on) { flipped.delete(id); changed = true }
+    for (const [id, on] of flipped) {
+      const agrees = id.startsWith('drawer:') ? snap.sideDrawers?.[id.slice(7)] === on : !!snap.hiddenProjects?.includes(id) === !on
+      if (agrees) { flipped.delete(id); changed = true }
+    }
     if (changed) flipEmit()
   }, [snap])
 }
@@ -437,12 +467,36 @@ export function reorder(list: FactoryOnDemand[], id: string, to: 'on' | 'off' | 
   return ranked.sort((a, b) => place(a) - place(b))
 }
 
+// ---------------------------------------------------------------- sessions
+
+const SESSIONS_PAGE = 40
+const DRAWER_ICON: Record<Drawer, IconName> = { misc: 'repo', autonomous: 'cycle', pages: 'page', settings: 'settings' }
+const STATE_ICON: Partial<Record<Session['status'], IconName>> = { needs_user: 'waits', interrupted: 'bang', done: 'check' }
+const STATE_WORD: Partial<Record<Session['status'], string>> = { working: 'working', needs_user: 'needs you', interrupted: 'stopped', done: 'done', idle: 'idle' }
+
+/** Every session, the most recent first, each with its place in its run: how many bands of the same repo come
+ *  right before it (0 for the first of a run), the tone step of its band. */
+export function sessionRuns(list: Session[]): { s: Session; run: number }[] {
+  const sorted = [...list].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+  let run = 0
+  return sorted.map((s, i) => {
+    run = i > 0 && sorted[i - 1].projectId === s.projectId ? run + 1 : 0
+    return { s, run }
+  })
+}
+
+/** A band's tone step in its run: up three steps, then back down, and again, so every band of a long run still
+ *  differs from the one above it. */
+export const runTone = (run: number) => { const t = run % 6; return t <= 3 ? t : 6 - t }
+
 // ---------------------------------------------------------------- the band
 
-export function FactorySection({ snap, colors, page, toBoss }: {
+export function FactorySection({ snap, colors, page, toBoss, openSession }: {
   snap: Snapshot
   colors: Record<string, string>
   page: (p: Page) => void
+  /** Opens a session's conversation (its band in Sessions). */
+  openSession: (id: string) => void
   /** Closes the side bar onto weevboss's screen (for a « + » that weevboss takes over). */
   toBoss: () => void
 }) {
@@ -451,6 +505,8 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   const [iOpen, iFold] = useFold('__factory_intel')
   const [pOpen, pFold] = useFold('__factory_projects')
   const [oOpen, oFold] = useFold('__factory_ondemand')
+  const [sOpen, sFold] = useFold('__factory_sessions')
+  const [sessionsShown, setSessionsShown] = useState(SESSIONS_PAGE)
   const [adding, setAdding] = useState(false)
   const [more, setMore] = useState(false)
   const [v, patch] = useFactory(open)
@@ -492,6 +548,11 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   const known = new Set([...rows, ...snap.projects].flatMap((r) => [r.id, ...r.repos]))
   // What can be added: one band per product (its mother repo, server/projects.ts motherRepos), never one per folder.
   const others: Row[] = (mothers ?? []).filter((m) => !known.has(m.id) && !m.repos.some((r) => known.has(r))).map((m) => ({ id: m.id, name: m.name, repos: m.repos, project: null }))
+  const showDrawer = (id: Drawer, on: boolean) => {
+    flipProject(`drawer:${id}`, on)
+    void call('POST', '/api/factory/drawer', { id, shown: on }).catch(() => flipProject(`drawer:${id}`, null))
+  }
+  const sessions = sOpen ? sessionRuns(snap.sessions) : []
   const showProject = (r: Row, on: boolean) => {
     flipProject(r.id, on)
     void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))
@@ -563,11 +624,52 @@ export function FactorySection({ snap, colors, page, toBoss }: {
           <Collapse open={more}>
             {others.map((r) => projectBand(r, step(pOpen && more), 3))}
           </Collapse>
+          {/* The side bar's other drawers, each with the same switch: the person chooses all that is in it (2026-11-26). */}
+          {DRAWERS.map((id) => drawerBand(id, step(pOpen)))}
+        </Collapse>
+        <LevelHead step={step()} name="Sessions" mark="chat" open={sOpen} onFold={sFold} />
+        <Collapse open={sOpen}>
+          {/* Every session, the most recent first, each in its repo's colour; a run of the same repo steps its tone,
+              band after band (the Autonomous staircase), never a line between them. */}
+          {sessions.slice(0, sessionsShown).map(({ s: x, run }) => (
+            <Band key={x.id} step={0} depth={2} className="nx-fx-session" style={{ '--c': `var(--${colors[x.projectId] ?? slotOf(x.projectId)})`, '--run': runTone(run) } as CSSProperties}>
+              <button className="nx-fx-main" onClick={() => openSession(x.id)}>
+                <span className="nx-mark">{x.status === 'working' ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name={STATE_ICON[x.status] ?? 'idle'} />}</span>
+                <span className="nx-row-title">{x.title || 'Untitled'}</span>
+                <span className="nx-fx-val">{STATE_WORD[x.status] ?? ''}</span>
+              </button>
+            </Band>
+          ))}
+          {sessions.length > sessionsShown && (
+            <Band step={step(sOpen)} depth={2}>
+              <button className="nx-fx-main" onClick={() => setSessionsShown((n) => n + SESSIONS_PAGE)}>
+                <span className="nx-mark" />
+                <span className="nx-row-title nx-fx-plan">{sessions.length - sessionsShown} more</span>
+              </button>
+            </Band>
+          )}
         </Collapse>
         <TempoCells step={step()} />
       </Collapse>
     </section>
   )
+
+  /** A drawer's band (misc, autonomous, pages, settings): its side bar colour and icon, its switch: on pins it there. */
+  function drawerBand(id: Drawer, at: number) {
+    const on = drawerOn(snap, id)
+    const c = id === 'misc' ? (colors.divers ?? slotOf('divers')) : id === 'autonomous' ? 'h24' : id === 'pages' ? PAGES_SLOT : (colors.__foot ?? 'p3')
+    return (
+      <Band key={id} step={at} depth={2} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${c})` } as CSSProperties}>
+        <span className="nx-fx-main">
+          <span className="nx-mark"><Icon name={DRAWER_ICON[id]} /></span>
+          <span className="nx-row-title">{id}</span>
+        </span>
+        <Switch small on={on} label={`${id} in the side bar`} onChange={(v2) => showDrawer(id, v2)} />
+        {/* The room of a project's « / » and « > », so every switch stands in one column. */}
+        <div className="chars nx-fx-room" aria-hidden><span className="ch"><Icon name="slash" /></span><span className="ch"><G c=">" /></span></div>
+      </Band>
+    )
+  }
 
   /** A project's band: its repo colour and mark, a tap to its page, its switch for the side bar. */
   function projectBand(r: Row, at: number, depth: number) {

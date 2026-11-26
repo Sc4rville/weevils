@@ -13,6 +13,7 @@ import type http from 'node:http'
 import { KEYS, ON_DEMAND, ON_DEMAND_VAR, type FactoryIntel, type FactoryMachine, type FactoryOnDemand, type FactoryView, type MachineKind, type OnDemandId } from '../shared/your-factory.ts'
 import type { Level, MachineBrief, MachineFacts, QuotaInfo } from '../shared/infra.ts'
 import type { MachineAway, Session } from '../shared/api.ts'
+import { DRAWERS, type Drawer } from '../shared/drawers.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/your-factory.ts'
 
@@ -163,6 +164,9 @@ export interface FactoryState {
   shareJobs?: boolean
   /** On-demand providers turned off (missing in a state written before they existed). */
   onDemandOff?: string[]
+  /** The side bar's other drawers (shared/drawers.ts): true pinned (always there, with its pin), false out of it;
+   *  absent, its own rule. */
+  drawers?: Record<string, boolean>
 }
 
 export interface FactoryDeps {
@@ -368,6 +372,13 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
         f.hidden = f.hidden.filter((x) => x !== id)
         if (!b.shown) f.hidden.push(id)
       })
+      json(res, 200, { ok: true })
+    }],
+    // One of the side bar's other drawers (misc, autonomous, pages, settings) pinned in it or taken out of it.
+    ['POST', /^\/api\/factory\/drawer$/, async (req, res) => {
+      const b = await readBody(req)
+      if (!DRAWERS.includes(b.id as Drawer) || typeof b.shown !== 'boolean') return json(res, 400, { error: t().cantSwitch })
+      d.change((f) => void (f.drawers = { ...(f.drawers ?? {}), [b.id as Drawer]: b.shown as boolean }))
       json(res, 200, { ok: true })
     }],
     // A machine of yours that does not answer: the one line that brings it back, pasted on it (the same computer keeps

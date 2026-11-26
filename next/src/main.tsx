@@ -39,7 +39,8 @@ import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
-import { FactorySection, NextMachinePage, shownNow, useFlips } from './factory.tsx'
+import { drawerOn, drawerPinned, FactorySection, NextMachinePage, pinnedProject, shownNow, useFlips } from './factory.tsx'
+import { PinMark } from './pin.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
 import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
@@ -137,7 +138,7 @@ const alone = (snap: Snapshot, s: Session) => s.status === 'working' && !!autoOf
 const AUTO_DIR = 'auto'
 const MISC = 'divers'
 
-function ProjectGroup({ snap, project, color, current, open, page, boss }: { snap: Snapshot; project: Project; color: string; current: string | null; open: (id: string | null) => void; page: (p: Page) => void; boss?: boolean }) {
+function ProjectGroup({ snap, project, color, current, open, page, boss, pinned = false }: { snap: Snapshot; project: Project; color: string; current: string | null; open: (id: string | null) => void; page: (p: Page) => void; boss?: boolean; pinned?: boolean }) {
   const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === project.id)
   const rank = (s: Session) => (s.status === 'needs_user' ? 0 : s.status === 'working' ? 1 : s.status === 'interrupted' ? 2 : 3)
   const active = sessions.filter((s) => s.status !== 'done').sort((a, b) => rank(a) - rank(b) || b.openedAt - a.openedAt)
@@ -165,7 +166,7 @@ function ProjectGroup({ snap, project, color, current, open, page, boss }: { sna
         ) : (
         <button className={`nx-row nx-project-head nx-repo-row ${busy ? 'nx-active' : ''}`} onClick={fold} aria-expanded={!folded}>
           {/* In the weevils logo's column, its name under the « w » of weevils. */}
-          <span className="nx-repo-mark" aria-hidden><Icon name="repo" /></span>
+          <span className="nx-repo-mark" aria-hidden><Icon name="repo" />{pinned && <PinMark />}</span>
           <span className="nx-row-title nx-project-name">{project.name}</span>
           {active.some((s) => working(s) && !alone(snap, s)) && <span className="spin fluo"><Icon name="star" /></span>}
         </button>
@@ -229,14 +230,15 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
   // Your factory decides which projects are here (factory.tsx inSideBar): never one switched off there, pinned ones
   // always, the others while they have conversations; a switch just flipped shows here at once (shownNow).
   useFlips(snap)
+  // Misc follows its drawer's choice (shared/drawers.ts): pinned, out, or shown while one of its conversations needs you.
   const projects = snap.projects
-    .filter((p) => p.id !== AUTO_DIR && (p.id === MISC ? snap.sessions.some((s) => s.projectId === p.id && !s.archived) : shownNow(snap, p)))
-    .filter((p) => p.id !== MISC || snap.sessions.some((s) => s.projectId === p.id && !s.archived && (s.status === 'needs_user' || s.status === 'interrupted')))
+    .filter((p) => p.id !== AUTO_DIR && (p.id === MISC ? drawerOn(snap, 'misc') : shownNow(snap, p)))
     .sort((a, b) => mainProjectRank(a, busy(a) ? 0 : 1) - mainProjectRank(b, busy(b) ? 0 : 1) || last(b) - last(a))
   const self = snap.projects.find((p) => selfProject(p))
   const [autosFolded, setAutosFolded] = useState(() => !!foldPrefs().__automations)
   const foldAutos = () => setAutosFolded((v) => (saveFold('__automations', !v), !v))
   const autos = (snap.optimizers ?? []).filter((o) => o.state !== 'proposed' && o.state !== 'refused')
+  const autosOn = drawerOn(snap, 'autonomous')
   const autoRank = (o: Optimizer) => (o.state === 'running' ? 0 : o.state === 'queued' ? 1 : 2)
   autos.sort((a, b) => autoRank(a) - autoRank(b))
   // « + » as in the app's automations drawer (h24.tsx): a new automation, opened at once on its talk.
@@ -285,15 +287,18 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
               <span className="nx-row-title">weevils</span>
             </button>
           )}
-          {projects.filter((p) => p !== self).map((p) => <ProjectGroup key={p.id} snap={snap} project={p} color={colors[p.id] ?? 'p0'} current={current} open={open} page={page} />)}
-          {autos.length > 0 && (
+          {projects.filter((p) => p !== self).map((p) => (
+            <ProjectGroup key={p.id} snap={snap} project={p} color={colors[p.id] ?? 'p0'} current={current} open={open} page={page}
+              pinned={p.id === MISC ? drawerPinned(snap, 'misc') : pinnedProject(snap, p)} />
+          ))}
+          {autosOn && (
             <section className="nx-project nx-autos band" style={{ '--c': 'var(--h24)' } as React.CSSProperties}>
               {/* A tap on its name folds it, like a project's (same motion, kept from one visit to the next). */}
               <div className="nx-project-line">
                 {/* Laid out like weevils and the repos: its icon in the logo's column, its name under the « w ». No star:
                     while anything here runs, that icon itself lights up and turns (the app's AutoMark); else it rests. */}
                 <button className="nx-row nx-project-head nx-repo-row" onClick={foldAutos} aria-expanded={!autosFolded}>
-                  <span className="nx-repo-mark nx-autos-mark" aria-hidden>{autos.some((o) => o.state === 'running') ? <AutoMark /> : <Icon name="cycle" />}</span>
+                  <span className="nx-repo-mark nx-autos-mark" aria-hidden>{autos.some((o) => o.state === 'running') ? <AutoMark /> : <Icon name="cycle" />}{drawerPinned(snap, 'autonomous') && <PinMark />}</span>
                   <span className="nx-row-title nx-project-name">autonomous</span>
                 </button>
                 <div className="chars">
@@ -314,12 +319,12 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
             </section>
           )}
           {/* Pages: the person's own pages, each built in a conversation (pages.tsx). */}
-          <PagesSection snap={all} page={page} openSlugs={openPages} />
+          {drawerOn(snap, 'pages') && <PagesSection snap={all} page={page} openSlugs={openPages} pinned={drawerPinned(snap, 'pages')} />}
           {/* Your factory: machines, intelligence, projects and the global Tempo (factory.tsx). */}
-          <FactorySection snap={snap} colors={colors} page={page} toBoss={close} />
+          <FactorySection snap={snap} colors={colors} page={page} toBoss={close} openSession={(id) => open(id)} />
           {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
               shows here too; machines, subscriptions and Tempo live in Your factory; no line to the classic app (an address away). */}
-          <div className="nx-settings"><FootBand toNext={false} factory mark={<span className="nx-repo-mark" aria-hidden><Icon name="settings" /></span>} /></div>
+          {drawerOn(snap, 'settings') && <div className="nx-settings"><FootBand toNext={false} factory mark={<span className="nx-repo-mark" aria-hidden><Icon name="settings" />{drawerPinned(snap, 'settings') && <PinMark />}</span>} /></div>}
         </div>
       </motion.nav>
     </>

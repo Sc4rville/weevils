@@ -236,6 +236,12 @@ body { overflow: hidden; }
 .nx-repo-mark { flex: none; width: var(--mark-w); display: flex; align-items: center; }
 .nx-repo-mark .ic { width: 26px; height: 26px; }
 .nx-repo-mark .ic:not(.auto-mark) path { stroke-width: 1.5; }
+/* A pinned drawer's pin (pin.tsx, 2026-11-26): small and thin, in the room between its icon and its name, so the name
+   never moves; unpinned, it is simply not there. */
+.nx-repo-mark { position: relative; }
+.nx-pin { position: absolute; right: -5px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; }
+.nx-repo-mark .nx-pin .ic { width: 15px; height: 15px; }
+.nx-repo-mark .nx-pin .ic path { stroke-width: 1.5; }
 /* Autonomous at rest: its loop, still and in ink like the other marks; running, the app's AutoMark (colour, travelling). */
 .nx-autos-mark .auto-mark { width: 26px; height: 26px; }
 .nx-autos-mark .auto-mark path { stroke-width: 1.5; }
@@ -319,6 +325,7 @@ body { overflow: hidden; }
 .nx-fx-band.nx-fx-project { padding-right: 6px; }
 .nx-fx-project .chars { display: flex; flex: none; margin-left: 0; }
 .nx-fx-project .ch { background: none; border: 0; color: var(--ink); }
+.nx-fx-room { visibility: hidden; }
 
 /* A thin bar under a name: a machine's health (how full: ink, then orange, then red), a subscription's power (what is
    left: the working green, then orange, then red). */
@@ -345,6 +352,12 @@ body { overflow: hidden; }
 /* A project's band wears its repo's colour, as in the side bar, with the repo mark. */
 .nx-fx-band.nx-fx-project { background: var(--c) !important; }
 .nx-fx-project .nx-mark .ic path { stroke-width: 1.5; }
+/* Sessions (factory.tsx): each band in its repo's colour; a run of the same repo steps its tone band after band, the
+   Autonomous staircase (--run), never a line or a strip between them. */
+.nx-fx-band.nx-fx-session { background: oklch(from var(--c) calc(l + var(--dl) * var(--run, 0) * 0.3) c h) !important; }
+.nx-fx-session .nx-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-fx-session .nx-fx-val { flex: none; opacity: .7; font-size: 14px; }
+.nx-fx-session .nx-mark .ic path { stroke-width: 1.5; }
 
 /* The global Tempo: its mark and name on the left, six cells on the right, filled up to the mode in use, each filled
    cell denser in ink than the last: the colour alone says the mode (no glyph, no caption). A tap on a cell sets it. */

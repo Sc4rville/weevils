@@ -40,7 +40,7 @@ import { cartesia, edgeTts } from './fast.ts'
 import { lang, tr } from './i18n.ts'
 import M from './i18n/setup.ts'
 import { Imap } from './imap.ts'
-import { mailConfig } from './mailbridge.ts'
+import { mailBridgeOn, mailConfig } from './mailbridge.ts'
 import type { Memory } from './memory.ts'
 import { quotas } from './usage.ts'
 import type { Join } from './join.ts'
@@ -790,7 +790,8 @@ export class Setup {
     const https = PUBLIC_URL.startsWith('https://')
     const reach: SetupState['reach'] = PUBLIC_URL ? 'public' : HOST !== '127.0.0.1' && HOST !== 'localhost' ? 'lan' : 'local'
     const nodeMajor = Number(/^v?(\d+)/.exec(process.version)?.[1] ?? 0)
-    const mail = mailConfig()
+    // The bridge is opt-in now (agent keys replace it): « on » only when WEEVILS_MAIL_BRIDGE=on too.
+    const mail = mailBridgeOn() ? mailConfig() : null
     const dv = devilConfig()
     const v: SetupState = {
       machine: m,
@@ -804,7 +805,7 @@ export class Setup {
       github: gh,
       voice: { spoken: cartesia() ? 'cartesia' : edgeTts() ? 'edge' : null, openai: !!openaiKey(), https: https || reach === 'local' },
       devil: { plugged: !!dv, model: dv?.model },
-      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length, pending: authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name) },
+      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length, pending: authors().filter((a) => a.id !== BOSS && !a.via && !a.emails.length).map((a) => a.name) },
       phone: { devices: this.deps.devices(), push: this.deps.push() },
       shortcut: this.deps.shortcut(),
       security: { safe: askPermissions(), https, exposedHttp: (reach === 'lan' || (reach === 'public' && !https)) && m.kind !== 'container' },
@@ -1508,7 +1509,8 @@ export class Setup {
         return true
       case 'mail':
         if (s.mail.on) return post(`${t.mailOk(s.mail.address ?? '').replace(/:$/, '.')} [[setup:author]]`), false
-        post(`${t.mailPitch}\n\n${t.mailAsk}`)
+        // Agent keys first (settings → agent keys); the e-mail bridge only as the fallback the person turns on.
+        post(`${t.agentKeysPitch}\n\n${t.mailPitch}\n\n${t.mailAsk}`)
         return true
       case 'author':
         post(s.mail.pending.length ? `${t.authorPending(s.mail.pending)} ${t.authorAsk}` : t.authorAsk)
@@ -1971,10 +1973,11 @@ export class Setup {
       return this.say(chip(t.mailFail(short(e).replace(/^IMAP:\s*/, '')), 'mail'))
     }
     imap.close()
-    writeConfig({ WEEVILS_MAIL_ADDRESS: alias, WEEVILS_MAIL_PASSWORD: pass })
+    // Plugging it in here is the person turning it on (it is off by default: WEEVILS_MAIL_BRIDGE).
+    writeConfig({ WEEVILS_MAIL_ADDRESS: alias, WEEVILS_MAIL_PASSWORD: pass, WEEVILS_MAIL_BRIDGE: 'on' })
     console.log('[setup] pont e-mail branché')
     this.deps.startMail()
-    const pending = authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name)
+    const pending = authors().filter((a) => a.id !== BOSS && !a.via && !a.emails.length).map((a) => a.name)
     this.say(chip(pending.length ? `${t.mailOk(alias)} ${t.authorPending(pending)}` : t.mailOk(alias), 'author'))
   }
 
@@ -2099,7 +2102,7 @@ export class Setup {
       `github: gh installed ${yes(s.github.installed)} · signed in ${yes(s.github.logged)}${s.github.login ? ` (${s.github.login})` : ''}`,
       `voice: spoken ${s.voice.spoken ?? 'none'} · dictation (OpenAI key) ${yes(s.voice.openai)} · https for the mic ${yes(s.voice.https)}`,
       `devil: plugged ${yes(s.devil.plugged)}${s.devil.model ? ` (${s.devil.model})` : ''}`,
-      `e-mail bridge: ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
+      `agent keys: made in the app's settings (agent keys), the way for another agent to write to you (docs/agents.md) · e-mail bridge (deprecated, off by default): ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
       `quota: ${s.quota.join(' · ') || 'unknown'}`,
       `security: agents ask permission ${yes(s.security.safe)} · exposed over plain http ${yes(s.security.exposedHttp)}`,
       `tools: ${Object.entries(s.tools).map(([k, x]) => (k === 'node' ? `node ${x}` : `${k} ${yes(!!x)}`)).join(', ')} · package manager ${s.pkg ?? 'none'} · sudo ${s.sudo}`,

@@ -203,7 +203,8 @@ export default defineMessages({
     devilNoModel: (model: string, list: string): string => `Le serveur répond, mais je ne trouve pas « ${model} » chez lui. Il propose : ${list}. Réessaie avec l’un d’eux :`,
     devilFail: (why: string): string => `Je n’arrive pas à joindre le modèle (${why}). Vérifie l’adresse (elle finit souvent par /v1) et que sa machine est allumée, puis réessaie :`,
     // ---- e-mail
-    mailPitch: 'Tu veux me parler depuis ChatGPT, un autre agent ou n’importe quel outil qui envoie des mails ? Branche le pont e-mail : chaque expéditeur que tu autorises m’écrit, signé à son nom et dans sa couleur, et je lui réponds dans le même fil.',
+    agentKeysPitch: 'Pour qu’un autre agent m’écrive, le plus simple est une clé d’agent : dans les réglages, « clés d’agent », donne-lui un nom et colle la clé dans l’agent. Ses messages arrivent signés à son nom, et il lit mes réponses. ChatGPT ou Claude.ai passent plutôt par le connecteur (demande-le-moi).',
+    mailPitch: 'Ton agent ne sait qu’envoyer des mails ? Le pont e-mail reste possible en secours, éteint par défaut : chaque expéditeur que tu autorises m’écrit, signé à son nom, et je lui réponds dans le même fil.',
     mailAsk: 'Il faut une boîte Gmail avec la validation en deux étapes (myaccount.google.com/signinoptions/twosv). Crée un mot de passe d’application nommé « weevils » sur myaccount.google.com/apppasswords et garde-le sous la main : je te demande ton adresse Gmail, puis ce mot de passe. Je m’occupe de l’alias +weevils, sans filtre à créer.',
     mailOk: (alias: string): string =>
       `Pont branché : ${alias}. Rien à régler dans Gmail : les mails envoyés à cette adresse m’arrivent directement, et je ne lis jamais le reste de ta boîte. Dis-moi maintenant qui a le droit de m’écrire :`,
@@ -448,7 +449,8 @@ export default defineMessages({
     devilOk: (model: string, ms: number): string => `Plugged in: ${model} answers (${ms} ms). Tap the devil to switch: the band turns orange, its answers come in green, in this same thread.`,
     devilNoModel: (model: string, list: string): string => `The server answers, but it has no “${model}”. It offers: ${list}. Try again with one of them:`,
     devilFail: (why: string): string => `I can’t reach the model (${why}). Check the address (it often ends in /v1) and that its machine is on, then try again:`,
-    mailPitch: 'Want to talk to me from ChatGPT, another agent, or any tool that sends e-mail? Plug in the e-mail bridge: every sender you allow writes to me, signed with their name and color, and I answer them in the same thread.',
+    agentKeysPitch: 'For another agent to write to me, the simplest way is an agent key: in settings, “agent keys”, give it a name and paste the key into the agent. Its messages come signed with its name, and it reads my replies. ChatGPT or Claude.ai rather go through the connector (ask me).',
+    mailPitch: 'Your agent can only send e-mail? The e-mail bridge is still there as a fallback, off by default: every sender you allow writes to me, signed with their name, and I answer them in the same thread.',
     mailAsk: 'You need a Gmail inbox with 2-step verification (myaccount.google.com/signinoptions/twosv). Create an app password named “weevils” at myaccount.google.com/apppasswords and keep it handy: I’ll ask for your Gmail address, then that password. I take care of the +weevils alias, no filter to create.',
     mailOk: (alias: string): string =>
       `Bridge plugged in: ${alias}. Nothing to set up in Gmail: mail sent to this address reaches me directly, and I never read the rest of your inbox. Now tell me who may write to me:`,

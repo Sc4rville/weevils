@@ -155,7 +155,10 @@ export async function autoMerge(dir: string, app: string, box?: Sandbox, git: Gi
   for (const [args, t] of [[['run', 'typecheck'], 300_000], [['run', 'i18n:check'], 120_000]] as const)
     if (!(await run(dir, 'npm', [...args], t))) return { merged: false, why: `npm ${args.join(' ')} failed` }
   // A cleanup removes code something might still use at run time: the whole suite, not only the related tests.
-  const tests = v.kinds.includes('cleanup') || v.kinds.includes('scope') || touchesServer(changes) ? ['vitest', 'run'] : ['vitest', 'run', '--changed', 'origin/main', '--passWithNoTests']
+  // A test that fails is run again twice, as the publish gate does (get/follow-main.sh): several automations at work in
+  // the same night make a timing test miss its deadline, and one such miss kept a whole night's work off main.
+  const all = ['vitest', 'run', '--retry', '2']
+  const tests = v.kinds.includes('cleanup') || v.kinds.includes('scope') || touchesServer(changes) ? all : [...all, '--changed', 'origin/main', '--passWithNoTests']
   if (!(await run(dir, 'npx', tests, 900_000))) return { merged: false, why: 'tests failed' }
   // To the repository main is fetched from (`remote get-url` gives the fetch URL): a checkout may point its pushes
   // elsewhere on purpose (weevils' own: pushurl to a private archive), main lives where it is fetched.

@@ -36,7 +36,10 @@ on its own.
 3. Checks: `npm run typecheck`, `npm run i18n:check`, `vitest run --changed origin/main` (the tests the change touches;
    the whole suite for a cleanup, in-scope work or any server change),
    **inside the run's own jail and environment** (bwrap, guardEnv): they execute what the automation wrote (its tests,
-   its node_modules' binaries), never with more rights than the run had.
+   its node_modules' binaries), never with more rights than the run had. A failing test is run again twice
+   (`--retry 2`, as the publish gate does): a busy night makes a timing test miss its deadline. The suite has to pass
+   in there as it is: the tests drop the guard's push rewrites for their own throwaway repositories
+   (`test/session-env.ts`); a test that fails only inside the jail keeps every automation's work off main.
 4. Push fast-forward to main, never forced, to the repository main is fetched from (`git remote get-url origin`: a
    checkout may point its pushes elsewhere on purpose). main moved meanwhile: refused, the branch stays.
 5. The running weevils takes it: its checkout fast-forwards (only on main and clean: someone's work is never touched)

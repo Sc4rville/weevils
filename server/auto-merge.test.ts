@@ -91,7 +91,7 @@ describe('autoMerge', () => {
     // main lives where it is fetched from, even when the checkout's pushurl points elsewhere
     expect(push.slice(1)).toEqual(['push', '-q', 'https://github.com/x/weevils.git', 'HEAD:refs/heads/main'])
     expect(push.join(' ')).not.toMatch(/-f\b|--force/)
-    expect(runs).toEqual(['npm run typecheck', 'npm run i18n:check', 'npx vitest run --changed origin/main --passWithNoTests'])
+    expect(runs).toEqual(['npm run typecheck', 'npm run i18n:check', 'npx vitest run --retry 2 --changed origin/main --passWithNoTests'])
   })
   it('the checks run inside the run’s own jail and environment (they execute what the automation wrote)', async () => {
     const { git } = fakeGit(ok)
@@ -101,7 +101,7 @@ describe('autoMerge', () => {
     expect(runs).toEqual([
       'bwrap --dev-bind / / -- env -u GH_TOKEN WEEVILS_SCOPE=automation npm run typecheck',
       'bwrap --dev-bind / / -- env -u GH_TOKEN WEEVILS_SCOPE=automation npm run i18n:check',
-      'bwrap --dev-bind / / -- env -u GH_TOKEN WEEVILS_SCOPE=automation npx vitest run --changed origin/main --passWithNoTests',
+      'bwrap --dev-bind / / -- env -u GH_TOKEN WEEVILS_SCOPE=automation npx vitest run --retry 2 --changed origin/main --passWithNoTests',
     ])
   })
   it('red checks: no push', async () => {
@@ -178,7 +178,7 @@ describe('an automation\'s own job lands on its own', () => {
     const seen: string[] = []
     const r = await autoMerge('/wt', '/app', undefined, git, async (_d, cmd, args) => (runs.push([cmd, ...args].join(' ')), true), async (c) => (seen.push(c.files, c.commits), { inScope: true, why: '' }))
     expect(r).toEqual({ merged: true, commit: 'c0ffee', kinds: ['scope'], themes: [], restart: true })
-    expect(runs.at(-1)).toBe('npx vitest run')
+    expect(runs.at(-1)).toBe('npx vitest run --retry 2')
     expect(seen[0]).toContain('M server/core.ts (+3)')
     expect(seen[1]).toBe('chore(hygiene): dead code')
   })

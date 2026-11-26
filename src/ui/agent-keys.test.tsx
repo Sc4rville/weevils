@@ -18,6 +18,7 @@ vi.mock('../api', () => ({
       db.keys.push(k)
       return { ...k, key: 'wva_0123abcd_' + 'k'.repeat(32) }
     },
+    setupAsk: async () => ({ ok: true }),
     revokeAgentKey: async (id: string) => {
       db.calls.push(`revoke ${id}`)
       db.keys = db.keys.filter((k) => k.id !== id)
@@ -42,7 +43,7 @@ function render() {
 }
 const flush = () => act(() => new Promise((r) => setTimeout(r, 30)))
 const click = (el: Element | undefined) => act(async () => void (el as HTMLElement).click())
-const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent === text)
+const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === text)
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -64,9 +65,13 @@ describe('agent keys page', () => {
     render()
     await flush()
     expect(host.textContent).toContain('Scout')
-    expect(host.textContent).toContain('never used')
-    expect(host.textContent).toContain('https://weevils.example.com/agent/v1/messages')
-    expect(host.textContent).toContain('ask weevboss to turn on the connector')
+    expect(host.textContent).toContain('not used yet')
+    // The API stays folded away for developers: no jargon until it is opened.
+    expect(host.textContent).not.toContain('Bearer')
+    await click(button('For developers'))
+    expect(host.textContent).toContain('POST https://weevils.example.com/agent/v1/messages')
+    expect(host.textContent).toContain('Authorization: Bearer <key>')
+    expect(host.textContent).toContain('Turn on the connector')
   })
 
   it('shows the connector’s address when it is on', async () => {
@@ -74,6 +79,16 @@ describe('agent keys page', () => {
     render()
     await flush()
     expect(host.textContent).toContain('https://weevils.example.com/mcp')
+    expect(host.textContent).toContain('Plug in ChatGPT or Claude.ai')
+    expect(host.textContent).toContain('Paste the address and confirm')
+  })
+
+  it('says something friendly when there is no key yet', async () => {
+    db.keys = []
+    render()
+    await flush()
+    expect(host.textContent).toContain('No agent plugged in yet.')
+    expect(host.textContent).toContain('you can remove it whenever you like')
   })
 
   it('creates a key and shows it once', async () => {
@@ -84,22 +99,22 @@ describe('agent keys page', () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Helper')
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    await click(button('create a key'))
+    await click(button('Create the key'))
     await flush()
     expect(db.calls).toEqual(['create Helper'])
     expect(host.textContent).toContain('wva_0123abcd_')
     expect(host.textContent).toContain('won’t be shown again')
-    await click(button('done'))
+    await click(button('Done'))
     expect(host.textContent).not.toContain('wva_0123abcd_')
   })
 
   it('revokes on a second tap only', async () => {
     render()
     await flush()
-    await click(button('revoke'))
+    await click(button('Remove'))
     expect(db.calls).toEqual([])
-    expect(host.textContent).toContain('stops working at once')
-    await click(button('yes, revoke'))
+    expect(host.textContent).toContain('stops working right away')
+    await click(button('Yes, remove'))
     await flush()
     expect(db.calls).toEqual(['revoke scout'])
     expect(host.textContent).not.toContain('Scout')

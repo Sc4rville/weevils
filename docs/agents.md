@@ -11,12 +11,12 @@ agent keeps working.
 A chat app that adds MCP connectors with OAuth (ChatGPT, Claude.ai) uses weevils' connector: one address,
 `https://<your weevils>/mcp`, added in the chat app, and a consent page where you type your access code once. Ask
 weevboss to "plug in ChatGPT" (or Claude.ai) and it turns the connector on and gives you the address and the clicks.
-The settings page **agent keys** also shows the address when the connector is on. Details:
+The settings page **ChatGPT and agents** shows the address first, with a Copy button and the three steps (and turns the connector on in one tap when it is off). Details:
 [spec/05-connector.md](spec/05-connector.md).
 
 ## Everything else: an agent key
 
-1. In the app, open **settings → agent keys**, type the agent's name (for example `Helper`) and tap **create a
+1. In the app, open **settings → ChatGPT and agents**, type the agent's name (for example `Helper`) and tap **Create the
    key**. Copy the key at once: it is shown this one time (**copy the instructions with the key** copies a short text
    to paste into the agent, with the address and the key).
 2. Give the key to the agent. It writes to `https://<your weevils>/agent/v1/messages`.

@@ -1,59 +1,372 @@
-/* Agent keys (src/ui/agent-keys.tsx): one line per key, the new key shown once, the agent's address. Flat, no frame. */
+/* « ChatGPT and agents » (src/ui/agent-keys.tsx): the settings' colour, one band per part, each one tone step from the
+   one above (the theme's own step, --dl, as on the requests page); cards and buttons in the ink with a faceted shadow. */
 
-.ak-page .in + .in { margin-top: 2px; }
+.ak-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
 
-.ak-row {
+.ak-part {
+  --part: oklch(from var(--c) calc(l + var(--dl) * var(--step, 0) * 0.22) c h);
+  background: var(--part);
+  padding-block: 24px 28px;
+}
+
+/* The last band runs down to the bottom of the screen. */
+.ak-part.ak-dev {
+  flex: 1;
+  padding-block: 14px 96px;
+}
+
+.ak-h {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.ak-intro {
+  margin: 6px 0 0;
+  max-width: 60ch;
+  font-size: 0.96875rem;
+  line-height: 1.45;
+  opacity: 0.8;
+}
+
+/* ---- cards: a lifted surface, a hard shadow in the ink */
+
+.ak-card {
+  margin-top: 18px;
+  padding: 16px;
+  background: color-mix(in oklab, var(--ink) 7%, var(--part));
+  box-shadow: 3px 3px 0 color-mix(in oklab, var(--ink) 80%, transparent);
+}
+
+.ak-card-label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+
+.ak-card-title {
+  font-size: 1.0625rem;
+  font-weight: 750;
+}
+
+.ak-card-text {
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+
+.ak-card > .ak-card-text:first-child {
+  margin-top: 0;
+}
+
+.ak-card-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 12px;
-  row-gap: 2px;
-  padding-block: 10px;
-}
-
-.ak-name {
-  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px 14px;
+  margin-top: 8px;
 }
 
-.ak-dot {
-  width: 10px;
-  height: 10px;
-  flex: none;
-}
-
-.ak-sure { flex-basis: 100%; }
-
-
-.ak-new {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-}
-
-.ak-new input {
-  flex: 1;
-  min-width: 0;
-  font-size: 1.0625rem;
-  font-weight: 650;
-  padding-block: 14px;
-}
-
-.ak-fresh { padding-block: 8px; }
-
-.ak-key,
-.ak-addr code {
-  font-size: 13px;
+.ak-mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.9375rem;
+  line-height: 1.4;
   overflow-wrap: anywhere;
-  word-break: break-all;
   user-select: all;
 }
 
-.ak-addr {
+.ak-card-row .ak-mono {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.ak-secret {
+  display: block;
+  margin-top: 10px;
+  padding: 10px 12px;
+  font-size: 0.875rem;
+  background: color-mix(in oklab, var(--ink) 9%, transparent);
+  word-break: break-all;
+}
+
+.ak-fresh {
+  margin-bottom: 4px;
+}
+
+/* ---- buttons: the ink as the fill, the band's colour as the text (like « reprendre »), a faceted shadow */
+
+.ak-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--ink);
+  color: var(--part, var(--c));
+  font-weight: 700;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+  box-shadow: 3px 3px 0 color-mix(in oklab, var(--ink) 35%, transparent);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ak-btn .ic {
+  width: 16px;
+  height: 16px;
+}
+
+.ak-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 color-mix(in oklab, var(--ink) 35%, transparent);
+}
+
+.ak-btn:disabled {
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.ak-btn:focus-visible {
+  outline: var(--focus-halo);
+  outline-offset: 3px;
+}
+
+/* A second choice: the ink as a frame, no fill. */
+.ak-btn.quiet {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.ak-btn.quiet:active:not(:disabled) {
+  transform: none;
+  box-shadow: inset 0 0 0 2px var(--ink);
+  background: color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.ak-btn.small {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.875rem;
+}
+
+.ak-btn.done .ic {
+  color: inherit;
+}
+
+.ak-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 12px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+/* ---- the three steps: a small square number in the ink */
+
+.ak-steps {
+  list-style: none;
+  counter-reset: ak;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.ak-steps li {
+  counter-increment: ak;
+  position: relative;
+  padding-left: 40px;
+  min-height: 26px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ak-steps li::before {
+  content: counter(ak);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--part);
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+/* One app's way, under the step: its name in bold, the clicks after it. */
+.ak-app {
+  padding-left: 12px;
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--ink) 30%, transparent);
+  opacity: 0.92;
+}
+
+.ak-app + .ak-app {
+  margin-top: 4px;
+}
+
+/* ---- a new key: a real field and a real button */
+
+.ak-new {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.ak-field {
+  flex: 1 1 14rem;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  font-size: 1.0625rem;
+  background: color-mix(in oklab, var(--ink) 7%, var(--part));
+  box-shadow: inset 0 -2px 0 var(--ink);
+}
+
+.ak-field:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.ak-new .ak-btn {
+  min-height: 48px;
+}
+
+/* ---- the keys: one row each, a thin line between them */
+
+.ak-keys {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.ak-key {
+  padding-block: 12px;
+  border-top: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
+}
+
+.ak-key:last-child {
+  border-bottom: 1px solid color-mix(in oklab, var(--ink) 16%, transparent);
+}
+
+.ak-key-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ak-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.ak-key-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ak-key-name {
+  font-weight: 750;
+  font-size: 1.0625rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ak-key-meta {
+  font-size: 0.8125rem;
+  opacity: 0.7;
+}
+
+.ak-sure {
+  margin-top: 10px;
+  padding: 12px 14px;
+  line-height: 1.4;
+  background: color-mix(in oklab, var(--ink) 7%, var(--part));
+}
+
+.ak-sure .ak-actions {
+  margin-top: 10px;
+}
+
+/* ---- nothing yet: a friendly line, never a bare « no key » */
+
+.ak-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 16px;
+  background: color-mix(in oklab, var(--ink) 5%, var(--part));
+}
+
+.ak-empty .ic {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+}
+
+.ak-empty p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* ---- for developers: a quiet fold, then a code block */
+
+.ak-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  opacity: 0.75;
+}
+
+.ak-fold[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.ak-fold .ic {
+  width: 14px;
+  height: 14px;
+}
+
+.ak-code {
+  padding: 6px 0 4px;
+}
+
+.ak-code pre {
+  margin: 4px 0 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: color-mix(in oklab, var(--ink) 9%, transparent);
+  box-shadow: 3px 3px 0 color-mix(in oklab, var(--ink) 80%, transparent);
+}
+
+.ak-code .ak-key-meta {
+  margin: 12px 0 0;
 }

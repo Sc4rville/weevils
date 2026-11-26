@@ -6,9 +6,13 @@
 // Reused from the current app: Shell, the automation model and its words, LivingLink, AutoPage, PageView, swapPage.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { AutoDetail, AutoRunDetail } from '../../shared/api.ts'
+import type { AutoDetail, AutoRun, AutoRunDetail } from '../../shared/api.ts'
+import { clip } from '../../shared/asks.ts'
 import { pageLink } from '../../shared/pages.ts'
+import { runLine } from '../../shared/run-line.ts'
 import { api } from '../../src/api.ts'
+import M from '../../src/i18n/auto-overview.ts'
+import { useT } from '../../src/i18n/index.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
 import { AutoPage } from '../../src/ui/auto-page.tsx'
 import { autoCondition } from '../../src/ui/auto-condition.ts'
@@ -72,7 +76,28 @@ export function NextAutoPage({ id }: { id: string }) {
   )
 }
 
+/** The longest sentence the « Last run » fact shows: whole in practice, a longer one stops on a whole word. */
+const SAID_MAX = 220
+
+/**
+ * How a run went, as read under its check: the first whole sentence of what the run told the person, in plain words
+ * (no stars, no folded list, never half a word). Its full message once the run's detail is loaded, else its stored
+ * note (the same message on one line, cut short). The first line of its technical report is a heading of ids and
+ * dates, written for the next run and not for the person: only when the run said nothing at all.
+ */
+function outcomeOf(run: AutoRun, detail: AutoRunDetail | null): string {
+  // The detail of another run (a new one just ended, its own detail still on its way) says nothing about this one.
+  const mine = detail?.run.at === run.at ? detail : null
+  // A run that did not go well: its note is the reason the server gave (« no progress for 52 min »), and that is the
+  // news; the session's last words come first only for a run that went well.
+  const told = mine?.message?.trim()
+  const said = runLine((run.ok ? told : '') || run.note || told || '', run.ok)
+  const head = mine?.report ? plain(mine.report).split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').trim() : undefined
+  return clip(said || head || '', SAID_MAX)
+}
+
 function Overview({ id }: { id: string }) {
+  const t = useT(M)
   const { snap, now, push } = useApp()
   const o = snap.optimizers!.find((x) => x.id === id)!
   const x = fromOptimizer(o, projectOfRepo(snap.projects, o.repo), now)
@@ -83,8 +108,7 @@ function Overview({ id }: { id: string }) {
   const running = x.state === 'running'
   // What it produced: the page its newest run published (a living link, opened in place), else that run's own page.
   const page = newest?.links.map((l) => { try { return pageLink(l, [new URL(l).host]) } catch { return undefined } }).find(Boolean)
-  const head = newest?.report ? plain(newest.report).split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').trim() : undefined
-  const outcome = head || last?.note
+  const outcome = last ? outcomeOf(last, newest) : ''
   const where = (x.projectId ? snap.projects.find((p) => p.id === x.projectId)?.name : null) ?? x.repo ?? null
 
   const next = running && x.startedAt ? `Running for ${durLong(now - x.startedAt)}`
@@ -94,7 +118,7 @@ function Overview({ id }: { id: string }) {
   const facts: [string, ReactNode, (() => void)?][] = [
     ['Next run', next],
     ['Schedule', triggerText(x.trigger, now)],
-    ...(last ? [['Last run', <><span>{last.ok ? <Icon name="check" /> : <Icon name="pause" />} {short(now - last.at, true)} ago{last.ok ? '' : ', stopped early'}</span>{outcome && <span className="nx-auto-note">{outcome}</span>}</>, () => push({ kind: 'autorun', id, at: last.at })] as [string, ReactNode, () => void]] : []),
+    ...(last ? [[t.lastRun, <><span>{last.ok ? <Icon name="check" /> : <Icon name="pause" />} {t.when(short(now - last.at, true), last.ok)}</span>{outcome && <span className="nx-auto-note">{outcome}</span>}</>, () => push({ kind: 'autorun', id, at: last.at })] as [string, ReactNode, () => void]] : []),
     ...(x.runCount ? [['So far', `${x.runCount} run${x.runCount > 1 ? 's' : ''}`] as [string, ReactNode]] : []),
     ...(where ? [['Works in', where] as [string, ReactNode]] : []),
   ]

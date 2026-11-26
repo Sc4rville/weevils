@@ -1,5 +1,6 @@
 import { sourceAccessIssue } from './source-access'
 import { noticeKey } from '../../shared/notices.ts'
+import { runLine } from '../../shared/run-line.ts'
 import { Notice } from './notice'
 // The page of one automation: a band that fills until it fires (and through its run), the same six facts for every
 // automation, what it produced (newest first, the newest unfolded), and the talk that defines it. And the page of one
@@ -91,7 +92,10 @@ function useRunDetail(id: string, at: number | undefined, files?: number): AutoR
 }
 
 const projectName = (snap: { projects: { id: string; name: string }[] }, x: AutoItem) => (x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? null) : null)
-const headline = (d: AutoRunDetail | null | undefined, r: AutoRun) => (d?.report ? plain(d.report).split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').trim() : undefined) || r.note
+/** A task's note is its last message folded on one line and cut short: shown as its first whole sentence, in plain
+ *  words (shared/run-line.ts), never stars and half a word. A timer's or a job's note is a line of its log, kept as written. */
+const noteLine = (x: AutoItem, r: AutoRun) => (x.src === 'optimizer' && r.note ? runLine(r.note, r.ok) || r.note : r.note)
+const headline = (d: AutoRunDetail | null | undefined, note?: string) => (d?.report ? plain(d.report).split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').trim() : undefined) || note
 
 export function AutoPage({ id }: { id: string }) {
   // One negotiation state for the whole page (App provides the one shared with the drawer).
@@ -280,7 +284,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
             {x.state === 'running' && <LiveRun x={x} />}
             {runs.map((r, i) => (
               <Fragment key={r.at}>
-                <RunLine id={x.id} r={r} head={i === 0 ? headline(newest, r) : r.note} />
+                <RunLine id={x.id} r={r} head={i === 0 ? headline(newest, noteLine(x, r)) : noteLine(x, r)} />
                 {i === 0 && newest && <Produced id={x.id} d={newest} machine={detail?.machine} short />}
               </Fragment>
             ))}

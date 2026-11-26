@@ -268,6 +268,26 @@ describe('automation page', () => {
     expect(pushed).toEqual([{ kind: 'fsfile', machine: 'srv', path: '/home/u/notes/a.md' }])
   })
 
+  it("a task's run line reads as one whole sentence in plain words; a timer's log line stays as written", async () => {
+    const said = [
+      { ...runs[2], note: '**Done:** I checked one new price list, which holds 4 items. - Nothing blocked..' },
+      { ...runs[1], note: '**Stopped:** the check failed on its first step. - **Why:** a tool is miss…' },
+    ]
+    fixtures.detail.set('d', { id: 'd', runs: said, machine: 'srv' })
+    render(snap([{ ...daily, runs: [...said].reverse() }]), <AutoPage id="d" />)
+    await flush()
+    const lines = () => [...host.querySelectorAll('.page-body .row .stack-text > .ellipsis:first-child')].map((n) => n.textContent)
+    // « Done: » goes (the check says it); « Stopped: » is the news and stays.
+    expect(lines().slice(-2)).toEqual(['I checked one new price list, which holds 4 items.', 'Stopped: the check failed on its first step.'])
+    expect(host.textContent).not.toContain('**')
+
+    const raw = '**backup** sent 3 files. Total 4.2M'
+    fixtures.detail.set(timer.id, { id: timer.id, runs: [{ at: NOW - 3600_000, startedAt: NOW - 3600_000 - 6 * MIN, ok: true, note: raw }], machine: 'srv' })
+    render(snap([], [timer]), <AutoPage id={timer.id} />)
+    await flush()
+    expect(lines()).toContain(raw)
+  })
+
   it('a running task: AutoMark on the live line, one tap into its session; pause, no run-now', async () => {
     render(snap([opt({ id: 'r', title: 'Clean deps', state: 'running', startedAt: NOW - 12 * MIN, est: 45, sessionId: 's9', every: 6 * 3600_000 })]), <AutoPage id="r" />)
     await flush()

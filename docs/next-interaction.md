@@ -177,6 +177,11 @@ once, and the code follows. Behaviour is never flipped back and forth.
   Tapping it is one motion in from the right, weevboss's strip travelling with it.
 - **A session's screen gives the thread the room** (2026-11-22): its head is one compact row (the back chevron, the
   title, the model; no repo name, no logo: its colour says the repo) with no second gap under weevboss's strip.
+- **Every session's thread is weevboss's own** (2026-11-26, replaces the full-width bands and the mirrored prompts of
+  2026-11-21/22): the page's body is weevboss's one reading column (720px, centred on every width, the head's row over
+  it), each message under its author's small name, your words a tinted band reaching the column's right edge, every
+  other message on the column with its small gap, the pause card in the same column. No message has an offset of its
+  own.
 - **Every chat's box to write in is weevboss's own** (2026-11-24, replaces « one line while empty » of 2026-11-22):
   weevboss's thread, a session, an automation's chat, a thread, a talk in your factory. The same roomy box, a band
   from edge to edge, the text on top and its +, mic and send on a row under it, standing the phone's bottom inset

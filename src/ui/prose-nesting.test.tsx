@@ -38,3 +38,13 @@ it('an app address in a markdown link stays a link; any other target keeps only 
   expect(inline('go [here](#) now')).toEqual([{ kind: 'text', s: 'go here now' }])
   expect(inline('[notes](notes.md)')).toEqual([{ kind: 'text', s: 'notes' }])
 })
+
+it('a fold (« +++ See the details » … « +++ ») is a closed <details>, its list and code inside', async () => {
+  const h = await show('**What it does**\n- one\n\n+++ See the details\n- a key in `~/.ssh`\n+++\n\nIt works once.')
+  const d = h.querySelector('details.md-fold')!
+  expect(d.hasAttribute('open')).toBe(false)
+  expect(d.querySelector('summary')!.textContent).toBe('See the details')
+  expect(d.querySelector('li')!.textContent).toContain('~/.ssh')
+  expect(h.textContent).not.toContain('+++')
+  expect(h.lastElementChild!.lastElementChild!.textContent).toBe('It works once.')
+})

@@ -74,6 +74,8 @@ everything the themes need, and the checks decide.
 | `chalkboard` | tableau noir / chalkboard | dark | a classroom slate wiped in a hurry: slate green-black top, chalk-tray wood 24/7, red-chalk devil band, deep slate calm band, chalk-white ink; **typeface** Chalkboard SE on iPhone and Mac (rounded, then the system sans elsewhere); **texture** chalk dust and two eraser smears (screen, 0.12) | **coloured chalks smudged on slate**, the whole circle at low chroma (0.055), 4 depths | yellow-chalk star, blue-chalk AutoMark, pink-chalk 24/7 title |
 | `atlas` | atlas / atlas | light | a hand-coloured plate from an old atlas: vellum top, sea-green 24/7, boundary-rose devil band, lowland-green reply, pale vellum calm band, sepia ink; **typeface** the phone's serif (`ui-serif`: New York on iPhone and Mac, Georgia elsewhere), the first serif theme; **texture** contour lines of four hills on two tiles of different sizes, and the graticule of meridians and parallels (multiply, 0.12) | **hypsometric tints**, sea → plains → hills → mountains → peaks: cyan-green → green → straw → ochre → brown → rose-mauve (210° arc descending, chroma 0.06), 4 steps | route-carmine star, Prussian-blue AutoMark, burnt-sienna 24/7 title |
 | `crt` | cathodique / CRT | dark | an amber monochrome monitor in a dark room: warm near-black bands, amber-glow 24/7, red devil band; **ink in P3 amber** `#ffdca0`, the first dark theme whose text is a colour; **texture** scanlines (one line in three), the red-green-blue phosphor grille and the tube's dark corners (normal, 0.12) | **a badly tuned screen**, amber → red → violet → blue → cyan (280° arc, chroma 0.075), 4 dim depths | phosphor-green star (the one scream), cyan AutoMark, hot-amber 24/7 title |
+| `terrazzo` | terrazzo / terrazzo | light | a 1980s Milanese terrazzo floor: **mustard top and lilac 24/7 that clash on purpose**, tomato devil band, mint reply, warm plaster calm band, aubergine ink `#1a0f1e`; **typeface** the phone's rounded sans (`ui-rounded`: SF Pro Rounded on Apple devices), the first rounded theme; **texture** stone chips, irregular polygons in seven stones on two tiles of different sizes (multiply, 0.12) | **marble chips**, the whole circle from Verona red, 4 steps (chroma 0.085) | cobalt star, Prato-green AutoMark, brick 24/7 title |
+| `woodblock` | estampe / woodblock | dark | a Japanese woodblock print at night: Prussian-blue top (the *bero-ai* of the waves), block-wood 24/7, seal-vermilion devil band, verdigris reply, deep indigo calm band, washi-cream ink `#f8eedb`; **typeface** the phone's mincho (Hiragino Mincho on Apple devices, then the system serif); **texture** the grain of the carved block, noise stretched 22:1 horizontally, which reads as wood and as water, plus a *bokashi* glow rising from the bottom (screen, 0.12) | **the print's pigments**, indigo → blue → green → ochre → vermilion → safflower (270° arc descending, chroma 0.07), 4 depths | persimmon star, wave-foam AutoMark, safflower-pink 24/7 title |
 
 ## Log
 
@@ -283,6 +285,35 @@ carries them too. A theme that touches `shared/link-colors.ts` makes the landing
 not land either, that is the likely reason. Like carbon, atlas belongs in the `.nx-fx-busy` list of
 `next/src/next.css` (a light theme), left to the person for the same reason.
 
+### 2026-11-26 — terrazzo, woodblock
+
+Tenth nightly run. One light, one dark, each with three bold moves (typeface, texture, palette).
+
+- **terrazzo**: a Memphis-era terrazzo floor. The texture is the idea: chips of seven stones (Verona red, Prato green,
+  black, ochre, lilac, coral, blue) as irregular polygons, generated with a seed, each drawn again across the tile's
+  edge it overlaps so nothing is cut, on two tiles (380×330 and 270×310, offset) so the floor does not read as a
+  grid. The bands clash on purpose, mustard top against lilac 24/7, tomato devil band against mint reply. First
+  rounded theme (`ui-rounded`; elsewhere the system sans, nothing downloaded). The AutoMark needed L 0.40 (0.42 gave
+  2.9:1 on the deepest slot).
+- **woodblock** (estampe): a night print in the manner of Hokusai. The texture is the grain of the cherry-wood block
+  showing through the flat colour, a `feTurbulence` stretched to `0.004 0.09` with light veins, in screen: on the blue
+  bands it also reads as the lines of the sea. A faint *bokashi* (a gradient glow from the bottom) makes the page a
+  print's sky. First mincho typeface (Hiragino Mincho, Yu Mincho, then the system serif; atlas's `ui-serif` is a
+  different face on Apple devices). Slots are the print's pigments, cool to warm. Joins every dark-theme rule.
+
+Checked: contrast, slot, texture, logo and link-colour tests (woodblock at the first values, terrazzo after the
+AutoMark fix), typecheck, i18n, the front-end suite (only `test/macos-launchd` fails, as before; `server/` git-heavy
+tests fail inside the automation worktree as before). Screenshots of weevboss, For you, the menu and slot swatches in
+en and fr at 1280×900 and 390×844 from a throwaway server (`env -i`, empty home with its own access code written
+beforehand, ports 4391/4392, six fake Claude Code projects). Lesson: the theme is shared by the server (POST
+`/api/theme`, carried back by the snapshot), so a screenshot script must POST the theme it shows, or the last one
+picked wins over localStorage. Not seen: SF Pro Rounded and Hiragino Mincho themselves (Linux browser).
+
+Note for the person: carbon, chalkboard, atlas and crt have still not reached main; this branch carries them and these
+two. `shared/link-colors.ts` makes the landing run the whole suite (`touchesServer`), and its git-heavy `server/` tests
+fail inside the automation worktree: that is very likely what keeps all six waiting. terrazzo belongs in the
+`.nx-fx-busy` list of `next/src/next.css` (a light theme), left to the person like carbon and atlas.
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.
@@ -291,10 +322,10 @@ not land either, that is the likely reason. Like carbon, atlas belongs in the `.
 - **Newsprint / ink wash**: grey paper, sumi-ink black, one red seal.
 - **Glacier / arctic**: a near-white icy light theme with one aurora accent (coastal is warm-sand and blues; this would
   be cold and almost monochrome).
-- **Lacquer red / ukiyo-e**: a dark vermilion-and-indigo woodblock theme (deco is black and gold).
+- **Lacquer red**: a dark red-lacquer theme (woodblock took the indigo print, deco black and gold).
 - **Thermal receipt**: carbon took monospace and coloured ink; a true one-ink receipt (16 slots in one faded hue) does
   not pass the slots ≥ 2 apart rule at low chroma: it needs a hue arc of 200° or more.
-- **Terrazzo**: speckled stone chips (radial-gradient dots) on warm plaster, a loud clashing palette.
 - **Serif worlds**: atlas took `ui-serif` for a map; newsprint or a library card catalogue could take it for print.
-- **Rounded / condensed typefaces**: `ui-rounded` (SF Pro Rounded) for a soft toy-like world; nobody uses it yet.
+- **Condensed typefaces**: terrazzo took `ui-rounded`; a condensed face (`"Avenir Next Condensed"`, `"Arial Narrow"`) for a
+  poster or railway-timetable world is free.
 - **Seasonal / time of day**: a theme that follows the clock (dawn → noon → dusk → night) needs a product decision first.

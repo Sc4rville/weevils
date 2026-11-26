@@ -101,6 +101,27 @@
   --fy-g4: var(--p15);
 }
 
+/* Terrazzo: the gradient walks the chips, Verona red → Prato green → blue → lilac. */
+:root[data-theme='terrazzo'] {
+  --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
+  --fy-g1: var(--p0);
+  --fy-g2: var(--p5);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p15);
+}
+
+/* Woodblock: dark bands; outside authors brought down to the night print; the gradient walks the pigments, indigo → safflower. */
+:root[data-theme='woodblock'] {
+  --fy-ok: oklch(from var(--fluo) 0.38 calc(c * 0.45) h);
+  --fy-who-lm: 0;
+  --fy-who-la: 0.34;
+  --fy-who-k: 0.6;
+  --fy-g1: var(--p3);
+  --fy-g2: var(--p6);
+  --fy-g3: var(--p11);
+  --fy-g4: var(--p15);
+}
+
 /* Carbon: the gradient walks the form's copies, canary → green → blue → pink. */
 :root[data-theme='carbon'] {
   --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
@@ -1693,7 +1714,8 @@ button.fy-hit {
 [data-theme='vaporwave'] .fy-sheet-back,
 [data-theme='deco'] .fy-sheet-back,
 [data-theme='chalkboard'] .fy-sheet-back,
-[data-theme='crt'] .fy-sheet-back {
+[data-theme='crt'] .fy-sheet-back,
+[data-theme='woodblock'] .fy-sheet-back {
   background: rgb(0 0 0 / 0.45);
 }
 

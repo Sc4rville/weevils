@@ -19,7 +19,7 @@ function linearRGB([L,a,b]:Lab) {
  return rgb
 }
 function luminance(c:Lab){const rgb=linearRGB(c);return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]}
-it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard','atlas','crt'])('keeps all three logo planes legible on %s main and project bands', theme => {
+it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave','coastal','deco','carbon','chalkboard','atlas','crt','terrazzo','woodblock'])('keeps all three logo planes legible on %s main and project bands', theme => {
  const block=css.slice(css.indexOf(`[data-theme='${theme}'] {`)).split('}')[0]
  const vars=Object.fromEntries([...block.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(m=>[m[1],m[2]]))
  const colour=(name:string):Lab=>{

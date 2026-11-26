@@ -23,7 +23,8 @@
 [data-theme='vaporwave'] .hint,
 [data-theme='deco'] .hint,
 [data-theme='chalkboard'] .hint,
-[data-theme='crt'] .hint {
+[data-theme='crt'] .hint,
+[data-theme='woodblock'] .hint {
   background: #fff;
   color: #000;
 }

@@ -32,7 +32,7 @@ describe('living link colours', () => {
     const css = linkCss()
     for (const kind of PAGE_KINDS) {
       expect(css).toContain(`:root .living.lk-${kind}{`)
-      for (const t of ['dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco', 'carbon', 'chalkboard', 'atlas', 'crt']) expect(css).toContain(`:root[data-theme='${t}'] .living.lk-${kind}{`)
+      for (const t of ['dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco', 'carbon', 'chalkboard', 'atlas', 'crt', 'terrazzo', 'woodblock']) expect(css).toContain(`:root[data-theme='${t}'] .living.lk-${kind}{`)
       expect(css).toContain(`:root[data-theme='graphite'] .msg.orch .living.lk-${kind}{`)
     }
   })

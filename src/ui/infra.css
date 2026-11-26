@@ -11,7 +11,8 @@
 :root[data-theme='vaporwave'],
 :root[data-theme='deco'],
 :root[data-theme='chalkboard'],
-:root[data-theme='crt'] {
+:root[data-theme='crt'],
+:root[data-theme='woodblock'] {
   --warn: #ffa347;
   --crit: #ffc27a;
 }

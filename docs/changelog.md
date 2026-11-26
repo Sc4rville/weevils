@@ -4,6 +4,21 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-26
 
+### Installing, in plain words
+- What the line does is said before it is pasted, on the setup page and in weevboss's message for another computer:
+  four short lines (one folder, a small background service, your files left alone, no surprise password), the script
+  to read, the one line that removes everything, and the rest behind « See the details ».
+- The installer's terminal speaks to a newcomer: plain steps, no settings names, no package-manager words, the
+  service's own lines kept in `~/.cache/weevils/service.log`, a calm sentence when a step pauses, and one last line,
+  « All set ✓ Head back to your phone… your machine “desk” is there ». The setup page's line shows each step too.
+- Agents work on their own by default, on every machine, and the choice lives in the app: Your factory →
+  Intelligence → Agents, « Autonomous » or « Ask me », and a session can have its own. The main machine's choice
+  reaches the others. `--ask-permissions` / `--no-ask-permissions` still work; an install that chose asking keeps it.
+- Claude Code on another computer is signed in from weevboss's thread (a link, then the code pasted in the chat):
+  no terminal step on that computer. `weevils setup ask claude <machine>`.
+- `--uninstall --purge` on a computer plugged in from a line also removes its weevils key and the main machine's
+  entry in `~/.ssh/config`.
+
 ### A stable address for computers
 - A computer set up from the setup page gets `https://<name>.tryweevils.scarville.tech`, the same after every
   restart, network change or sleep, instead of a Cloudflare quick tunnel whose address changed each time: the

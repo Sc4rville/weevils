@@ -25,7 +25,7 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
   leaves it to the person (it would stop the run landing by itself);
 - tests: add the id to the theme lists in the tests (`grep -rn "'graphite'" src test`) and to `ADDED` in
   `test/theme-contrast.test.ts` (ink ≥ 6:1, working star, AutoMark and 24/7 title ≥ 3:1 on every band and sub-band,
-  white on alert ≥ 3.5:1, project slots ≥ 2 apart at ΔOK ≥ 0.05); `test/logo-palette.test.ts` checks the logo and the
+  no `--alert` of its own, project slots ≥ 2 apart at ΔOK ≥ 0.05); `test/logo-palette.test.ts` checks the logo and the
   recording colour;
 - project colours are slots, not hues: a project keeps its slot in every theme, only the slot's colour changes. Keep
   slots ordered (neighbours close, slots ≥ 2 apart distinct): the For you cards and feed bands rely on it.

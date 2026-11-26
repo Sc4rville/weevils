@@ -3087,30 +3087,6 @@ button.copy.done {
   --destroy: #d92d20;
 }
 
-:root[data-theme='carbon'] {
-  --alert: oklch(0.5 0.19 25);
-}
-
-:root[data-theme='chalkboard'] {
-  --alert: #f5333f;
-}
-
-:root[data-theme='atlas'] {
-  --alert: oklch(0.5 0.19 25);
-}
-
-:root[data-theme='crt'] {
-  --alert: #f5333f;
-}
-
-:root[data-theme='terrazzo'] {
-  --alert: oklch(0.5 0.19 25);
-}
-
-:root[data-theme='woodblock'] {
-  --alert: #f5333f;
-}
-
 .alert {
   color: inherit;
 }

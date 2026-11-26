@@ -353,7 +353,7 @@ body { overflow: hidden; }
 /* A machine at work: its icon takes on colour, slowly moving through the hues. */
 @property --nx-hue { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 .nx-fx-busy { color: oklch(0.72 0.2 var(--nx-hue)); animation: nx-hue 6s linear infinite; }
-[data-theme='light'] .nx-fx-busy, [data-theme='zen'] .nx-fx-busy, [data-theme='coastal'] .nx-fx-busy, [data-theme='botanical'] .nx-fx-busy, [data-theme='desert'] .nx-fx-busy { color: oklch(0.55 0.22 var(--nx-hue)); }
+[data-theme='light'] .nx-fx-busy, [data-theme='zen'] .nx-fx-busy, [data-theme='coastal'] .nx-fx-busy, [data-theme='botanical'] .nx-fx-busy, [data-theme='desert'] .nx-fx-busy, [data-theme='carbon'] .nx-fx-busy, [data-theme='atlas'] .nx-fx-busy, [data-theme='terrazzo'] .nx-fx-busy { color: oklch(0.55 0.22 var(--nx-hue)); }
 @keyframes nx-hue { to { --nx-hue: 360deg; } }
 .nx-fx-logo .tool-svg { display: block; }
 .nx-fx-initial { display: grid; place-items: center; width: 18px; height: 18px; border: 2px solid currentColor; font-size: 11px; font-weight: 400; line-height: 1; }

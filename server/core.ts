@@ -2859,7 +2859,7 @@ export class Weevils {
     this.spareStarting = true
     try {
       const id = crypto.randomUUID()
-      const { args, key } = await turns.ahead({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '' })
+      const { args, key } = await turns.ahead({ id, claude: bossClaude(), memory: this.memory?.digest() ?? '' })
       const name = await this.spawn('claude', ORCH_DIR, 'weevboss', aheadCommand(id, args), id)
       this.spare = { id, pane: name, key: key + this.spareAccount(), at: Date.now() }
       this.persist()

@@ -8,7 +8,7 @@
 #                                 line (npx with npm/ once published), a fourth from its curl line, survives a reboot,
 #                                 --uninstall then a new install
 #   test/docker/run.sh plain      container without systemd, as root: curl | bash style (piped), Claude Code from its
-#                                 official installer, WEEVILS_SAFE=1, background fallback, re-run, --uninstall --purge
+#                                 official installer, root keeps asking (WEEVILS_SAFE=1), background fallback, re-run, --uninstall --purge
 #   test/docker/run.sh edge       the hard cases: truncated download, no terminal without --yes, no sudo, node 20
 #                                 (NodeSource, Ubuntu apt, tarball shadowing), user with sudo + file:// repo + --dir,
 #                                 re-run after editing the config, --lang fr only, bad options, --lan, a Caddyfile that
@@ -100,11 +100,11 @@ run_systemd() {
   check "Claude Code hooks registered" as_test '[ "$(jq "[.hooks[][].hooks[].command | select(endswith(\"weevils-hook\"))] | length" ~/.claude/settings.json)" = 6 ]'
   check "end screen shows the login link" grep -q "localhost:4179/#k=" "$work/install1.log"
   check "no domain: no QR code, the ways in explained instead" bash -c "! grep -qE '$QR' '$work/install1.log' && grep -q -- '--domain <host>' '$work/install1.log' && grep -q 'tailscale serve --bg 4179' '$work/install1.log' && grep -q -- 'install.sh --lan' '$work/install1.log' && grep -q 'ssh -L 4179:127.0.0.1:4179' '$work/install1.log'"
-  check "Claude Code logged in: 'weevils is ready', agents ask by default" bash -c "grep -q 'weevils is ready' '$work/install1.log' && grep -q 'agents ask before acting' '$work/install1.log'"
+  check "Claude Code logged in: 'weevils is ready', no permission talk, no settings names, no npm words" bash -c "grep -q 'weevils is ready' '$work/install1.log' && ! grep -qiE 'permission|WEEVILS_[A-Z]|npm ci|vite build|Created symlink' '$work/install1.log'"
   check "end screen ends on the first thing to try (no project yet: a notes app)" bash -c "tail -4 '$work/install1.log' | grep -q 'first thing to try: .*make me a small notes app'"
   check "hand-off file: install.json v1, by=script, local, Claude ready" as_test 'jq -e ".v == 1 and (.at | type) == \"number\" and .by == \"script\" and .agent == \"\" and .url == \"http://localhost:4179\" and .mode == \"local\" and .phoneLink == false and .lang == \"en\" and .ready == {\"claude\": true, \"codex\": false, \"gh\": false} and .projects == 0 and .repos == 0" ~/.local/share/weevils/install.json && [ "$(stat -c %a ~/.local/share/weevils/install.json)" = 600 ]'
   check "--yes without a terminal: no summary block" bash -c "! grep -q -- '--- weevils summary ---' '$work/install1.log'"
-  check "Claude settings: hooks only (agents ask by default: no bypass dialog setting), no global env, WEEVILS_SAFE=1" as_test 'jq -e "(.skipDangerousModePermissionPrompt == null) and .env == null" ~/.claude/settings.json && test -f ~/.claude/settings.json.bak-weevils && grep -qx WEEVILS_SAFE=1 ~/.config/weevils/env'
+  check "Claude settings: agents on their own by default (bypass dialog pre-accepted, marked as weevils'), no global env, no WEEVILS_SAFE line" as_test 'jq -e "(.skipDangerousModePermissionPrompt == true) and .env == null" ~/.claude/settings.json && test -f ~/.local/share/weevils/claude-skip-prompt && test -f ~/.claude/settings.json.bak-weevils && ! grep -q "^WEEVILS_SAFE=" ~/.config/weevils/env'
   # Login from "outside" (x-forwarded-for: not a local request), over plain http.
   check "login with the code works over http, cookie without Secure" as_test '
     code=$(cat ~/.config/weevils/secret)
@@ -123,8 +123,8 @@ run_systemd() {
   as_test 'sha256sum ~/.config/weevils/env ~/.config/weevils/secret ~/.claude/settings.json ~/.config/systemd/user/weevilsd.service' >"$work/sum2"
   check "config, code, hooks and unit unchanged" diff "$work/sum1" "$work/sum2"
   check "no rebuild when nothing changed" grep -q "already built" "$work/install2.log"
-  say "systemd: --no-ask-permissions, then back to asking"
-  check "--no-ask-permissions: WEEVILS_SAFE=0, the bypass dialog pre-accepted and marked as weevils'" as_test 'cd weevils && ./install.sh --yes --no-ask-permissions >/tmp/noask.log 2>&1 && grep -qx WEEVILS_SAFE=0 ~/.config/weevils/env && jq -e ".skipDangerousModePermissionPrompt == true" ~/.claude/settings.json && test -f ~/.local/share/weevils/claude-skip-prompt && grep -q "WITHOUT permission prompts" /tmp/noask.log'
+  say "systemd: --no-ask-permissions, then asking (the app's switch writes the same setting)"
+  check "--no-ask-permissions: WEEVILS_SAFE=0, the bypass dialog pre-accepted and marked as weevils', said nowhere" as_test 'cd weevils && ./install.sh --yes --no-ask-permissions >/tmp/noask.log 2>&1 && grep -qx WEEVILS_SAFE=0 ~/.config/weevils/env && jq -e ".skipDangerousModePermissionPrompt == true" ~/.claude/settings.json && test -f ~/.local/share/weevils/claude-skip-prompt && ! grep -qi "permission" /tmp/noask.log'
   check "a plain re-run keeps that choice" as_test 'cd weevils && ./install.sh --yes >/dev/null 2>&1 && grep -qx WEEVILS_SAFE=0 ~/.config/weevils/env'
   check "--ask-permissions: back to asking, the setting weevils wrote taken back" as_test 'cd weevils && ./install.sh --yes --ask-permissions >/dev/null 2>&1 && grep -qx WEEVILS_SAFE=1 ~/.config/weevils/env && jq -e ".skipDangerousModePermissionPrompt == null" ~/.claude/settings.json && ! test -e ~/.local/share/weevils/claude-skip-prompt'
   say "systemd: run by an agent (--agent, then detected from CLAUDECODE=1 without a terminal)"
@@ -204,7 +204,7 @@ run_systemd() {
   docker exec "$c3" systemctl is-system-running --wait >/dev/null 2>&1
   # Test harness only: what a desktop already has (curl, ssh), the main machine's name, and Caddy's local CA standing
   # in for a real certificate. No key, no ssh config: the line does that.
-  docker exec "$c3" bash -c 'apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends curl ca-certificates openssh-client >/dev/null 2>&1'
+  docker exec "$c3" bash -c 'for i in 1 2 3; do apt-get update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends curl ca-certificates openssh-client >/dev/null 2>&1 && break; sleep 5; done'
   ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$net\").IPAddress}}" "$c")
   docker exec "$c3" bash -c "echo '$ip weevils.test' >>/etc/hosts"
   docker exec "$c" cat /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt >"$work/caddy-root.crt"
@@ -240,6 +240,8 @@ run_systemd() {
     if [ "$rc" = 0 ]; then
       passes=$((passes + 1)); echo "  ok   the line ran on the third machine"; sed 's/^/  │ /' "$work/join.log" | tail -15
     else fails=$((fails + 1)); echo "  FAIL the line"; tail -30 "$work/join.log"; fi
+    check "  … the newcomer's terminal ends on « back to your phone », the machine named" bash -c "tail -3 '$work/join.log' | grep -q 'All set ✓ Head back to your phone, in the weevils app: your machine “desk” is there.'"
+    check "  … and says no settings name, no npm word, no terminal step, no permission talk" bash -c "! grep -qiE 'WEEVILS_[A-Z]|npm ci|vite|run claude|Created symlink|permission|weevils-service' '$work/join.log'"
     check "third: a secondary named after its host, its tunnel on the next free port" as_3 'systemctl --user is-active weevilsd weevils-tunnel && grep -qx WEEVILS_MACHINE=desk ~/.config/weevils/env && grep -qx "WEEVILS_TUNNEL_PORT=4193" ~/.config/weevils/service.conf'
     check "third: its own key, an ssh alias for the main machine, the main machine's host key known" as_3 'test -f ~/.ssh/weevils_ed25519 && grep -qx "Host weevils-testbox" ~/.ssh/config && grep -q "^weevils.test ssh-ed25519 " ~/.ssh/known_hosts'
     check "third: a key for the vault made, and no vault handed over (the main machine has none)" as_3 'test -f ~/.config/weevils/vault-deploy && [ "$(stat -c %a ~/.config/weevils/vault-deploy)" = 600 ] && ! test -e ~/.config/weevils/vault.key && ! test -e ~/.config/weevils/vault.json'
@@ -378,10 +380,10 @@ run_plain() {
   check "background mode, weevilsd running" in_c '~/.local/bin/weevils-service status | grep -q "weevilsd: running"'
   check "GET /api/me answers, app served" in_c 'curl -sf http://127.0.0.1:4179/api/me && curl -sf http://127.0.0.1:4179/ | grep -qi "<div id=\"root\""'
   check "messages in French" grep -q "code d'accès" "$work/plain1.log"
-  check "the fallback is explained" grep -q "weevils-service start|stop|status|logs" "$work/plain1.log"
+  check "the fallback is explained" grep -q "grâce à une ligne dans ta crontab" "$work/plain1.log"
   check "Claude Code installed by its official installer" in_c '~/.local/bin/claude --version'
-  check "not logged in yet: 'presque prêt', run claude" grep -q "presque prêt : lance claude" "$work/plain1.log"
-  check "root: WEEVILS_SAFE=1, said on the end screen, no bypass in the Claude settings" bash -c "docker exec $c grep -qx WEEVILS_SAFE=1 /root/.config/weevils/env && grep -q 'WEEVILS_SAFE=1' '$work/plain1.log' && ! docker exec $c jq -e .skipDangerousModePermissionPrompt /root/.claude/settings.json"
+  check "not logged in yet: 'presque fini', weevboss signs Claude in, in the app (no terminal step)" bash -c "grep -q 'presque fini : il reste à connecter Claude Code' '$work/plain1.log' && ! grep -q 'lance claude' '$work/plain1.log'"
+  check "root: WEEVILS_SAFE=1, said in plain words at the start, no bypass in the Claude settings" bash -c "docker exec $c grep -qx WEEVILS_SAFE=1 /root/.config/weevils/env && grep -q 'tes agents te demanderont avant d' '$work/plain1.log' && ! docker exec $c jq -e .skipDangerousModePermissionPrompt /root/.claude/settings.json"
   count() { docker exec "$c" bash -c 'n=0; for f in /proc/[0-9]*/cmdline; do tr "\0" " " <"$f" 2>/dev/null | grep -q "^[^ ]*node server/index.ts" && n=$((n+1)); done; echo $n'; }
   check "re-run (piped again) exits 0" docker exec -i -w /root -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang fr <"$work/weevils/install.sh"
   check "still one weevilsd process" test "$(count)" = 1
@@ -450,7 +452,7 @@ run_edge() {
   echo $? >"$work/nosudo.rc"
   sed 's/^/  │ /' "$work/nosudo.log"
   check "exits non-zero" test "$(cat "$work/nosudo.rc")" != 0
-  check "names tmux and asks for root" bash -c "grep -q 'missing: tmux' '$work/nosudo.log' && grep -q 'needs root' '$work/nosudo.log'"
+  check "names tmux and asks for root" bash -c "grep -q 'missing here: tmux' '$work/nosudo.log' && grep -q 'needs root' '$work/nosudo.log'"
   check "wrote nothing in the home" docker exec -u u "$c" bash -c '! test -e ~/weevils && ! test -e ~/.config/weevils'
 
   say "edge: user with sudo, node 20 from NodeSource, cat install.sh | bash, file:// repo, --dir, --lang fr"
@@ -467,8 +469,8 @@ run_edge() {
   check "nothing in the home belongs to root" docker exec "$c" bash -c '[ -z "$(find /home/u -user root | head -1)" ]'
   check "config: name with a space, lang fr, mode 600" docker exec -u u "$c" bash -c 'grep -qx "WEEVILS_USER_NAME=Ana Maria" ~/.config/weevils/env && grep -qx WEEVILS_LANG=fr ~/.config/weevils/env && [ "$(stat -c %a ~/.config/weevils/env)" = 600 ]'
   check "the server reads the name with its space" docker exec -u u "$c" bash -c 'curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | grep -q "Ana Maria"'
-  check "Claude Code not logged in: 'presque prêt', run claude once" grep -q "presque prêt : lance claude" "$work/ns20.log"
-  check "--lang fr: no English line" bash -c "! grep -E 'checking the system|getting weevils|your settings|dependencies and app|weevils is ready|access code|login link|waiting for' '$work/ns20.log'"
+  check "Claude Code not logged in: 'presque fini', in the app" grep -q "presque fini : il reste à connecter Claude Code" "$work/ns20.log"
+  check "--lang fr: no English line" bash -c "! grep -E 'the tools weevils needs|getting weevils|your settings|getting it ready|weevils is ready|access code|login link|starting weevils' '$work/ns20.log'"
 
   say "edge: re-run after editing the config by hand"
   docker exec -u u "$c" bash -c 'f=~/.config/weevils/env; sed -i "s/^WEEVILS_PORT=.*/WEEVILS_PORT=4185/; s/^WEEVILS_ORCHESTRATOR=.*/WEEVILS_ORCHESTRATOR=0/; s/^OPENAI_API_KEY=.*/OPENAI_API_KEY=sk-test-SECRET42/; s/^WEEVILS_MACHINE_NAME=.*/WEEVILS_MACHINE_NAME=My Box/" $f && echo "# my own note" >>$f && cp $f /tmp/env.before'
@@ -505,7 +507,7 @@ run_edge() {
   docker exec -i -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang en --lan <"$work/weevils/install.sh" >"$work/lan.log" 2>&1
   echo $? >"$work/lan.rc"
   local ip; ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$c")
-  sed -n '/weevils is ready\|almost ready/,$p' "$work/lan.log" | sed 's/^/  │ /'
+  sed -n '/weevils is ready\|almost there/,$p' "$work/lan.log" | sed 's/^/  │ /'
   check "exits 0, WEEVILS_HOST=0.0.0.0" bash -c "[ \$(cat '$work/lan.rc') = 0 ] && docker exec $c grep -qx WEEVILS_HOST=0.0.0.0 /root/.config/weevils/env"
   check "end screen: the LAN address ($ip) with a QR code" bash -c "grep -q 'http://$ip:4179/#k=' '$work/lan.log' && grep -qE '$QR' '$work/lan.log'"
   check "a private address: no warning, but http limits said" bash -c "! grep -q 'not a private network address' '$work/lan.log' && grep -q 'neither the microphone nor notifications' '$work/lan.log'"

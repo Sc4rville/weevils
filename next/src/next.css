@@ -352,6 +352,14 @@ body { overflow: hidden; }
 .nx-fx-ask { flex: 1; min-width: 0; }
 .nx-fx-word { background: none; border: 0; padding: 6px 2px; color: inherit; font: inherit; font-size: 14px; opacity: .75; }
 .nx-fx-word.strong { font-weight: 400; opacity: 1; }
+/* How agents work (Agents, in Intelligence): two words, the one in use full ink and underlined, the other faded; the
+   line under it while they ask. */
+.nx-fx-agents { flex-wrap: wrap; row-gap: 0; }
+.nx-fx-choice { flex: none; display: flex; gap: 14px; padding-right: 6px; }
+.nx-fx-choice .nx-fx-word { opacity: .5; }
+.nx-fx-choice .nx-fx-word.strong { opacity: 1; box-shadow: inset 0 -2px 0 currentColor; }
+.nx-fx-choice .nx-fx-word:disabled { cursor: default; }
+.nx-fx-agents .nx-fx-hint { padding-bottom: 10px; }
 
 /* A project's band wears its repo's colour, as in the side bar, with the repo mark. */
 .nx-fx-band.nx-fx-project { background: var(--c) !important; }

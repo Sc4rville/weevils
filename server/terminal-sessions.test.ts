@@ -3,7 +3,7 @@
 // status line for a usage limit, and never lets an unknown screen block a session silently. tmux is simulated.
 import fs from 'node:fs'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { Tool } from '../shared/api.ts'
 
 const mux = vi.hoisted(() => ({
@@ -205,6 +205,9 @@ describe('never a silent block', () => {
 
 describe('weevboss', () => {
   it('a question on weevboss’s own screen shows in its thread, and its answer reaches its pane', async () => {
+    // Asking first (« Ask me »): a permission dialog is the person's question, never answered by weevils.
+    process.env.WEEVILS_SAFE = '1'
+    onTestFinished(() => void delete process.env.WEEVILS_SAFE)
     ;(w as any).orchestratorId = 's1'
     mux.capture.mockResolvedValue(screen('claude-live-D3-bash.txt'))
     await watch()

@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { Session, Subagent, Tool } from '../shared/api.ts'
 
 const mux = vi.hoisted(() => ({
@@ -720,6 +720,9 @@ describe('unknown foreign panes and live composers', () => {
     expect(one()?.choices).toBeUndefined()
   })
   it('returns labeled choices and validates a fresh menu before selecting', async () => {
+    // Asking first (« Ask me »): the permission dialog is the person's question, never answered by weevils.
+    process.env.WEEVILS_SAFE = '1'
+    onTestFinished(() => void delete process.env.WEEVILS_SAFE)
     add(transcript({ tool: 'codex' }))
     const screen = 'Would you like to run this command?\n› 1. Yes, proceed\n2. No, tell Codex what to do differently\nPress enter to confirm or esc to cancel'
     mux.listWv.mockResolvedValue([pane({ tool: 'codex' })])
@@ -973,5 +976,117 @@ describe('jobs an agent started into a logs folder (r47)', () => {
     w.panes = [pane()]
     w.h24 = [job('get-flow-phone', { lastRunAt: NOW - 30 * MIN })]
     expect(one()!.subagents).toEqual([])
+  })
+})
+
+describe('the agents\' permission choice (global, and a session\'s own)', () => {
+  const modesFile = path.join(DATA_DIR, 'agent-modes.json')
+  beforeEach(() => {
+    fs.rmSync(modesFile, { force: true })
+    delete process.env.WEEVILS_SAFE
+    w = new Weevils()
+  })
+  afterEach(() => {
+    fs.rmSync(modesFile, { force: true })
+    delete process.env.WEEVILS_SAFE
+  })
+  const ASK = projectClaude(undefined, true)
+  const AUTO = projectClaude(undefined, false)
+  /** A pane weevils launched itself (its launch mode known): the session resumed by a message, then at rest. */
+  const launched = async () => {
+    add(transcript({ lastActivityAt: NOW - 40 * MIN }))
+    await w.send('s1', 'again')
+    const name = w.panes[0].name
+    w.store.get('s1')!.lastActivityAt = Date.now()
+    w.hooks.set('s1', { event: 'Stop', at: Date.now(), pid: ALIVE })
+    mux.spawnWv.mockClear()
+    return name
+  }
+
+  it('agents work on their own by default; a session\'s own choice is kept, shown, and used at its next launch', async () => {
+    add(transcript({ lastActivityAt: NOW - 40 * MIN }))
+    expect(w.snapshot().agents).toEqual({ ask: false })
+    expect(one()?.agentMode).toBeUndefined()
+    expect(await w.setAgentMode('s1', 'ask')).toEqual({ ok: true, ask: true })
+    expect(one()?.agentMode).toBe('ask')
+    // Kept across a restart of weevils.
+    w = new Weevils()
+    add(transcript({ lastActivityAt: NOW - 40 * MIN }))
+    expect(one()?.agentMode).toBe('ask')
+    await w.send('s1', 'again')
+    expect(mux.spawnWv.mock.calls[0][4]).toEqual([...ASK, '--resume', 's1', 'again'])
+    // Back to the global choice: on its own again.
+    expect(await w.setAgentMode('s1', null)).toEqual({ ok: true, ask: false })
+    expect(one()?.agentMode).toBeUndefined()
+  })
+
+  it('« Ask me » for every machine: a session on its own by its own choice keeps working on its own', async () => {
+    process.env.WEEVILS_SAFE = '1'
+    add(transcript({ lastActivityAt: NOW - 40 * MIN }))
+    expect(w.snapshot().agents).toEqual({ ask: true })
+    await w.setAgentMode('s1', 'auto')
+    await w.send('s1', 'again')
+    expect(mux.spawnWv.mock.calls[0][4]).toEqual([...AUTO, '--resume', 's1', 'again'])
+  })
+
+  it('switched to « Ask me » while its pane works on its own: at rest, reopened with the new flags before the message', async () => {
+    const name = await launched()
+    expect(one()?.status).not.toBe('working')
+    const deliver = vi.fn(async () => {})
+    ;(w as any).deliver = deliver
+    await w.setAgentMode('s1', 'ask')
+    await w.send('s1', 'next')
+    expect(mux.killWv.mock.calls).toEqual([[name]])
+    expect(mux.spawnWv.mock.calls[0][4]).toEqual([...ASK, '--resume', 's1', 'next'])
+    expect(deliver).not.toHaveBeenCalled()
+    // Launched with the choice it has now: the next message is typed in, nothing reopened.
+    await w.send('s1', 'and then')
+    expect(mux.killWv).toHaveBeenCalledTimes(1)
+    expect(deliver).toHaveBeenCalledTimes(1)
+  })
+
+  it('never a working session: the message goes in, the choice waits for its next start', async () => {
+    await launched()
+    w.store.get('s1')!.phase = 'working'
+    w.hooks.set('s1', { event: 'UserPromptSubmit', at: Date.now(), pid: ALIVE })
+    expect(one()?.status).toBe('working')
+    const deliver = vi.fn(async () => {})
+    ;(w as any).deliver = deliver
+    await w.setAgentMode('s1', 'ask')
+    await w.send('s1', 'next')
+    expect(mux.killWv).not.toHaveBeenCalled()
+    expect(deliver).toHaveBeenCalledTimes(1)
+  })
+
+  it('a pane whose launch is not known (weevils restarted since) is left as it is; a Codex pane too', async () => {
+    add(transcript())
+    w.panes = [pane()]
+    w.hooks.set('s1', { event: 'Stop', at: NOW, pid: ALIVE })
+    const deliver = vi.fn(async () => {})
+    ;(w as any).deliver = deliver
+    await w.setAgentMode('s1', 'ask')
+    await w.send('s1', 'next')
+    expect(mux.killWv).not.toHaveBeenCalled()
+    expect(deliver).toHaveBeenCalledTimes(1)
+  })
+
+  it('a permission dialog left on its screen is allowed by weevils only where the session works on its own', async () => {
+    add(transcript({ tool: 'codex' }))
+    const screen = 'Would you like to run this command?\n› 1. Yes, proceed\n2. No, tell Codex what to do differently\nPress enter to confirm or esc to cancel'
+    mux.listWv.mockResolvedValue([pane({ tool: 'codex' })])
+    mux.capture.mockResolvedValue(screen)
+    await (w as any).watchPanes()
+    expect(one()?.status).not.toBe('needs_user')
+    await w.setAgentMode('s1', 'ask')
+    await (w as any).watchPanes()
+    expect(one()?.status).toBe('needs_user')
+  })
+
+  it('a session of another machine: its choice is set there', async () => {
+    const call = vi.fn(async () => ({ ok: true, ask: true }))
+    w.remotes = [{ has: (id: string) => id === 'r1', call } as any]
+    expect(await w.setAgentMode('r1', 'ask')).toEqual({ ok: true, ask: true })
+    expect(call).toHaveBeenCalledWith('POST', '/api/sessions/r1/agent-mode', { mode: 'ask' })
+    expect(fs.existsSync(modesFile)).toBe(false)
   })
 })

@@ -1,8 +1,10 @@
-// One choice for the whole weevils: the agents on every machine ask before acting, or not, as the main machine's do.
-// The person makes that choice once, on the main machine (install.sh --ask-permissions / --no-ask-permissions,
-// WEEVILS_SAFE). A machine plugged in from a line gets it at the join (server/join.sh); one already plugged in gets it
-// from the main machine over the link they already have (Remote.followAsk in server/remotes.ts), on its next update,
-// without a line pasted again. Sessions read it at each launch (server/agent-launch.ts): no restart.
+// One choice for the whole weevils: the agents on every machine run on their own (the default) or ask before acting, as
+// the main machine's do. The person makes that choice in the app, on the main machine (Your factory > Intelligence >
+// Agents, POST /api/factory/agents; WEEVILS_SAFE=1 is « ask me », an older installer's default included). A machine
+// plugged in from a line gets it at the join (server/join.sh); one already plugged in gets it from the main machine
+// over the link they already have (Remote.followAsk in server/remotes.ts), on its next update, without a line pasted
+// again. Sessions read it at each launch (server/agent-launch.ts): no restart. A session may have its own choice on
+// top (server/agent-modes.ts).
 import fs from 'node:fs'
 import path from 'node:path'
 import { DATA_DIR, HOME } from './config.ts'
@@ -24,6 +26,9 @@ export interface AskFollowDeps {
   /** The mark of a skipDangerousModePermissionPrompt weevils wrote (server/install.sh, the same file). */
   skipMark?: string
   root?: boolean
+  /** A session runs on its own by its own choice (server/agent-modes.ts): Claude Code's warning stays skipped even when
+   *  the global choice is to ask. */
+  keepSkip?: boolean
 }
 
 /** This machine follows the main one's choice: weevils' config, and Claude Code's one-time warning about running
@@ -31,11 +36,17 @@ export interface AskFollowDeps {
 export function followAsk(ask: boolean, d: AskFollowDeps): AskFollow {
   const env = d.env ?? process.env
   const root = d.root ?? process.getuid?.() === 0
-  if (!ask && root) return { ask: askPermissions(env), changed: false, refused: 'root' }
-  const changed = askPermissions(env) !== ask
+  if (!ask && root) return { ask: true, changed: false, refused: 'root' }
+  const changed = askPermissions(env, root) !== ask
   if (changed) d.writeConfig({ WEEVILS_SAFE: ask ? '1' : '0' })
-  claudeSkipPrompt(!ask, d.claudeSettings ?? path.join(HOME, '.claude', 'settings.json'), d.skipMark ?? path.join(DATA_DIR, 'claude-skip-prompt'))
+  if (!root) claudeSkip(!ask || !!d.keepSkip, d)
   return { ask, changed }
+}
+
+/** Claude Code's one-time warning about running without prompts: skipped (weevils' mark written) or taken back (only
+ *  if weevils wrote it). Never as root, where the skip is refused anyway. */
+export function claudeSkip(skip: boolean, d: Pick<AskFollowDeps, 'claudeSettings' | 'skipMark'> = {}) {
+  claudeSkipPrompt(skip, d.claudeSettings ?? path.join(HOME, '.claude', 'settings.json'), d.skipMark ?? path.join(DATA_DIR, 'claude-skip-prompt'))
 }
 
 function claudeSkipPrompt(skip: boolean, file: string, mark: string) {

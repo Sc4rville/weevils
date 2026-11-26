@@ -19,6 +19,11 @@ export default defineMessages({
     clipExpired: 'son expiré',
     /** A script or an automated browser on this machine tried to write to weevboss as the user. */
     bossUserOnly: 'toi seul peux écrire à weevboss : les tests passent par une copie de test',
+    /** Agents switched to work on their own by a script or an agent, not from the app. */
+    agentsAppOnly: 'ça se change depuis l’app, dans ton usine',
+    /** weevils runs as root: Claude Code always asks there. */
+    agentsRoot: 'cette machine fait tourner weevils en root : Claude Code y demande toujours avant d’agir',
+    badMode: 'choix inconnu',
   },
   en: {
     bodyTooLarge: 'request too large',
@@ -35,5 +40,8 @@ export default defineMessages({
     unknownRoute: 'unknown route',
     clipExpired: 'clip expired',
     bossUserOnly: 'only you can write to weevboss: tests and scripts use a test copy',
+    agentsAppOnly: 'this is changed from the app, in your factory',
+    agentsRoot: 'this machine runs weevils as root: Claude Code always asks before acting there',
+    badMode: 'unknown choice',
   },
 })

@@ -67,6 +67,7 @@ import { facts } from './discover.ts'
 import { applyKeys, factoryRoutes, keysOff, talkContext, type FactoryDeps } from './your-factory.ts'
 import { Setup, installPlan, shellEnv, which, writeConfig } from './setup.ts'
 import { followAsk } from './ask-follow.ts'
+import { agentsChoice, isAgentMode } from './agent-modes.ts'
 import { askPermissions } from './agent-launch.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
@@ -108,6 +109,13 @@ import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 import { startMoves } from './moves-app.ts'
 
 const w = new Weevils()
+// Claude Code's one-time warning about running without prompts follows the choice from the start: an install that
+// never chose runs its agents on their own (server/agent-launch.ts), and the warning would stop their first session.
+try {
+  followAsk(askPermissions(), { writeConfig, keepSkip: w.modes.anyAuto() })
+} catch (e) {
+  console.error(`[agents] ${(e as Error).message}`)
+}
 // The heavy-job queue (server/heavy): the stand-ins that send the sessions' tests and builds through it, first in the
 // PATH of every session started from now on; the runner that takes jobs from the user's other machines; on the main
 // machine, the hub that sends a busy machine's jobs to an idle one.
@@ -330,6 +338,8 @@ const setup = new Setup({
   delegate: (text, brief) => w.create({ projectId: '', tool: preferredTool(), text: `${text}\n\n${brief}` }),
   connectorOn: () => connectorOn(),
   join: ORCHESTRATOR ? join : undefined,
+  // « Ask me first », the onboarding's link: the same global choice as Your factory's.
+  askFirst: ORCHESTRATOR ? () => !chooseAgents(true).refused : undefined,
   // The onboarding journey offers its next step only once weevboss's whole thread is quiet (server/journey.ts).
   thread: () => {
     const snap = w.snapshot()
@@ -897,12 +907,37 @@ const routes: [string, RegExp, Handler][] = [
     if (ORCHESTRATOR) return json(res, 409, { error: 'main machine' }) // i18n-ignore: machine-to-machine answer
     const b = await readBody(req)
     if (typeof b?.ask !== 'boolean') return json(res, 400, { error: 'bad request' }) // i18n-ignore: machine-to-machine answer
-    const r = followAsk(b.ask, { writeConfig })
+    const r = followAsk(b.ask, { writeConfig, keepSkip: w.modes.anyAuto() })
     if (r.changed) {
       console.log(`[machine] permission prompts ${r.ask ? 'on' : 'off'}, as on the main machine`)
       w.bump()
     }
     json(res, 200, r)
+  }],
+  // How agents work, for every machine (Your factory > Intelligence > Agents): on their own (the default) or asking
+  // first. Main machine only; the others follow over their link (Remote.followAsk). Letting them work on their own is a
+  // signed-in browser's tap only, never a script's or an agent's (server/boss-door.ts); asking first, anyone signed in.
+  ['POST', /^\/api\/factory\/agents$/, async (req, res) => {
+    if (!ORCHESTRATOR) return json(res, 404, { error: tr(M).unknownRoute })
+    const b = await readBody(req)
+    if (typeof b?.ask !== 'boolean') return json(res, 400, { error: tr(M).badMode })
+    if (!b.ask && !door.speaksForUser(req)) return json(res, 403, { error: tr(M).agentsAppOnly })
+    const r = chooseAgents(b.ask)
+    if (r.refused) return json(res, 409, { error: tr(M).agentsRoot })
+    json(res, 200, { ok: true, agents: agentsChoice() })
+  }],
+  // A session's own choice (null: back to the global one), from its page; one of another machine is set there
+  // (core setAgentMode). Letting it work on its own: as above, a signed-in browser's tap only; on another machine,
+  // the main one's call through their link (the way it sends the global choice).
+  ['POST', /^\/api\/sessions\/([^/]+)\/agent-mode$/, async (req, res, _u, [raw]) => {
+    const b = await readBody(req)
+    const mode = b?.mode === null ? null : isAgentMode(b?.mode) ? b.mode : undefined
+    if (mode === undefined) return json(res, 400, { error: tr(M).badMode })
+    const id = decodeURIComponent(raw)
+    const freed = mode === 'auto' || (mode === null && !askPermissions())
+    const fromMain = !ORCHESTRATOR && isLocal(req) && !jailedPeer(req.socket)
+    if (freed && !door.speaksForUser(req) && !fromMain) return json(res, 403, { error: tr(M).agentsAppOnly })
+    json(res, 200, await w.setAgentMode(id, mode))
   }],
   // Updates by itself (server/weevils-update, every 20 to 30 minutes when nothing is working): on unless turned off here.
   ['POST', /^\/api\/updates$/, async (req, res) => {
@@ -1443,6 +1478,18 @@ const routes: [string, RegExp, Handler][] = [
   // Your factory (server/your-factory.ts): machines, intelligence, projects, in weevils next's side bar. Main machine only.
   ...(ORCHESTRATOR ? factoryRoutes(factoryDeps(), json, readBody) : []),
 ]
+
+/** The global choice, made in the app (Your factory, or the onboarding's link): this machine's config and Claude Code's
+ *  warning (server/ask-follow.ts), then every other machine at once over its link. Main machine only. */
+function chooseAgents(ask: boolean) {
+  const r = followAsk(ask, { writeConfig, keepSkip: w.modes.anyAuto() })
+  if (r.changed) {
+    console.log(`[agents] permission prompts ${r.ask ? 'on' : 'off'}, chosen in the app`)
+    w.bump()
+  }
+  if (!r.refused) for (const remote of w.remotes) void remote.followAsk(Date.now(), true)
+  return r
+}
 
 /** What Your factory reads and changes, all of it weevils' own (server/your-factory.ts). */
 function factoryDeps(): FactoryDeps {

@@ -23,6 +23,7 @@ function world(settings?: unknown) {
 describe('followAsk', () => {
   it('prompts off on the main machine: off here too, and Claude Code\'s warning skipped (weevils\' mark written)', () => {
     const w = world({ hooks: { Stop: [] }, model: 'opus' })
+    w.env.WEEVILS_SAFE = '1'
     const r = followAsk(false, { ...w, root: false })
     expect(r).toEqual({ ask: false, changed: true })
     expect(w.written).toEqual([{ WEEVILS_SAFE: '0' }])
@@ -67,10 +68,25 @@ describe('followAsk', () => {
     expect(fs.lstatSync(w.claudeSettings).isSymbolicLink()).toBe(true)
     expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ theme: 'dark', skipDangerousModePermissionPrompt: true })
   })
+  it('an install that never chose (no WEEVILS_SAFE): its agents work on their own, nothing written, the warning skipped', () => {
+    const w = world({})
+    expect(followAsk(false, { ...w, root: false })).toEqual({ ask: false, changed: false })
+    expect(w.written).toEqual([])
+    expect(w.read()).toEqual({ skipDangerousModePermissionPrompt: true })
+  })
+  it('« Ask me » with a session on its own by its own choice: the warning stays skipped for it', () => {
+    const w = world({})
+    followAsk(false, { ...w, root: false })
+    expect(followAsk(true, { ...w, root: false, keepSkip: true })).toEqual({ ask: true, changed: true })
+    expect(w.written).toEqual([{ WEEVILS_SAFE: '1' }])
+    expect(w.read()).toEqual({ skipDangerousModePermissionPrompt: true })
+  })
   it('the next session launched here takes it, without a restart', () => {
     const before = process.env.WEEVILS_SAFE
     try {
       const w = world({})
+      followAsk(true, { ...w, env: process.env, writeConfig: (c) => Object.assign(process.env, c), root: false })
+      expect(bossClaude()).toEqual(['claude', '--permission-mode', 'default'])
       followAsk(false, { ...w, env: process.env, writeConfig: (c) => Object.assign(process.env, c), root: false })
       expect(bossClaude()).toEqual(['claude', '--dangerously-skip-permissions'])
     } finally {

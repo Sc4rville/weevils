@@ -14,6 +14,7 @@ import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
 import { Composer, Line, Messages, StatusChar, type Attachment } from './bits'
 import { SessionArchiveAction } from './session-archive'
+import { SessionAgentMark, SessionAgentMode } from './session-agent-mode'
 import NM from '../i18n/notices'
 import { SessionQuestion } from './session-question'
 import { CutBand } from './cut-band'
@@ -271,6 +272,7 @@ function SessionPage({ id }: { id: string }) {
               {preview.open ? t.closeApp : t.seeApp}
             </button>
             {' · '}<SessionArchiveAction key={s.id} session={s} />
+            {!s.agentLocked && !s.offline && <>{' · '}<SessionAgentMode key={`mode-${s.id}`} session={s} /></>}
           </div>
         </div>
       )}
@@ -279,6 +281,7 @@ function SessionPage({ id }: { id: string }) {
           {/* One plain line: the state in words a non-developer reads, and for how long it has worked. */}
           <StatusChar s={s.status} /> {s.status === 'needs_user' ? tp.liveWaiting : s.status === 'idle' || s.status === 'done' ? tp.liveDone : st.label}
           {s.status === 'working' && s.workStartedAt != null && <> · {durLong(now - s.workStartedAt)}</>}
+          <SessionAgentMark session={s} onOpen={() => setShowSettings(true)} />
         </>
       }
       float={<FollowDown show={follow.behind} urgent={s.status === 'needs_user'} body={body} toEnd={toEnd} />}

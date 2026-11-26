@@ -542,3 +542,53 @@ describe('the journey', () => {
     expect(s.contextFor()).not.toContain('one discovery for the user today')
   })
 })
+
+// Agents work on their own by default (server/agent-launch.ts): a new install hears it once, when they can act, with
+// « Ask me first » as a link in the sentence (never a button, never a blocking step).
+describe('how agents work, said once on a new install', () => {
+  const pc = { os: 'linux' as const, mobile: false, standalone: false }
+  const AUTONOMY = 'Your agents work on their own: they run commands without asking you each time. Rather check first? [Ask me first](/#do=ask), and you can change this any time in your factory.'
+
+  it('ready at the hello: right after it; the link switches every machine to asking, and says so', async () => {
+    auth.ready = true
+    process.env.WEEVILS_SAFE = '0'
+    const askFirst = vi.fn(() => true)
+    const { it: s, texts } = make({ askFirst })
+    await s.welcome(pc)
+    expect(texts()).toHaveLength(3)
+    expect(texts()[2]).toBe(AUTONOMY)
+    expect(await s.act('ask')).toBe(true)
+    expect(askFirst).toHaveBeenCalledTimes(1)
+    expect(texts().at(-1)).toBe('Got it: your agents ask before acting, you answer from the app. Change it any time in your factory.')
+    expect(withLang('fr', () => tr(M).autonomy)).toBe('Tes agents bossent en autonomie : ils lancent les commandes sans te demander à chaque fois. Tu préfères valider avant ? [Me demander d’abord](/#do=ask), et tu peux changer ça quand tu veux dans ton usine.')
+    for (const l of ['fr', 'en'] as const) expect(withLang(l, () => tr(M).autonomy)).not.toMatch(/\[\[setup:/)
+  })
+
+  it('signed in later: after the first milestone, once', async () => {
+    delete process.env.WEEVILS_SAFE
+    const { it: s, texts } = make({ askFirst: () => true }, state({ claude: { installed: true, logged: false } }))
+    await s.welcome(pc)
+    expect(texts()).not.toContain(AUTONOMY)
+    auth.pending = { url: 'https://claude.ai/oauth/authorize?code=abc' }
+    await s.offline('Xy7_aBcDeFgHiJkLmNoPqRsTuV#st4te-123')
+    expect(texts().at(-2)).toMatch(/^\[\[win\]\]\*\*Claude is connected\*\*/)
+    expect(texts().at(-1)).toBe(AUTONOMY)
+    ;(s as unknown as { wonBrain: (n: string, j: boolean) => void }).wonBrain('Claude', false)
+    expect(texts().filter((t) => t === AUTONOMY)).toHaveLength(1)
+  })
+
+  it('never where agents ask already (an earlier choice, root), nor on a machine that is not the main one', async () => {
+    auth.ready = true
+    process.env.WEEVILS_SAFE = '1'
+    const asking = make({ askFirst: () => true })
+    await asking.it.welcome(pc)
+    expect(asking.texts()).not.toContain(AUTONOMY)
+    process.env.WEEVILS_SAFE = '0'
+    const secondary = make({})
+    await secondary.it.welcome(pc)
+    expect(secondary.texts()).not.toContain(AUTONOMY)
+    // The link where it cannot apply (root, another machine): nothing done, nothing said.
+    expect(await secondary.it.act('ask')).toBe(false)
+    expect(await make({ askFirst: () => false }).it.act('ask')).toBe(false)
+  })
+})

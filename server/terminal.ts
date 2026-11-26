@@ -222,9 +222,9 @@ interface Ctx {
   agent: Agent
   /** The session runs in a folder inside the user's project roots (PROJECT_ROOTS): only there is folder trust answered. */
   trustedFolder: boolean
-  /** The person turned permission prompts off (WEEVILS_SAFE=0, or the main machine's choice followed here): a
-   *  permission dialog that still shows (a session started before the switch, a tool Claude Code asks about anyway)
-   *  is allowed once by weevils, never left on the screen. */
+  /** This session works on its own (the default, or its own choice: server/agent-modes.ts): a permission dialog that
+   *  still shows (a session started before the switch, a tool Claude Code asks about anyway) is allowed once by
+   *  weevils, never left on the screen. */
   allowAll: boolean
   menu: Menu
   head: string
@@ -443,8 +443,8 @@ function classifyMenu(c: Ctx, rawRegion: string[]): TerminalState {
     }
   }
 
-  // ---- bypass-permissions warning at launch: never accepted for the person. It shows only when someone turned off
-  // permission prompts (WEEVILS_SAFE=0) and Claude Code's own setting does not skip it: they answer it themselves.
+  // ---- bypass-permissions warning at launch: never accepted for the person. weevils skips it where agents work on
+  // their own (server/ask-follow.ts); if it shows anyway (Claude Code's own setting could not be written), they answer it.
   if (/bypass permissions mode|dangerously-skip/i.test(head) && (i = pick(/^yes,? i accept|^yes,? continue anyway|^i understand/i)) >= 0)
     return question(c, 'bypass-warning', t.bypassWarning(c.agent), (raw, k) => (k === i ? t.bypassAccept : /^(?:no|exit|quit)\b/i.test(raw) ? t.bypassStop : raw))
 
@@ -529,8 +529,8 @@ function holdOf(lines: string[], agent: Agent): Hold | undefined {
 // ---------------------------------------------------------------- entry point
 
 /** opts.trustedFolder: the session's folder is inside the user's project roots (insideRoots in server/config.ts). */
-/** opts.allowAll: permission prompts are off for this person (askPermissions() false): a permission dialog is answered
- *  « allow » by weevils. */
+/** opts.allowAll: this session works on its own (Weevils.askFor false): a permission dialog is answered « allow » by
+ *  weevils. */
 export function readScreen(text: string, agent?: Agent, opts: { trustedFolder?: boolean; allowAll?: boolean } = {}): Reading {
   const who = nameFor(agent)
   const lines = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').split('\n').map(clean)

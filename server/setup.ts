@@ -163,6 +163,9 @@ export interface SetupDeps {
   /** weevboss's whole thread (its model's replies too): when the last message came, and whether it is at work. The
    * journey offers its next step only once it has been quiet for a while (server/journey.ts mayOffer). */
   thread?: () => { lastAt: number; working: boolean; lastUserAt?: number }
+  /** « Ask me first » (the first run's link, /#do=ask): every machine's agents ask before acting from now on, as Your
+   *  factory's choice does. False when this machine cannot work without asking anyway (root). Main machine only. */
+  askFirst?: () => boolean
 }
 
 interface Persisted {
@@ -840,8 +843,11 @@ export class Setup {
       for (const line of rest) this.say(line)
       this.p.firstRun = { at: Date.now(), turns: 0 }
       this.p.journey = { devices0: this.deps.devices(), offers: [], ignored: 0 }
-      // Ready already: the hello offered the tour.
-      if (ready) this.p.marks['offer:tour'] = Date.now()
+      // Ready already: the hello offered the tour, and agents can act now: how they work.
+      if (ready) {
+        this.p.marks['offer:tour'] = Date.now()
+        this.sayAutonomy()
+      }
       if (!ready && !link) void (tool === 'codex' ? this.askCodex(s) : this.askClaude(s, false, true)).catch((e) => console.log(`[setup] ${short(e)}`))
     }
     this.save()
@@ -1225,6 +1231,15 @@ export class Setup {
     const tour = !stepDone('tour', this.journeyFacts())
     if (tour && !job) this.p.marks['offer:tour'] = Date.now()
     this.won('brain', job ? j.wonBrainJob(name) : `${j.wonBrain(name)}${tour ? ` ${j.tourOffer}` : ''}`)
+    this.sayAutonomy()
+  }
+
+  /** A new install, once its agents can act: they work on their own (the default), and a link in the sentence makes
+   *  them ask first instead. Said once; not where they ask already (an earlier choice, root) nor on another machine. */
+  private sayAutonomy() {
+    if (!this.p.firstRun || this.p.marks['say:autonomy'] || !this.deps.askFirst || askPermissions()) return
+    this.p.marks['say:autonomy'] = Date.now()
+    this.say(tr(M).autonomy)
   }
 
   /** The line that offers a step, by what it lets the person do. */
@@ -1312,6 +1327,12 @@ export class Setup {
       case 'later':
         this.mark('vps:later')
         this.say(t.vpsLater)
+        return true
+      // « Ask me first » (sayAutonomy): every machine's agents ask before acting from now on.
+      case 'ask':
+        if (!this.deps.askFirst?.()) return false
+        this.mark('ask:first')
+        this.say(t.askFirstDone)
         return true
       // The guided tour (next/src/tour.tsx) is played by the app; the classic app has none: it says where it is.
       case 'tour':

@@ -126,11 +126,12 @@ which explains every setting. After a change: `weevils-service restart` (for the
 
 - **The access code is shell access.** Anyone with it can type into your agents. It lives in
   `~/.config/weevils/secret`; keep it private.
-- **Agents ask before acting**, everywhere: Claude Code's and Codex's permission prompts reach your phone and you
-  answer them there. `./install.sh --no-ask-permissions` (`WEEVILS_SAFE=0`) lets them act without asking
-  (`--dangerously-skip-permissions`): they never wait for you, and can run any command as you. weevils never accepts
-  Claude Code's safety warnings for you; it answers "do you trust this folder?" only inside your project folders.
-  An older install that never chose switches to asking on its next update, and says so.
+- **Agents work on their own by default** (`--dangerously-skip-permissions`): they never wait for you, and can run
+  any command as you. In the app, Your factory > Intelligence > Agents > **Ask me** makes them ask first, on every
+  machine (`WEEVILS_SAFE=1`): Claude Code's and Codex's permission prompts then reach your phone and you answer them
+  there. A session can have its own choice, from its page. Claude Code refuses to skip its prompts as root, so a root
+  install always asks. weevils never accepts Claude Code's safety checks for you; it answers "do you trust this
+  folder?" only inside your project folders.
 - **Use HTTPS** (`--domain`, or Tailscale with `--url`) for anything beyond your home network.
 - **Programs on the machine need its local token**: weevils trusts a request from the machine itself without the
   code only when it carries `~/.local/share/weevils/local-token` (0600), which the `weevils` command, the updater

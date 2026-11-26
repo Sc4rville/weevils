@@ -36,8 +36,8 @@ export const BOSS_WEEVILS = ['sessions', 'read', 'recall', 'boss', 'send', 'resu
 /** Keys and secrets weevboss never reads: the ones an automation may not read (server/optimizers.ts), .env files anywhere. */
 const SECRET_READS = ['~/.ssh/**', '~/.aws/**', '~/.config/gh/**', '~/.config/weevils/**', '~/.claude.json', '~/.claude/.credentials.json', '~/.netrc', '~/.git-credentials', '~/.npmrc', '~/.docker/config.json', '//**/.env', '//**/.env.*']
 /**
- * weevboss's permission profile, the way automations get theirs. In ask mode (WEEVILS_SAFE, the default) a turn is a
- * `claude -p` run that nobody can answer, so whatever is not allowed here is refused: allowed by name, the weevils
+ * weevboss's permission profile, the way automations get theirs. In ask mode (the global « Ask me », WEEVILS_SAFE=1) a
+ * turn is a `claude -p` run that nobody can answer, so whatever is not allowed here is refused: allowed by name, the weevils
  * subcommands it calls, the read-only tools, the repo list, and edits in its own folder and its memory folder only; no
  * other shell command, no write anywhere else. Denied in every mode: the secrets above and its instructions, which
  * follow the repo. A path rule starting with // is absolute (a bare one is relative to the folder it runs in); Edit

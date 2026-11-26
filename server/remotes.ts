@@ -216,11 +216,12 @@ export class Remote {
   }
 
   /** The main machine's permission choice, to that machine: when it changes or the machine comes back (a minute apart
-   *  at most while it does not take it: an older weevils there, until its update), and every 10 minutes anyway. */
-  async followAsk(now = Date.now()) {
+   *  at most while it does not take it: an older weevils there, until its update), and every 10 minutes anyway. atOnce:
+   *  at once, the person just switched it in the app. */
+  async followAsk(now = Date.now(), atOnce = false) {
     const want = this.askChoice()
     if (want === undefined || !this.online) return
-    if (this.askSent === want ? now - this.askAt < 10 * 60_000 : now - this.askAt < 60_000) return
+    if (!(atOnce && this.askSent !== want) && (this.askSent === want ? now - this.askAt < 10 * 60_000 : now - this.askAt < 60_000)) return
     this.askAt = now
     try {
       await this.call('POST', '/api/machine/ask', { ask: want })

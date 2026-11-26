@@ -11,10 +11,11 @@ Hetzner. Agents then work on a machine that holds nothing else of yours. Your He
 browser: the page calls Hetzner's API directly (`api.hetzner.cloud`), and the token never reaches the setup service.
 After the server exists, you can delete the token in Hetzner's console. The page only works when it is open.
 
-Agents ask before acting, on a server as on a computer: Claude Code's and Codex's permission prompts, answered from
-the app. `--no-permission-prompts` on the setup page's command (`install.sh --no-ask-permissions` otherwise) lets
-them act without asking. weevils never accepts Claude Code's safety warnings for you: the bypass-permissions warning
-is yours to answer, and it answers "do you trust this folder?" only for folders inside your project roots.
+Agents work on their own by default, on a server as on a computer: they run commands without waiting for you. In the
+app, Your factory > Intelligence > Agents > « Ask me » makes every machine's agents ask first (Claude Code's and
+Codex's permission prompts, answered from the app); a session can have its own choice, from its page. As root, Claude
+Code always asks. weevils never accepts Claude Code's safety checks for you, and it answers "do you trust this
+folder?" only for folders inside your project roots.
 
 On your own computer, weevils works the same way, but its agents can reach everything your user can. There:
 

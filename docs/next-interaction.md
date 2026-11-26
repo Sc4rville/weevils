@@ -74,7 +74,10 @@ once, and the code follows. Behaviour is never flipped back and forth.
     then orange, then red) and a switch where turning it off is possible (Codex: never handed work; a key: taken out of
     weevils' environment, never deleted). Claude has no switch: it carries weevboss. A tap on a subscription opens the
     app's subscriptions page. « + » unfolds what can be added (another Claude account, Codex, the API keys missing); a
-    tap brings weevboss's screen: a sign-in through weevboss, a key only ever in the masked field.
+    tap brings weevboss's screen: a sign-in through weevboss, a key only ever in the masked field. Before « + », one
+    band **Agents**: how every machine's agents work, two words, « Autonomous » (the default: no permission prompt) or
+    « Ask me » (they ask before acting, answered from the app), the one in use underlined; one line under it only while
+    they ask, or, as root, why it is locked to asking (2026-11-26). A session can differ, from its page's settings.
   - **Projects**: one band per project weevils knows, in its own colour with the repo mark, and a switch: on, it is
     pinned (the app's own pin) and stays in the side bar even with no conversation; off, it leaves the side bar at
     once, whatever its conversations are doing, and stays out (on every device) until switched back on (2026-11-23:

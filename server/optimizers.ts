@@ -2388,7 +2388,7 @@ export class Optimizers {
       if (tool === 'codex' && !wrap.length) throw new Error(this.noJail())
       step = 'start'
       if(o.deletedAt){o.state='refused';return}
-      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard, process.env, this.platform), wrap:executionWrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard, process.env, this.platform), wrap:executionWrap }, 'claude', on.sessionId)
+      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard, process.env, this.platform), wrap:executionWrap, unattended: true }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard, process.env, this.platform), wrap:executionWrap, unattended: true }, 'claude', on.sessionId)
       o.sessionId = id
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})${tool === 'codex' ? ' · sur Codex (Claude à sa limite)' : ''}`)

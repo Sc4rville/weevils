@@ -6,12 +6,13 @@
 // setup flows (askSetup, openKey: a key is only ever typed in the masked field), Tempo (useTempo, TempoBand).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { Project, Session, Snapshot } from '../../shared/api.ts'
+import type { AgentsChoice, Project, Session, Snapshot } from '../../shared/api.ts'
 import { DRAWERS, drawerShown, type Drawer } from '../../shared/drawers.ts'
 import { KEYS, type Brand, type FactoryIntel, type FactoryMachine, type FactoryOnDemand, type FactoryView } from '../../shared/your-factory.ts'
 import { TEMPO_MODES, type TempoMode } from '../../shared/tempo.ts'
 import { useT } from '../../src/i18n/index.ts'
 import TM from '../../src/i18n/tempo.ts'
+import AM from '../../src/i18n/agents.ts'
 import { useApp, type Page } from '../../src/ui/app-context.tsx'
 import { selfProject } from '../../src/ui/recursive-identity.ts'
 import { Collapse, Composer, ToolIcon } from '../../src/ui/bits.tsx'
@@ -355,6 +356,37 @@ function IntelBand({ x, step, onOpen, onPatch }: { x: FactoryIntel; step: number
   )
 }
 
+/** How agents work on every machine: on their own (the default) or asking first. Two words, the one in use underlined;
+ *  one line under it only while they ask (or when root locks it to asking: why). Applied to their next turns. */
+export function AgentsBand({ agents, step }: { agents: AgentsChoice; step: number }) {
+  const t = useT(AM)
+  const [picked, setPicked] = useState<boolean | null>(null)
+  // The snapshot says it now: the tap's own state is forgotten.
+  useEffect(() => { if (picked === agents.ask) setPicked(null) }, [agents.ask, picked])
+  const ask = picked ?? agents.ask
+  const locked = agents.locked === 'root'
+  const pick = (v: boolean) => {
+    if (locked || v === ask) return
+    navigator.vibrate?.(6)
+    setPicked(v)
+    void call('POST', '/api/factory/agents', { ask: v }).catch(() => setPicked(null))
+  }
+  const word = (v: boolean) => (
+    <button type="button" role="radio" aria-checked={ask === v} aria-label={v ? t.askAria : t.autoAria} disabled={locked}
+      className={`nx-fx-word ${ask === v ? 'strong' : ''}`} onClick={(e) => { e.stopPropagation(); pick(v) }}>{v ? t.ask : t.auto}</button>
+  )
+  return (
+    <Band step={step} depth={2} className="nx-fx-agents">
+      <span className="nx-fx-main">
+        <span className="nx-mark"><Icon name="agents" /></span>
+        <span className="nx-row-title">{t.title}</span>
+      </span>
+      <div className="nx-fx-choice" role="radiogroup" aria-label={t.title}>{word(false)}{word(true)}</div>
+      {(locked || ask) && <span className="nx-fx-hint">{locked ? t.rootLine : t.askLine}</span>}
+    </Band>
+  )
+}
+
 /** A plan as its product names it (the app's infra.tsx planName, kept short here). */
 function planName(plan: string) {
   if (/[A-Z\s]/.test(plan)) return plan
@@ -605,6 +637,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
             <IntelBand key={x.id} x={x} step={step(iOpen)} onOpen={x.kind === 'subscription' ? () => page({ kind: 'usage' }) : undefined}
               onPatch={(p) => patch((y) => ({ ...y, intelligence: y.intelligence.map((z) => (z.id === x.id ? { ...z, ...p } : z)) }))} />
           ))}
+          {snap.agents && <AgentsBand agents={snap.agents} step={step(iOpen)} />}
           {addable.length > 0 && <PlusBand step={step(iOpen)} label="Add intelligence" open={adding} onClick={() => setAdding((a) => !a)} />}
           <Collapse open={adding}>
             {addable.map((a) => (

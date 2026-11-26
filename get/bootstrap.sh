@@ -2,8 +2,8 @@
 # weevils — installer started from the setup page, https://tryweevils.scarville.tech. The same file for everyone:
 # https://get.scarville.tech/install.sh (SHA-256: https://get.scarville.tech/install.sh.sha256). Full security notes:
 # https://get.scarville.tech/security (SECURITY.md). Written for bash 3.2 and BSD tools as well as Linux.
-# Usage: curl -fsSL https://get.scarville.tech/install.sh | bash -s <setup id> [--no-link] [--no-auto-update]
-#        [--no-permission-prompts]
+# Usage: curl -fsSL https://get.scarville.tech/install.sh | bash -s <setup id> [--no-link] [--handle=<name>]
+#        [--no-auto-update] [--no-permission-prompts]
 # The setup id only lets this script tell the page that opened it how far the install is.
 #
 # WHAT IT IS: weevils lets you watch and drive the Claude Code / Codex sessions of this machine from your phone. Its
@@ -22,12 +22,16 @@
 #      ~/.local/share/weevils/sys, never installed system-wide: no root, no password. Elsewhere, or if that fails, it
 #      shows the one command ("sudo dnf install -y tmux jq") and asks your password for that command alone, then
 #      forgets it (sudo -k). On a Mac: Homebrew's own installer, only if Homebrew is missing.
-#   3. A computer: opens an HTTPS link so your phone can reach weevils from anywhere (a Cloudflare quick tunnel to
-#      127.0.0.1, user service weevils-link; cloudflared from Cloudflare's GitHub release, checked against the
-#      SHA-256 GitHub publishes). THIS COMPUTER THEN ANSWERS FROM THE INTERNET: anyone who has the link's address
-#      reaches weevils' login page, and anyone with your access code (72 random bits) drives your agents, as you.
-#      To avoid it: --no-link (no link, weevils stays on this machine; reach it later through Tailscale, a private
-#      network between your own devices).
+#   3. A computer: gives weevils a stable HTTPS address so your phone and your chat apps reach it from anywhere,
+#      https://<name>.tryweevils.scarville.tech (--handle=<name> picks the name; else one from your user name). weevils
+#      keeps one outgoing connection to the weevils relay (server/link-relay.ts, run by Scarville at that address),
+#      which passes each request for that name down it to 127.0.0.1; the relay holds only a hash of the address's
+#      token, logs no address and no content, but like any HTTPS proxy it decrypts what passes through it. If the
+#      relay cannot be reached: a Cloudflare quick tunnel instead (user service weevils-link; cloudflared from
+#      Cloudflare's GitHub release, checked against the SHA-256 GitHub publishes), whose address changes at each start.
+#      THIS COMPUTER THEN ANSWERS FROM THE INTERNET: anyone who has the address reaches weevils' login page, and anyone
+#      with your access code (72 random bits) drives your agents, as you. To avoid it: --no-link (no link, weevils
+#      stays on this machine; reach it later through Tailscale, a private network between your own devices).
 #   4. Tells the setup page how far it is: step names only, then your weevils' address; the login link is sealed with
 #      a key only your open page holds, so the setup service never sees your access code. At the start, so the
 #      service knows a server from a computer: the system's name (uname -s), whether systemd runs it, and whether
@@ -56,10 +60,12 @@ _weevils_get() {
   # Options after the setup id: --no-link (no public link for the phone: weevils stays on this machine only),
   # --no-auto-update (never fetch a new version by itself), --no-permission-prompts (agents act without asking, on a
   # computer as on a server).
-  local opt link=1 extra=() prompts=1
+  local opt link=1 extra=() prompts=1 handle=''
   for opt in "${@:2}"; do
     case $opt in
       --no-link) link=0 ;;
+      # The name of the computer's stable address, https://<name>.tryweevils.scarville.tech (else one from the user's name).
+      --handle=*) handle=$(printf '%s' "${opt#--handle=}" | tr -cd 'a-zA-Z0-9-' | tr 'A-Z' 'a-z' | cut -c1-30) ;;
       --no-auto-update) extra+=(--no-auto-update) ;;
       --no-permission-prompts) prompts=0 ;;
     esac
@@ -381,6 +387,21 @@ _weevils_get() {
   fi
   if { [ "$MODE" = pc ] || [ -n "$web" ]; } && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
     event step tunnel
+    local port bin arch turl='' surl='' state=$HOME/.local/share/weevils
+    port=$(sum port)
+    # First choice: a stable address through the weevils relay, https://<name>.tryweevils.scarville.tech, the same after
+    # every restart (server/stable-address.ts). weevils claims it and keeps one outgoing connection to the relay; a name
+    # already taken gets a free one instead. The relay unreachable: the Cloudflare quick tunnel below, as before.
+    surl=$(WEEVILS_PORT=$port "$dir/server/weevils-cli" address claim "$handle" 2>/dev/null </dev/null) || surl=''
+    [ -n "$surl" ] || [ -z "$handle" ] || surl=$(WEEVILS_PORT=$port "$dir/server/weevils-cli" address claim '' 2>/dev/null </dev/null) || surl=''
+    case $surl in https://*) ;; *) surl='' ;; esac
+    if [ -n "$surl" ]; then
+      for _ in $(seq 1 30); do curl -fsS -m 5 -o /dev/null "$surl/manifest.webmanifest" 2>/dev/null && break; sleep 2; done
+      run_install --url "$surl" --no-update
+      check
+    fi
+  fi
+  if [ -z "${surl:-}" ] && { [ "$MODE" = pc ] || [ -n "$web" ]; } && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
     local port bin arch turl='' state=$HOME/.local/share/weevils
     port=$(sum port)
     mkdir -p "$state/bin"

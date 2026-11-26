@@ -2,6 +2,16 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-26
+
+### A stable address for computers
+- A computer set up from the setup page gets `https://<name>.tryweevils.scarville.tech`, the same after every
+  restart, network change or sleep, instead of a Cloudflare quick tunnel whose address changed each time: the
+  installed app, the login link and ChatGPT's or Claude.ai's connector (`…/mcp`) keep working. weevils keeps one
+  outgoing connection to the weevils relay, which passes only that name's requests down it. `--handle=<name>` picks
+  the name at install; `weevils address claim <name>` changes it, `weevils address release` gives it back. A
+  computer on a quick tunnel moves over by itself at its next start and tells the phone. docs/stable-address.md.
+
 ## 2026-11-23
 
 ### Tests and builds

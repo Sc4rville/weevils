@@ -66,9 +66,10 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
      (`apt-get download`, no root). Elsewhere, one shown `sudo` command, then `sudo -k`.
    - cloudflared is checked against GitHub's published digest.
    - Agents keep their permission prompts (the installer's default, on a computer as on a server).
-   - The computer's phone link (a Cloudflare quick tunnel) makes it answer from the Internet, behind the access code:
+   - The computer's phone link (its stable address through the weevils relay, `https://<name>.tryweevils.scarville.tech`;
+     a Cloudflare quick tunnel if the relay can't be reached) makes it answer from the Internet, behind the access code:
      the page and the script say so before the install; `--no-link` avoids it.
-   - Options after the id: `--no-link`, `--no-auto-update`, `--no-permission-prompts` (→ `install.sh --no-ask-permissions`).
+   - Options after the id: `--no-link`, `--handle=<name>`, `--no-auto-update`, `--no-permission-prompts` (→ `install.sh --no-ask-permissions`).
 
    `follow-main.sh` rebuilds (and signs) the bundle and the main manifest before restarting the service.
 3. A live progress screen follows the install (the installer's step names). Its address is the setup's resume link:
@@ -126,7 +127,7 @@ Where the new weevils is reached:
 | path | address | HTTPS |
 |---|---|---|
 | Hetzner, own VPS | `https://<ip-with-dashes>.sslip.io` | Caddy + Let's Encrypt, set up by `install.sh --domain` |
-| computer | `https://<random>.trycloudflare.com` | Cloudflare quick tunnel (no account); the address changes if the computer restarts. weevboss can set up a lasting one (Tailscale, a VPS) |
+| computer | `https://<name>.tryweevils.scarville.tech` | the weevils relay (docs/stable-address.md): the same address after every restart; a Cloudflare quick tunnel (`https://<random>.trycloudflare.com`, changes at each restart) only when the relay can't be reached |
 
 ### On a Mac
 

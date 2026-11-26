@@ -20,6 +20,8 @@ import FY from './i18n/foryou.ts'
 import { execFile, spawn } from 'node:child_process'
 import { Awake } from './platform.ts'
 import { TunnelFollower, waitServed } from './tunnel-link.ts'
+import { StableAddress } from './stable-address.ts'
+import { retireTunnel } from './tunnel-retire.ts'
 import { claimSetup } from './get-claim.ts'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -510,24 +512,46 @@ const loginLink = (req: http.IncomingMessage) => {
   return `${(PUBLIC_URL || `${proto}://${host}`).replace(/\/$/, '')}/#k=${SECRET}`
 }
 
+/** weevils' public address from now on: every link it makes, the config, and the login link the install keeps. */
+const adoptPublicUrl = (url: string) => {
+  setPublicUrl(url)
+  try { writeConfig({ WEEVILS_PUBLIC_URL: url }) } catch (e) { console.error('[link] config:', (e as Error).message) }
+  // The login link the install keeps for the person (install.sh: login-link, mode 600) follows too.
+  const kept = path.join(DATA_DIR, 'login-link')
+  try { if (url && fs.existsSync(kept)) fs.writeFileSync(kept, `${url}/#k=${SECRET}\n`, { mode: 0o600 }) } catch { /* kept as it was */ }
+}
+/** The phone learns the new address (push does not go through the old one, so it arrives even when that one is dead). */
+const announceAddress = async (url: string, permanent = false) => {
+  await waitServed(url)
+  for (let i = 0; i < 20 && !w.push.enabled; i++) await new Promise((r) => setTimeout(r, 500))
+  const t = tr(P)
+  await w.push.send({ title: permanent ? t.stableTitle : t.linkTitle, body: (permanent ? t.stableBody : t.linkBody)(new URL(url).host), url: `${url}/#k=${SECRET}`, tag: 'link', category: 'warning' })
+}
+
 // A computer's quick tunnel comes back under a new address after each restart: weevils takes it for every link it
-// makes and sends the phone the new login link (server/tunnel-link.ts).
+// makes and sends the phone the new login link (server/tunnel-link.ts). Only until it has a stable address (below).
 new TunnelFollower({
   file: path.join(DATA_DIR, 'link.log'),
   current: () => PUBLIC_URL,
-  adopt: (url) => {
-    setPublicUrl(url)
-    try { writeConfig({ WEEVILS_PUBLIC_URL: url }) } catch (e) { console.error('[link] config:', (e as Error).message) }
-    // The login link the install keeps for the person (install.sh: login-link, mode 600) follows too.
-    const kept = path.join(DATA_DIR, 'login-link')
-    try { if (fs.existsSync(kept)) fs.writeFileSync(kept, `${url}/#k=${SECRET}\n`, { mode: 0o600 }) } catch { /* kept as it was */ }
-  },
-  announce: async (url) => {
-    await waitServed(url)
-    for (let i = 0; i < 20 && !w.push.enabled; i++) await new Promise((r) => setTimeout(r, 500))
-    await w.push.send({ title: tr(P).linkTitle, body: tr(P).linkBody(new URL(url).host), url: `${url}/#k=${SECRET}`, tag: 'link', category: 'warning' })
-  },
+  adopt: adoptPublicUrl,
+  announce: (url) => announceAddress(url),
 }).start()
+
+// The stable address (server/stable-address.ts): https://<handle>.tryweevils.scarville.tech, through the relay, the
+// same after every restart. A computer still on a quick tunnel moves to one by itself, once, and its old tunnel stops.
+const address = new StableAddress({
+  env: () => process.env,
+  port: PORT,
+  publicUrl: () => PUBLIC_URL,
+  write: writeConfig,
+  adopt: adoptPublicUrl,
+  announce: (url) => announceAddress(url, true),
+  served: (url) => waitServed(url),
+  retireTunnel,
+  log: (l) => console.log(`[address] ${l}`),
+  changed: () => w.bump(),
+})
+void address.start().catch((e) => console.error('[address]', (e as Error).message))
 
 const logins = loginLimiter()
 /** `weevils capture`: a few minutes of sign-in for a headless browser on this machine (server/capture-tokens.ts). */
@@ -1058,6 +1082,19 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/capture\/token$/, async (req, res) => {
     if (!isLocal(req)) return json(res, 403, { error: tr(S).localOnly })
     json(res, 200, { token: captures.mint(), ttl: CAPTURE_TTL_MS })
+  }],
+  // « weevils address »: the stable address (server/stable-address.ts). Seen by the app; claimed or given back from
+  // this machine only (weevboss, the install), never from the phone.
+  ['GET', /^\/api\/address$/, async (_req, res) => json(res, 200, address.status())],
+  ['POST', /^\/api\/address\/claim$/, async (req, res) => {
+    const b = await readBody(req)
+    if (!isLocal(req)) return json(res, 403, { error: tr(S).localOnly })
+    const r = await address.claim(String(b.handle ?? '').trim().toLowerCase())
+    json(res, r.ok ? 200 : r.error === 'taken' ? 409 : r.error === 'invalid' ? 400 : 503, r.ok ? { handle: r.handle, url: r.url } : r)
+  }],
+  ['POST', /^\/api\/address\/release$/, async (req, res) => {
+    if (!isLocal(req)) return json(res, 403, { error: tr(S).localOnly })
+    json(res, 200, { released: await address.release() })
   }],
   // « weevils config set » : seulement depuis la machine (weevboss), seulement les clés prévues.
   ['POST', /^\/api\/setup\/config$/, async (req, res) => {

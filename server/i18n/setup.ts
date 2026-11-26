@@ -152,7 +152,7 @@ export default defineMessages({
     connectorNeedsHttps: (url: string): string =>
       `ChatGPT et Claude.ai ne me joignent qu’à une adresse publique en https, et pour l’instant je suis à ${url}. Demande-moi de me rendre joignable de partout : on le branche juste après.`,
     connectorHow: (url: string, tunnel: boolean): string =>
-      `Ajoute cette adresse dans ton app de chat : \`${url}\`\n\n- Claude.ai : Paramètres → Connecteurs → Ajouter un connecteur personnalisé, colle-la, puis Connecter.\n- ChatGPT : Paramètres → Applications et connecteurs → Paramètres avancés, active le mode développeur, puis Créer, colle-la.\n\nElle te demande une fois ton code d’accès weevils.${tunnel ? ' Cette adresse change quand la machine redémarre : pour qu’elle tienne, il faudra un nom de domaine.' : ''}`,
+      `Ajoute cette adresse dans ton app de chat : \`${url}\`\n\n- Claude.ai : Paramètres → Connecteurs → Ajouter un connecteur personnalisé, colle-la, puis Connecter.\n- ChatGPT : Paramètres → Applications et connecteurs → Paramètres avancés, active le mode développeur, puis Créer, colle-la.\n\nElle te demande une fois ton code d’accès weevils.${tunnel ? ' Cette adresse change encore quand la machine redémarre : weevils passe à une adresse fixe dès que possible, et je te la donne.' : ''}`,
     delegated: 'Je l’ai confié à un agent : il te demande ton accord dans l’app avant chaque étape.',
     // ---- GitHub
     githubPitch: 'Branche GitHub : je verrai tous tes repos (glisse le fil vers la gauche), j’en créerai pour tes nouvelles idées et je rangerai les sessions par projet.',
@@ -402,7 +402,7 @@ export default defineMessages({
     connectorNeedsHttps: (url: string): string =>
       `ChatGPT and Claude.ai only reach me at a public https address, and right now I’m at ${url}. Ask me to make me reachable from anywhere: we’ll plug it in right after.`,
     connectorHow: (url: string, tunnel: boolean): string =>
-      `Add this address to your chat app: \`${url}\`\n\n- Claude.ai: Settings → Connectors → Add custom connector, paste it, then Connect.\n- ChatGPT: Settings → Apps & Connectors → Advanced settings, turn on developer mode, then Create and paste it.\n\nIt asks once for your weevils access code.${tunnel ? ' This address changes when the machine restarts: to keep it, you’ll need a domain name.' : ''}`,
+      `Add this address to your chat app: \`${url}\`\n\n- Claude.ai: Settings → Connectors → Add custom connector, paste it, then Connect.\n- ChatGPT: Settings → Apps & Connectors → Advanced settings, turn on developer mode, then Create and paste it.\n\nIt asks once for your weevils access code.${tunnel ? ' This address still changes when the machine restarts: weevils moves to a permanent one as soon as it can, and I’ll give it to you.' : ''}`,
     delegated: 'I’ve handed it to an agent: it asks for your OK in the app before each step.',
     githubPitch: 'Plug in GitHub: I’ll see all your repos (swipe the feed left), create new ones for your ideas, and sort sessions by project.',
     githubAsk: (s: SetupState): string =>

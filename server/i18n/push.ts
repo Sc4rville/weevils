@@ -16,6 +16,9 @@ export default defineMessages({
     /** The computer's quick tunnel restarted under a new address (server/tunnel-link.ts). */
     linkTitle: 'weevils a changé d’adresse',
     linkBody: (host: string) => `Ouvre ce lien pour retrouver l’app (${host}), puis ajoute-la de nouveau à l’écran d’accueil.`,
+    /** The computer moved from the quick tunnel to its stable address (server/stable-address.ts). */
+    stableTitle: 'weevils a maintenant une adresse fixe',
+    stableBody: (host: string) => `Ouvre ce lien et ajoute l’app à l’écran d’accueil une dernière fois : ${host} ne changera plus, même quand l’ordinateur redémarre.`,
   },
   en: {
     badSubscription: 'invalid subscription',
@@ -27,5 +30,7 @@ export default defineMessages({
     testBody: 'Notifications work. I’ll ping you when a session needs you or is done.',
     linkTitle: 'weevils has a new address',
     linkBody: (host: string) => `Open this to get back to the app (${host}), then add it to your home screen again.`,
+    stableTitle: 'weevils now has a permanent address',
+    stableBody: (host: string) => `Open this and add the app to your home screen one last time: ${host} won’t change again, even when the computer restarts.`,
   },
 })

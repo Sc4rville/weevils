@@ -380,6 +380,14 @@ async function quotaLines(): Promise<string[]> {
 
 /** Écrit des clés dans ~/.config/weevils/env (remplace la ligne existante, sinon ajoute) et dans l'environnement du
  * serveur, pour que le changement prenne aussitôt. Valeur vide = clé vidée. Jamais journalisé. */
+/** For weevboss: what kind of public address this is, and the command that changes it (server/stable-address.ts). */
+function addressNote(url: string): string {
+  const handle = process.env.WEEVILS_LINK_HANDLE?.trim()
+  if (handle) return ` · stable address through the weevils relay, name ${handle} (weevils address claim <name> renames it, weevils address release gives it back)`
+  if (isTunnelUrl(url)) return ' · Cloudflare quick tunnel: changes at each restart (weevils address claim <name> gives a permanent https://<name>.tryweevils.scarville.tech)'
+  return ''
+}
+
 export function writeConfig(changes: Record<string, string>) {
   const lines = read(CONFIG_FILE).split('\n')
   if (lines.at(-1) === '') lines.pop()
@@ -2084,7 +2092,7 @@ export class Setup {
       `lang: ${lang()}`,
       `machine: ${m.kind}${m.mac ? ' (mac)' : ''}${m.provider ? ` ${m.provider}` : ''} · ${m.os} · ${m.cpus} cores · ${Math.round(m.ramGb * 10) / 10} GB · room for ~${m.agents} agents · always on: ${m.alwaysOn ?? 'unknown'} · up ${Math.round(m.uptimeDays)} d · host ${m.host} · ssh ${m.sshTarget}`,
       `other machines: ${m.others.join(', ') || 'none'}${m.others.length ? ` (one always on: ${yes(m.othersAlwaysOn)})` : ''}`,
-      `access: ${s.reach} ${s.url} · https ${yes(s.https)}`,
+      `access: ${s.reach} ${s.url} · https ${yes(s.https)}${addressNote(s.url)}`,
       `phone: ${s.phone.devices} device(s) signed in · push on ${s.phone.push} · siri shortcut token: ${yes(s.shortcut)}`,
       `claude code: installed ${yes(s.claude.installed)} · signed in ${yes(s.claude.logged)}`,
       `codex: installed ${yes(s.codex.installed)} · signed in ${yes(s.codex.logged)}`,

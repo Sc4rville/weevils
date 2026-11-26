@@ -30,6 +30,7 @@ import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL, USER_NAME, VAULT_KEY_FILE, vaultRemote } from './config.ts'
 import { claudeLoggedIn } from './claude-credentials.ts'
 import * as claudeLogin from './claude-login.ts'
+import { fresh as freshLogins, MACHINE_ID, waitingFor, type CodeAnswer, type Here, type LoginAnswer, type Waiting } from './machine-claude.ts'
 import { accounts } from './claude-accounts.ts'
 import AccountsM from './i18n/claude-accounts.ts'
 import { servicePath, which as whichIn } from './platform.ts'
@@ -129,7 +130,7 @@ export interface SetupState {
 export interface SetupDeps {
   bump: () => void
   /** Machines du fil (la première est celle-ci) et nombre de projets. */
-  feed: () => { machines: { id: string; name: string; online?: boolean }[]; projects: number; names?: string[] }
+  feed: () => { machines: { id: string; name: string; online?: boolean; claude?: { installed: boolean; logged: boolean } }[]; projects: number; names?: string[] }
   /** Faits des autres machines (fédération), pour savoir si l'une reste allumée. */
   remoteFacts: () => Promise<MachineFacts[]>
   devices: () => number
@@ -166,6 +167,8 @@ export interface SetupDeps {
   /** « Ask me first » (the first run's link, /#do=ask): every machine's agents ask before acting from now on, as Your
    *  factory's choice does. False when this machine cannot work without asking anyway (root). Main machine only. */
   askFirst?: () => boolean
+  /** One call to another machine of yours, through its tunnel with its local token (Claude's sign-in there). */
+  machineCall?: <T>(id: string, path: string, body: unknown, timeout: number) => Promise<T>
 }
 
 interface Persisted {
@@ -196,6 +199,8 @@ interface Persisted {
    * the step offered last (passed by or not), how many were passed by in a row, the turns of a day that carried a
    * discovery for weevboss. */
   journey?: { devices0: number; offers: number[]; pending?: Step; ignored: number; hinted?: { day: string; n: number } }
+  /** Claude's sign-in started on another machine from here, by machine: the code pasted next goes there (server/machine-claude.ts). */
+  remoteLogins?: Waiting
 }
 
 // ---------------------------------------------------------------- détection
@@ -233,6 +238,9 @@ export const which = (cmd: string): string | null => whichIn(cmd, process.platfo
 
 /** Claude Code connecté : les identifiants de /login, une clé dans l'environnement, ou sur un Mac le trousseau (server/claude-credentials.ts). */
 export const claudeLogged = (): boolean => claudeLoggedIn()
+
+/** Claude Code on this machine, as the snapshot carries it to the main machine (Machine.claude). */
+export const claudeHere = (): { installed: boolean; logged: boolean } => ({ installed: !!which('claude'), logged: claudeLogged() })
 
 /** The log without its sign-in prompts for a provider that is signed in now (pure, tested). */
 export function staleSignIns<T extends { role: string; text: string }>(log: T[], logged: { claude: boolean; codex: boolean }): T[] {
@@ -697,7 +705,7 @@ export class Setup {
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen, firstRun: raw.firstRun, joining: raw.joining, hidden: raw.hidden, guestTurns: raw.guestTurns, journey: raw.journey }
+        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen, firstRun: raw.firstRun, joining: raw.joining, hidden: raw.hidden, guestTurns: raw.guestTurns, journey: raw.journey, remoteLogins: raw.remoteLogins }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -965,6 +973,129 @@ export class Setup {
     return { dir: path.join(DATA_DIR, 'claude-login'), bin: which('claude') ?? 'claude', env, logged: claudeLogged }
   }
 
+  // ---------------------------------------------------------------- Claude on another machine (server/machine-claude.ts)
+
+  /** Claude Code here as the main machine drives it from its own thread: the very sign-in weevboss's own flow drives on
+   * this machine (same folder, same CLI), so a tap there and one here share it. */
+  claudeHereDriver(): Here {
+    return {
+      installed: () => !!which('claude'),
+      logged: claudeLogged,
+      install: async () => this.install('claude', await this.detect()),
+      start: (fresh) => (fresh ? claudeLogin.start(this.loginDeps(), true) : this.startClaudeLogin()),
+      why: () => lastLine(claudeLogin.output(this.loginDeps())),
+      submit: (code) => claudeLogin.submit(this.loginDeps(), code),
+    }
+  }
+
+  /** Sign-ins being started on another machine, by machine: a double tap waits for the same one (one link, one CLI). */
+  private remoteStarting = new Map<string, Promise<boolean>>()
+
+  private machineName(id: string) {
+    const m = this.deps.feed().machines.find((x) => x.id === id)
+    return m?.name || id
+  }
+
+  /** Claude's sign-in on another machine of yours, from this thread: Claude Code installed there first when it is
+   * missing (the official installer, as install.sh does), then the official page's link here; the code the person
+   * pastes here goes to that machine (takeRemoteCode). False: no such machine. */
+  claudeOn(id: string): Promise<boolean> {
+    if (id === MACHINE.id) return this.ask('claude').then(() => true)
+    const running = this.remoteStarting.get(id)
+    if (running) return running
+    const job = this.startClaudeOn(id).finally(() => this.remoteStarting.delete(id))
+    this.remoteStarting.set(id, job)
+    return job
+  }
+
+  private async startClaudeOn(id: string): Promise<boolean> {
+    const t = tr(M)
+    const m = this.deps.feed().machines.find((x) => x.id === id)
+    if (!m || !MACHINE_ID.test(id)) return false
+    const name = m.name || m.id
+    if (m.online === false || !this.deps.machineCall) return this.say(t.remoteClaudeAway(name)), true
+    const install = m.claude?.installed === false
+    if (install) this.say(t.remoteClaudeInstalling(name))
+    let a: LoginAnswer
+    try {
+      a = await this.deps.machineCall<LoginAnswer>(id, '/api/machine/claude/login', { install: true }, install ? 6 * 60_000 : 2 * 60_000)
+    } catch (e) {
+      return this.say(t.remoteClaudeNoLink(name, short(e))), true
+    }
+    if (!a.installed) return this.say(t.remoteClaudeNoInstall(name, a.why || t.noAnswer, installCommand('claude', await this.detect()))), true
+    if (a.logged) {
+      this.dropRemoteLogin(id)
+      return this.say(t.remoteClaudeOk(name)), true
+    }
+    if (!a.url) return this.say(t.remoteClaudeNoLink(name, a.why || t.noAnswer)), true
+    this.p.remoteLogins = { ...freshLogins(this.p.remoteLogins), [id]: Date.now() }
+    this.save()
+    console.log(`[setup] Claude sign-in started on ${id}`)
+    this.say(t.remoteClaudeLink(name, a.url))
+    this.openUrl = a.url
+    return true
+  }
+
+  private dropRemoteLogin(id: string) {
+    if (!this.p.remoteLogins?.[id]) return
+    const { [id]: _done, ...rest } = this.p.remoteLogins
+    this.p.remoteLogins = rest
+    this.save()
+  }
+
+  /** A sign-in code pasted in weevboss's chat while another machine's Claude sign-in waits for one: handed to that
+   * machine, never to the model; weevboss says how it went. False: not such a code, the message goes on as usual. */
+  takeRemoteCode(text: string): boolean {
+    const typed = withoutContext(text).trim()
+    if (!this.deps.machineCall || !looksLikeLoginCode(typed)) return false
+    const id = waitingFor(this.p.remoteLogins)
+    if (!id) return false
+    // This machine's own sign-in waits too, and started later: the code is for it.
+    const here = claudeLogin.pending(this.loginDeps())
+    if (here && here.at > (this.p.remoteLogins?.[id] ?? 0)) return false
+    const mid = this.userSays(text)
+    this.p.hidden = [...(this.p.hidden ?? []).slice(-19), mid]
+    this.dropRemoteLogin(id)
+    void this.forwardCode(id, typed)
+    return true
+  }
+
+  private async forwardCode(id: string, code: string) {
+    const t = tr(M)
+    const name = this.machineName(id)
+    let r: CodeAnswer
+    try {
+      r = await this.deps.machineCall!<CodeAnswer>(id, '/api/machine/claude/code', { code }, 90_000)
+    } catch (e) {
+      r = { ok: false, why: short(e) }
+    }
+    this.cache = null
+    if (r.ok) {
+      console.log(`[setup] Claude Code signed in on ${id}`)
+      return this.say(`${t.remoteClaudeOk(name)}${this.tryMachine(name)}`)
+    }
+    this.say(t.remoteClaudeFail(name, r.why || t.noAnswer))
+    await this.claudeOn(id)
+  }
+
+  /** The example to try on a new machine, when its welcome held it back (Claude was not signed in there yet). */
+  private tryMachine(name: string) {
+    return this.p.firstRun && this.p.marks['won:machine'] && !this.p.marks['try:machine'] ? ` ${tr(J).wonMachine(name)}` : ''
+  }
+
+  /** A sign-in waiting on another machine that got done there some other way (a terminal there, a lost answer): said once. */
+  private watchRemoteClaude(): boolean {
+    let changed = false
+    for (const id of Object.keys(this.p.remoteLogins ?? {})) {
+      const m = this.deps.feed().machines.find((x) => x.id === id)
+      if (!m?.claude?.logged) continue
+      this.dropRemoteLogin(id)
+      this.say(`${tr(M).remoteClaudeOk(m.name || id)}${this.tryMachine(m.name || id)}`)
+      changed = true
+    }
+    return changed
+  }
+
   /** Codex : connexion par code (une page OpenAI, un code à y taper) ; weevboss confirme quand c'est fait. */
   private startCodexLogin(): Promise<boolean> {
     if (this.codexLogin && this.codexLogin.exitCode === null && this.codexLoginShown) return Promise.resolve(true)
@@ -1102,6 +1233,7 @@ export class Setup {
   private async watch() {
     let changed = this.watchJoin()
     changed = this.watchLinks() || changed
+    changed = this.watchRemoteClaude() || changed
     if (!this.p.welcomed) {
       if (changed) this.save()
       return
@@ -1307,6 +1439,9 @@ export class Setup {
       else await this.handoff(say, tryBrief(tried))
       return true
     }
+    // Claude's sign-in on another machine of yours (/#do=claude.<machine id>).
+    const on = /^claude\.([A-Za-z0-9_-]{1,64})$/.exec(action)?.[1]
+    if (on !== undefined) return this.claudeOn(on)
     switch (action) {
       case 'github': {
         this.githubForSync = true
@@ -1420,7 +1555,10 @@ export class Setup {
         this.p.marks['won:machine'] = Date.now()
         if (this.p.journey?.pending === 'machine') (this.p.journey.pending = undefined), (this.p.journey.ignored = 0)
       }
-      this.sayWin(`${tr(M).joinOnline(name)}${first ? ` ${tr(J).wonMachine(name)}` : ''}`, { id: `machine:${m.id}:${j.at}`, kind: 'machine' })
+      // Claude Code not signed in there (or not installed): one sentence and its link, the example to try once it is.
+      const c = m.claude
+      const claude = c && !c.logged ? ` ${c.installed ? tr(M).joinClaude(m.id) : tr(M).joinClaudeInstall(m.id)}` : ''
+      this.sayWin(`${tr(M).joinOnline(name)}${claude || (first ? ` ${tr(J).wonMachine(name)}` : '')}`, { id: `machine:${m.id}:${j.at}`, kind: 'machine' })
     }
     return true
   }
@@ -1681,6 +1819,7 @@ export class Setup {
       this.save()
       return this.applyClaude({ code: typed })
     }
+    if (this.takeRemoteCode(text)) return
     this.userSays(text)
     if (await this.guestReply(text, typed)) return
     const brick = guessBrick(typed)
@@ -2105,6 +2244,7 @@ export class Setup {
       `lang: ${lang()}`,
       `machine: ${m.kind}${m.mac ? ' (mac)' : ''}${m.provider ? ` ${m.provider}` : ''} · ${m.os} · ${m.cpus} cores · ${Math.round(m.ramGb * 10) / 10} GB · room for ~${m.agents} agents · always on: ${m.alwaysOn ?? 'unknown'} · up ${Math.round(m.uptimeDays)} d · host ${m.host} · ssh ${m.sshTarget}`,
       `other machines: ${m.others.join(', ') || 'none'}${m.others.length ? ` (one always on: ${yes(m.othersAlwaysOn)})` : ''}`,
+      otherClaudes(this.deps.feed().machines),
       `access: ${s.reach} ${s.url} · https ${yes(s.https)}`,
       `phone: ${s.phone.devices} device(s) signed in · push on ${s.phone.push} · siri shortcut token: ${yes(s.shortcut)}`,
       `claude code: installed ${yes(s.claude.installed)} · signed in ${yes(s.claude.logged)}`,
@@ -2129,6 +2269,14 @@ export class Setup {
     ]
     return l.filter(Boolean).join('\n')
   }
+}
+
+/** For weevboss (« weevils setup »): Claude Code on the other machines that answer, and how to sign it in there. Pure. */
+export function otherClaudes(machines: { id: string; name: string; online?: boolean; claude?: { installed: boolean; logged: boolean } }[]): string {
+  const off = machines.filter((m) => m.id !== MACHINE.id && m.online !== false && m.claude && !m.claude.logged)
+  if (!off.length) return ''
+  const one = (m: (typeof off)[number]) => `${m.name || m.id} ${m.claude!.installed ? 'not signed in' : 'not installed'} ([sign Claude in on ${m.name || m.id}](/#do=claude.${m.id}) in your sentence, or \`weevils setup ask claude ${m.id}\` to post that link${m.claude!.installed ? '' : ', installing it first'})`
+  return `Claude Code on other machines: ${off.map(one).join(' · ')}`
 }
 
 /** The server offer after the sync: only for a machine that is not on day and night (a laptop, a desktop that sleeps). */
@@ -2197,7 +2345,7 @@ export function firstRunBrief(s: SetupState, joinable: boolean): string {
     `another computer → \`weevils setup ask machine\` (${joinable ? 'posts the one line to paste in a terminal there' : 'this machine cannot take one from a single line: it posts what to do'});`,
     'ChatGPT or Claude.ai, only when relevant or asked → `weevils setup ask connector` (turns it on, posts the address and the clicks);',
     ...(keep ? [keep] : []),
-    'a subscription to sign in → `weevils setup ask claude` or `weevils setup ask codex` (posts the link). A first real request beats any setup: do it first.',
+    'a subscription to sign in → `weevils setup ask claude` or `weevils setup ask codex` (posts the link); Claude on another machine of theirs → `weevils setup ask claude <machine id>` (posts that machine\'s link, the code pasted here goes there). A first real request beats any setup: do it first.',
     'Keeping their conversations on their GitHub is said by weevils itself in your thread (the sync line, “done”, the recovery code, the server offer as links): never repeat or announce any of it.',
   ].join(' ')
 }

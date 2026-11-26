@@ -22,5 +22,9 @@ describe('links weevboss writes to a place in the app', () => {
     expect(appLink('/#do=try.rmrf')).toBeUndefined()
     expect(appLink('/#do=toured')).toBeUndefined()
     expect(appLink('/#do=github.x')).toBeUndefined()
+    // Claude's sign-in on another machine of yours.
+    expect(appLink('/#do=claude.desk-2')).toEqual({ kind: 'do', action: 'claude.desk-2' })
+    expect(appLink('/#do=claude.')).toBeUndefined()
+    expect(appLink('/#do=claude.a/b')).toBeUndefined()
   })
 })

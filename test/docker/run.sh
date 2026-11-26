@@ -250,6 +250,14 @@ run_systemd() {
     check "main: the key may only hold the tunnel and register desk" as_test 'grep "weevils-join:desk$" ~/.ssh/authorized_keys | grep -q "^restrict,port-forwarding,permitlisten=\"127.0.0.1:4193\",permitopen=\"127.0.0.1:4193\",command=\"/home/test/.local/bin/weevils-service remote-shell desk 4193\" ssh-ed25519 "'
     check "main: desk online in its snapshot" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .online==true)" && exit 0; sleep 1; done; exit 1'
     check "main: the thread said it came in, then that it is plugged in" as_test 'for i in $(seq 40); do jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "desk is plugged in" && jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugging in" && exit 0; sleep 1; done; jq -c ".joining, [.log[-5:][].text]" ~/.local/share/weevils/setup.json >&2; exit 1'
+    # Claude Code on desk, as the main machine knows it (server/machine-claude.ts): its stub has credentials here.
+    check "main: desk's Claude Code signed in, in the snapshot; no sign-in offered in the thread" as_test 'curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .claude.installed==true and .claude.logged==true)" >/dev/null && ! jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -qF "do=claude.desk"'
+    as_3 'mv ~/.claude/.credentials.json /tmp/creds.json'
+    check "main: desk's Claude signed out there: the snapshot says so within seconds" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .claude.logged==false)" >/dev/null && exit 0; sleep 1; done; exit 1'
+    # The stub has no « auth login »: desk answers through the tunnel that it gave no sign-in page, and the thread says so.
+    check "main: 'weevils setup ask claude desk' reaches desk and says the outcome in the thread" as_test '~/.local/bin/weevils setup ask claude desk && jq -r ".log[-1].text" ~/.local/share/weevils/setup.json | grep -q "sign-in on desk"'
+    check "main: desk's sign-in route refuses a call without desk's token" as_test 'code=$(curl -s -o /dev/null -w "%{http_code}" -H content-type:application/json -d "{}" http://127.0.0.1:4193/api/machine/claude/login); [ "$code" = 401 ] || [ "$code" = 403 ]'
+    as_3 'mv /tmp/creds.json ~/.claude/.credentials.json'
     check "third: that key gets no shell and no other command on the main machine" as_3 '! ssh -o BatchMode=yes weevils-testbox "cat ~/.config/weevils/secret" >/tmp/out 2>&1 && grep -q "this key only registers desk" /tmp/out && ! ssh -o BatchMode=yes weevils-testbox bash </dev/null'
     check "third: the line works once" as_3 "! ($line) >/tmp/again 2>&1 && grep -q 'expired or was already used' /tmp/again"
 

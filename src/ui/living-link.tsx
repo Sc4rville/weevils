@@ -90,19 +90,20 @@ export function appLink(href: string): { kind: 'session'; id: string } | { kind:
   if (!ours || (u.pathname !== '/' && u.pathname !== '')) return undefined
   const s = /^#s=([A-Za-z0-9_-]{4,})$/.exec(u.hash)
   if (s) return { kind: 'session', id: s[1] }
-  const d = /^#do=([a-z]+(?:\.[a-z]+)?)$/.exec(u.hash)
+  const d = /^#do=([a-z]+(?:\.[a-z]+)?|claude\.[A-Za-z0-9_-]{1,64})$/.exec(u.hash)
   if (d && isDoAction(d[1])) return { kind: 'do', action: d[1] }
   return /^#foryou$/.test(u.hash) ? { kind: 'foryou' } : undefined
 }
 
 /** What a link in weevboss's own words does where it is (server/setup.ts act): sign GitHub in, pick ChatGPT (Codex)
  *  instead of Claude, set a server up, « later », show the recovery code; the onboarding journey's steps (the tour,
- *  the phone, notifications, another computer), its examples to try (try.<example>, server/journey.ts TRIES), and « ask
- *  me first » (agents ask before acting). Never a button: a living link in the sentence (2026-11-22). */
+ *  the phone, notifications, another computer), its examples to try (try.<example>, server/journey.ts TRIES), « ask
+ *  me first » (agents ask before acting), and Claude's sign-in on another machine of yours (claude.<machine id>,
+ *  server/machine-claude.ts). Never a button: a living link in the sentence (2026-11-22). */
 export const DO_ACTIONS = ['github', 'codex', 'server', 'later', 'recovery', 'tour', 'phone', 'push', 'computer', 'ask'] as const
-export type DoAction = (typeof DO_ACTIONS)[number] | `try.${Try}`
+export type DoAction = (typeof DO_ACTIONS)[number] | `try.${Try}` | `claude.${string}`
 const isDoAction = (x: string): x is DoAction =>
-  (DO_ACTIONS as readonly string[]).includes(x) || (x.startsWith('try.') && (TRIES as readonly string[]).includes(x.slice(4)))
+  (DO_ACTIONS as readonly string[]).includes(x) || (x.startsWith('try.') && (TRIES as readonly string[]).includes(x.slice(4))) || /^claude\.[A-Za-z0-9_-]{1,64}$/.test(x)
 
 export function AppLink({ href, label }: { href: string; label: string }) {
   const link = appLink(href)!

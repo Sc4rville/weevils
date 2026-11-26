@@ -1090,3 +1090,20 @@ describe('the agents\' permission choice (global, and a session\'s own)', () => 
     expect(fs.existsSync(modesFile)).toBe(false)
   })
 })
+
+// Claude Code on each machine, in the snapshot (server/machine-claude.ts): this one's own, another one's from its own
+// snapshot while it answers, nothing when it does not.
+it('every machine of the snapshot says whether its Claude Code is installed and signed in', () => {
+  const remote = (online: boolean) => ({
+    id: 'desk', online, machineId: () => 'desk', offlineRows: () => [], away: () => ({ why: 'link', since: null }), has: () => false,
+    snap: { machines: [{ id: 'desk', name: 'desk', online: true, claude: { installed: true, logged: false } }], sessions: [], projects: [], h24: [] },
+  })
+  w.remotes = [remote(true) as any]
+  w.bump()
+  const snap = w.snapshot()
+  expect(snap.machines[0].claude).toEqual({ installed: expect.any(Boolean), logged: expect.any(Boolean) })
+  expect(snap.machines.find((m) => m.id === 'desk')).toMatchObject({ online: true, claude: { installed: true, logged: false } })
+  w.remotes = [remote(false) as any]
+  w.bump()
+  expect(w.snapshot().machines.find((m) => m.id === 'desk')?.claude).toBeUndefined()
+})

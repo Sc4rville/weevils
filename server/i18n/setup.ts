@@ -167,6 +167,16 @@ export default defineMessages({
     joinOnline: (name: string): string => `[[win]]**${name} est branché** : je peux y lancer des agents.`,
     linkDown: (name: string): string => `${name} ne répond plus depuis 10 minutes. S’il est allumé, lance \`weevils-service restart\` dessus.`,
     linkBack: (name: string): string => `${name} est de nouveau connecté.`,
+    // ---- Claude sur un autre ordinateur, connecté depuis ce fil (server/machine-claude.ts).
+    joinClaude: (id: string): string => `Il reste à y connecter Claude : [connecte-le d’ici](/#do=claude.${id}), ça prend une minute.`,
+    joinClaudeInstall: (id: string): string => `Claude Code n’y est pas encore : [je l’installe et je le connecte](/#do=claude.${id}), quelques minutes.`,
+    remoteClaudeInstalling: (name: string): string => `J’installe Claude Code sur ${name} (l’installateur officiel), une minute…`,
+    remoteClaudeLink: (name: string, url: string): string => `Ouvre [la page de connexion de Claude](${url}) pour ${name}, accepte, puis colle ici le code qu’elle affiche : je le passe à ${name}.`,
+    remoteClaudeOk: (name: string): string => `Claude est connecté sur ${name} ✓`,
+    remoteClaudeFail: (name: string, why: string): string => `Claude n’accepte pas ce code pour ${name} (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplet, expiré ou déjà utilisé' : why}). Voici un nouveau lien :`,
+    remoteClaudeAway: (name: string): string => `${name} ne répond pas pour l’instant : dès qu’il est de nouveau là, redemande-moi et je connecte Claude dessus.`,
+    remoteClaudeNoLink: (name: string, why: string): string => `Je n’arrive pas à lancer la connexion de Claude sur ${name} (${why}). Dans un terminal sur ${name}, tape \`claude\` et connecte-toi.`,
+    remoteClaudeNoInstall: (name: string, why: string, line: string): string => `Claude Code ne s’installe pas sur ${name} (${why}). Dans un terminal sur ${name}, tape \`${line}\`, puis redemande-moi : je m’occupe de la connexion.`,
     joinFailed: (id: string, why: string, fix: string): string =>
       `${id} n’a pas pu s’installer : ${why}${fix ? `\n\nSur ${id}, lance \`${fix}\`, puis demande-moi une nouvelle ligne.` : '\n\nDemande-moi une nouvelle ligne pour réessayer.'}`,
     connectorNeedsHttps: (url: string): string =>
@@ -435,6 +445,15 @@ export default defineMessages({
     joinOnline: (name: string): string => `[[win]]**${name} is plugged in**: I can run agents there now.`,
     linkDown: (name: string): string => `${name} has not answered for 10 minutes. If it is on, run \`weevils-service restart\` on it.`,
     linkBack: (name: string): string => `${name} is connected again.`,
+    joinClaude: (id: string): string => `One thing left, Claude isn’t signed in there yet: [sign it in from here](/#do=claude.${id}), it takes a minute.`,
+    joinClaudeInstall: (id: string): string => `Claude Code isn’t on it yet: [I’ll install it and sign it in](/#do=claude.${id}), a few minutes.`,
+    remoteClaudeInstalling: (name: string): string => `Installing Claude Code on ${name} (the official installer), one minute…`,
+    remoteClaudeLink: (name: string, url: string): string => `Open [Claude’s sign-in page](${url}) for ${name}, accept, then paste the code it shows here: I’ll hand it to ${name}.`,
+    remoteClaudeOk: (name: string): string => `Claude is signed in on ${name} ✓`,
+    remoteClaudeFail: (name: string, why: string): string => `Claude doesn’t accept this code for ${name} (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplete, expired or already used' : why}). Here’s a new link:`,
+    remoteClaudeAway: (name: string): string => `${name} isn’t answering right now: once it’s back, ask me again and I’ll sign Claude in there.`,
+    remoteClaudeNoLink: (name: string, why: string): string => `I can’t start Claude’s sign-in on ${name} (${why}). In a terminal on ${name}, type \`claude\` and sign in.`,
+    remoteClaudeNoInstall: (name: string, why: string, line: string): string => `Claude Code won’t install on ${name} (${why}). In a terminal on ${name}, type \`${line}\`, then ask me again: I’ll take care of the sign-in.`,
     joinFailed: (id: string, why: string, fix: string): string =>
       `${id} failed to install: ${why}${fix ? `\n\nOn ${id}, run \`${fix}\`, then ask me for a new line.` : '\n\nAsk me for a new line to try again.'}`,
     connectorNeedsHttps: (url: string): string =>

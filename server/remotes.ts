@@ -235,13 +235,14 @@ export class Remote {
     return !!this.online && !!this.snap?.sessions.some((s) => s.id === sessionId)
   }
 
-  async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  /** One call to that machine; timeout: longer for what waits on a person or an install there (Claude's sign-in). */
+  async call<T>(method: string, path: string, body?: unknown, timeout = 15_000): Promise<T> {
     if (!this.online) throw new Error(tr(M).offline(this.id))
     const res = await fetch(`${this.url}${path}`, {
       method,
       headers: { ...this.headers(), 'X-Weevils-Locale': lang(), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(timeout),
     })
     const data = (await res.json().catch(() => ({}))) as T & { error?: string }
     if (!res.ok) throw Object.assign(new Error(data.error ?? tr(M).failed(this.id, res.status)), { status: res.status })

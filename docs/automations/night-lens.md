@@ -108,8 +108,8 @@ for the next run if the post failed. Copy it into the report too.
 ## 5. Publish
 
 Publishing into the user's own For you feed on this machine is the one posting the user approved for this
-automation (no mail, no PR, no social network; you never push: weevils pushes this branch to GitHub itself after the
-run, so the report never stays on this machine only). Use the CLI, which talks to the local server:
+automation (no mail, no PR, no social network; you never push: weevils pushes this branch itself after a run that
+committed a fix). Use the CLI, which talks to the local server:
 
 - Each proposal: `weevils show ../reports/night-lens/<date>/<n>-before-after.png "<one-line caption>"`, then
   `weevils post "<2–4 short sentences: what the persona hit, what we change, what stays>" --action "Build it::<a
@@ -127,5 +127,8 @@ brief), no emoji. Buttons only for real next steps.
 - `../reports/night-lens/<date>.md`: persona, journey, the screens walked, every observation with its screenshot,
   the proposals (with their guarantee), the piece, what was published, and the cost (subagent and total time).
 - Append one entry to `../reports/night-lens/ledger.md`: date, persona, journey, proposal titles, piece title.
-- Commit both and the screenshots on this branch (`docs(night-lens): <date> <persona> · <journey>`).
+- Never commit the report, the ledger or the screenshots: they show the person's own app and stay beside the worktree
+  (the repository ignores `reports/`; never `git add -f` them, never copy them into the worktree). The only commit a
+  night may leave on this branch is a readability fix with its test (section 3). A night without one leaves the branch
+  as it found it, and nothing waits for the person's OK.
 - The report next to the worktree (the path given in your rules) gets the same summary, short.

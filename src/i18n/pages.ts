@@ -28,7 +28,7 @@ export default defineMessages({
     flowWorking: 'travaille',
     flowDone: 'fini',
     /** État d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan. */
-    subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'travaille', done: 'fini', failed: 'échoué', stopped: 'coupé' })[s],
+    subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'travaille', done: 'fini', failed: 'arrêté', stopped: 'en pause' })[s],
     /** Lecteur d'écran, ligne de sous-agent : nom, état, durée, déplié ou non. */
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'replier' : 'déplier'}`,
     asks: (_tool: string) => 'Question',
@@ -42,7 +42,7 @@ export default defineMessages({
     emptyDir: 'Dossier vide.',
     /** Fichier trop gros : seul son début est lu. */
     truncated: 'seul le début est affiché',
-    reading: 'chargement…',
+    reading: 'synchronisation…',
     binary: 'binaire',
     offline: 'hors ligne',
     // Nouvelle session
@@ -81,7 +81,7 @@ export default defineMessages({
     helpersDone: 'all done',
     flowWorking: 'working',
     flowDone: 'done',
-    subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'working', done: 'done', failed: 'failed', stopped: 'stopped' })[s],
+    subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'working', done: 'done', failed: 'stopped', stopped: 'paused' })[s],
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
     asks: (_tool: string) => 'Question',
     waitingForYou: 'the session is waiting for your answer',
@@ -90,7 +90,7 @@ export default defineMessages({
     files: (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`,
     emptyDir: 'Empty folder.',
     truncated: 'only the beginning is shown',
-    reading: 'loading…',
+    reading: 'syncing…',
     binary: 'binary file',
     offline: 'offline',
     newSession: 'new session',

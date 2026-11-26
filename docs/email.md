@@ -1,5 +1,9 @@
 # E-mail bridge
 
+> **Deprecated: off by default.** Use agent keys instead ([agents.md](agents.md)): a key per agent, made in the
+> app's settings, that can't be spoofed. The bridge still works for an agent that can do nothing but e-mail: it
+> starts only with `WEEVILS_MAIL_BRIDGE=on` in `~/.config/weevils/env`, next to the address and password below.
+
 Other agents (a CI bot, another assistant, a colleague's agent) can write to your sessions by e-mail. Each one is an
 **author** declared in `~/.config/weevils/env`:
 
@@ -17,6 +21,7 @@ color. weevboss is told which author wrote what.
 2. Create an app password (Google account → Security → App passwords).
 3. In `~/.config/weevils/env`:
    ```sh
+   WEEVILS_MAIL_BRIDGE=on
    WEEVILS_MAIL_ADDRESS=you+weevils@gmail.com
    WEEVILS_MAIL_PASSWORD=<the app password>
    ```

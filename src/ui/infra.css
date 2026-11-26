@@ -1,20 +1,21 @@
-/* Coin infrastructure : machines, « / », cerveau. Aplat, angles vifs, aucun arrondi. */
+/* Coin infrastructure : machines, « / », cerveau. Aplat, angles vifs, aucun arrondi. Le plus haut niveau se lit à une
+   teinte ambrée plus profonde, jamais au rouge (2026-11-26 : rien d'alarmiste). */
 
 :root,
 [data-theme='light'] {
   --warn: #d95f00;
-  --crit: #d4001c;
+  --crit: #b34700;
 }
 [data-theme='dark'],
 :root[data-theme='synthwave'],
 :root[data-theme='vaporwave'],
 :root[data-theme='deco'] {
   --warn: #ffa347;
-  --crit: #ff5a6a;
+  --crit: #ffc27a;
 }
 :root[data-theme='zen'] {
   --warn: oklch(0.56 0.12 55);
-  --crit: oklch(0.5 0.16 25);
+  --crit: oklch(0.48 0.12 50);
 }
 /* Graphite : la gravité se lit à la nuance, du gris moyen (ok) au noir (critique). */
 :root[data-theme='graphite'] {

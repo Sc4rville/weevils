@@ -41,7 +41,7 @@ import { cartesia, edgeTts } from './fast.ts'
 import { lang, tr } from './i18n.ts'
 import M from './i18n/setup.ts'
 import { Imap } from './imap.ts'
-import { mailConfig } from './mailbridge.ts'
+import { mailBridgeOn, mailConfig } from './mailbridge.ts'
 import type { Memory } from './memory.ts'
 import { quotas } from './usage.ts'
 import type { Join } from './join.ts'
@@ -391,6 +391,14 @@ async function quotaLines(): Promise<string[]> {
 
 /** Écrit des clés dans ~/.config/weevils/env (remplace la ligne existante, sinon ajoute) et dans l'environnement du
  * serveur, pour que le changement prenne aussitôt. Valeur vide = clé vidée. Jamais journalisé. */
+/** For weevboss: what kind of public address this is, and the command that changes it (server/stable-address.ts). */
+function addressNote(url: string): string {
+  const handle = process.env.WEEVILS_LINK_HANDLE?.trim()
+  if (handle) return ` · stable address through the weevils relay, name ${handle} (weevils address claim <name> renames it, weevils address release gives it back)`
+  if (isTunnelUrl(url)) return ' · Cloudflare quick tunnel: changes at each restart (weevils address claim <name> gives a permanent https://<name>.tryweevils.scarville.tech)'
+  return ''
+}
+
 export function writeConfig(changes: Record<string, string>) {
   const lines = read(CONFIG_FILE).split('\n')
   if (lines.at(-1) === '') lines.pop()
@@ -793,7 +801,8 @@ export class Setup {
     const https = PUBLIC_URL.startsWith('https://')
     const reach: SetupState['reach'] = PUBLIC_URL ? 'public' : HOST !== '127.0.0.1' && HOST !== 'localhost' ? 'lan' : 'local'
     const nodeMajor = Number(/^v?(\d+)/.exec(process.version)?.[1] ?? 0)
-    const mail = mailConfig()
+    // The bridge is opt-in now (agent keys replace it): « on » only when WEEVILS_MAIL_BRIDGE=on too.
+    const mail = mailBridgeOn() ? mailConfig() : null
     const dv = devilConfig()
     const v: SetupState = {
       machine: m,
@@ -807,7 +816,7 @@ export class Setup {
       github: gh,
       voice: { spoken: cartesia() ? 'cartesia' : edgeTts() ? 'edge' : null, openai: !!openaiKey(), https: https || reach === 'local' },
       devil: { plugged: !!dv, model: dv?.model },
-      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length, pending: authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name) },
+      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length, pending: authors().filter((a) => a.id !== BOSS && !a.via && !a.emails.length).map((a) => a.name) },
       phone: { devices: this.deps.devices(), push: this.deps.push() },
       shortcut: this.deps.shortcut(),
       security: { safe: askPermissions(), https, exposedHttp: (reach === 'lan' || (reach === 'public' && !https)) && m.kind !== 'container' },
@@ -1659,7 +1668,8 @@ export class Setup {
         return true
       case 'mail':
         if (s.mail.on) return post(`${t.mailOk(s.mail.address ?? '').replace(/:$/, '.')} [[setup:author]]`), false
-        post(`${t.mailPitch}\n\n${t.mailAsk}`)
+        // Agent keys first (settings → agent keys); the e-mail bridge only as the fallback the person turns on.
+        post(`${t.agentKeysPitch}\n\n${t.mailPitch}\n\n${t.mailAsk}`)
         return true
       case 'author':
         post(s.mail.pending.length ? `${t.authorPending(s.mail.pending)} ${t.authorAsk}` : t.authorAsk)
@@ -2123,10 +2133,11 @@ export class Setup {
       return this.say(chip(t.mailFail(short(e).replace(/^IMAP:\s*/, '')), 'mail'))
     }
     imap.close()
-    writeConfig({ WEEVILS_MAIL_ADDRESS: alias, WEEVILS_MAIL_PASSWORD: pass })
+    // Plugging it in here is the person turning it on (it is off by default: WEEVILS_MAIL_BRIDGE).
+    writeConfig({ WEEVILS_MAIL_ADDRESS: alias, WEEVILS_MAIL_PASSWORD: pass, WEEVILS_MAIL_BRIDGE: 'on' })
     console.log('[setup] pont e-mail branché')
     this.deps.startMail()
-    const pending = authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name)
+    const pending = authors().filter((a) => a.id !== BOSS && !a.via && !a.emails.length).map((a) => a.name)
     this.say(chip(pending.length ? `${t.mailOk(alias)} ${t.authorPending(pending)}` : t.mailOk(alias), 'author'))
   }
 
@@ -2245,14 +2256,14 @@ export class Setup {
       `machine: ${m.kind}${m.mac ? ' (mac)' : ''}${m.provider ? ` ${m.provider}` : ''} · ${m.os} · ${m.cpus} cores · ${Math.round(m.ramGb * 10) / 10} GB · room for ~${m.agents} agents · always on: ${m.alwaysOn ?? 'unknown'} · up ${Math.round(m.uptimeDays)} d · host ${m.host} · ssh ${m.sshTarget}`,
       `other machines: ${m.others.join(', ') || 'none'}${m.others.length ? ` (one always on: ${yes(m.othersAlwaysOn)})` : ''}`,
       otherClaudes(this.deps.feed().machines),
-      `access: ${s.reach} ${s.url} · https ${yes(s.https)}`,
+      `access: ${s.reach} ${s.url} · https ${yes(s.https)}${addressNote(s.url)}`,
       `phone: ${s.phone.devices} device(s) signed in · push on ${s.phone.push} · siri shortcut token: ${yes(s.shortcut)}`,
       `claude code: installed ${yes(s.claude.installed)} · signed in ${yes(s.claude.logged)}`,
       `codex: installed ${yes(s.codex.installed)} · signed in ${yes(s.codex.logged)}`,
       `github: gh installed ${yes(s.github.installed)} · signed in ${yes(s.github.logged)}${s.github.login ? ` (${s.github.login})` : ''}`,
       `voice: spoken ${s.voice.spoken ?? 'none'} · dictation (OpenAI key) ${yes(s.voice.openai)} · https for the mic ${yes(s.voice.https)}`,
       `devil: plugged ${yes(s.devil.plugged)}${s.devil.model ? ` (${s.devil.model})` : ''}`,
-      `e-mail bridge: ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
+      `agent keys: made in the app's settings (agent keys), the way for another agent to write to you (docs/agents.md) · e-mail bridge (deprecated, off by default): ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
       `quota: ${s.quota.join(' · ') || 'unknown'}`,
       `security: agents ask permission ${yes(s.security.safe)} · exposed over plain http ${yes(s.security.exposedHttp)}`,
       `tools: ${Object.entries(s.tools).map(([k, x]) => (k === 'node' ? `node ${x}` : `${k} ${yes(!!x)}`)).join(', ')} · package manager ${s.pkg ?? 'none'} · sudo ${s.sudo}`,

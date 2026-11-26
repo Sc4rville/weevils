@@ -366,7 +366,7 @@ export function SetupComposer() {
           {t.step(f.step + 1, fields.length)}
           {q.secret ? ` · ${t.secretNote}` : ''}
         </span>
-        {err && <span>! {err}</span>}
+        {err && <span>{err}</span>}
       </div>
       {q.kind === 'choice' ? (
         <div className="in setup-choices" role="group" aria-label={label}>

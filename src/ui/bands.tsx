@@ -16,6 +16,7 @@ import { api } from '../api'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bands'
 import RM from '../i18n/requests'
+import AKM from '../i18n/agent-keys'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { THEMES, stableOrder, useApp, useSettled } from './app-context'
@@ -603,7 +604,7 @@ export function ProjectBand({ project }: { project: Project }) {
           <AnimatePresence initial={false}>
             {shown === 'mini' && (
               <motion.span key="s" className="meta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tx}>
-                {cut.length > 0 && <span className="alert-pill">× {t.cut(cut.length)}</span>}
+                {cut.length > 0 && <span className="alert-pill"><G c="||" /> {t.cut(cut.length)}</span>}
                 {cut.length > 0 && summary ? ' ' : ''}
                 {summary}
               </motion.span>
@@ -631,7 +632,7 @@ export function ProjectBand({ project }: { project: Project }) {
             {cut.length > 0 && (
             <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
               <span>
-                <G c="×" />
+                <G c="||" />
                 <sup>{cut.length}</sup>
               </span>
             </button>
@@ -721,6 +722,10 @@ export function FootBand({ toNext = true, factory = false, mark }: { toNext?: bo
           {tr(RM).menu}
         </Line>
       )}
+      {/* Agent keys: a bot or a web agent writes to weevboss with its own key (src/ui/agent-keys.tsx). */}
+      <Line ch="&" onClick={() => push({ kind: 'agent-keys' })}>
+        {tr(AKM).menu}
+      </Line>
       {/* weevils next is the app's interface; from the classic app, this line goes back to it. */}
       {toNext && (
         <Line ch="→" go={null} onClick={() => { location.href = '/?ui=next' }}>

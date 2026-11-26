@@ -31,8 +31,8 @@ const NOTE_MS = 3200
 function Note({ text }: { text: string | null }) {
   return (
     <Collapse open={!!text}>
-      <Notice eventId={noticeKey('error:memory', location.pathname, location.hash, text)} className="band invert" role="alert">
-        <div className="in meta mem-note">! {text}</div>
+      <Notice eventId={noticeKey('error:memory', location.pathname, location.hash, text)} className="band tone calm-note" role="alert">
+        <div className="in meta mem-note">{text}</div>
       </Notice>
     </Collapse>
   )
@@ -331,9 +331,9 @@ export function MemoryPage() {
   return (
     <Shell slot={colors.__foot ?? 'p3'} kicker="weevils" title={t.title} meta={list ? (list.length ? t.count(list.length) : t.empty) : '…'} dock={<AskVoice a={a} />}>
       {err && (
-        <Notice eventId={noticeKey('error:memory', location.pathname, location.hash, err)} className="band invert" role="alert">
+        <Notice eventId={noticeKey('error:memory', location.pathname, location.hash, err)} className="band tone calm-note" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
-            ! {err}
+            {err}
           </div>
         </Notice>
       )}

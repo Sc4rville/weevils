@@ -62,9 +62,9 @@ export function ModelPicker({id,onPicked}:{id:string;onPicked?:()=>void}) {
        onClick={()=>pick({model:model.id,effort:e})}>{word(e)}</button>})}
     </div>
    </div>}
-   {error&&<p className="meta mc-error" role="alert">! {error}</p>}
+   {error&&<p className="meta mc-error" role="alert">{error}</p>}
   </>}
-  {loadError&&<><p className="meta mc-error" role="alert">! {loadError}</p>
+  {loadError&&<><p className="meta mc-error" role="alert">{loadError}</p>
    <button type="button" className="link" onClick={()=>setReload(n=>n+1)}>{t.reload}</button></>}
  </div>
 }

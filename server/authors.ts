@@ -9,6 +9,8 @@ export interface AuthorConfig extends Author {
   emails: string[]
   /** Secret partagé : prouve l'auteur quand SPF/DKIM ne suffisent pas (ou quand deux auteurs partagent une adresse). */
   secret?: string
+  /** 'key': an agent key's author (server/agent-keys.ts), not a line of the config file. */
+  via?: 'key'
 }
 
 export const BOSS = 'weevboss'
@@ -38,9 +40,22 @@ export function loadAuthors(env: Record<string, string | undefined> = process.en
 }
 
 let cache: AuthorConfig[] | undefined
+/** Authors from elsewhere than the config file: the agent keys (server/agent-keys.ts). A config line with the same id
+ *  wins (the key then speaks as that author). */
+let extra: () => AuthorConfig[] = () => []
+export function setExtraAuthors(source: () => AuthorConfig[]) {
+  extra = source
+  cache = undefined
+}
+/** The config's authors, then the extra ones whose id is not taken. */
+export function mergeAuthors(base: AuthorConfig[], more: AuthorConfig[]): AuthorConfig[] {
+  const out = [...base]
+  for (const a of more) if (ID_RE.test(a.id) && !out.some((x) => x.id === a.id)) out.push(a)
+  return out
+}
 /** Relit les auteurs (un auteur vient d’être ajouté depuis l’app). */
 export const resetAuthors = () => void (cache = undefined)
-export const authors = () => (cache ??= loadAuthors())
+export const authors = () => (cache ??= mergeAuthors(loadAuthors(), extra()))
 export const authorById = (id: string | undefined) => (id ? authors().find((a) => a.id === id) : undefined)
 /** Ce que l'app reçoit : ni adresses ni secrets. */
 export const publicAuthors = (): Author[] => authors().map(({ id, name, color }) => ({ id, name, color }))

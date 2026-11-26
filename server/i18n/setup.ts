@@ -182,7 +182,7 @@ export default defineMessages({
     connectorNeedsHttps: (url: string): string =>
       `ChatGPT et Claude.ai ne me joignent qu’à une adresse publique en https, et pour l’instant je suis à ${url}. Demande-moi de me rendre joignable de partout : on le branche juste après.`,
     connectorHow: (url: string, tunnel: boolean): string =>
-      `Ajoute cette adresse dans ton app de chat : \`${url}\`\n\n- Claude.ai : Paramètres → Connecteurs → Ajouter un connecteur personnalisé, colle-la, puis Connecter.\n- ChatGPT : Paramètres → Applications et connecteurs → Paramètres avancés, active le mode développeur, puis Créer, colle-la.\n\nElle te demande une fois ton code d’accès weevils.${tunnel ? ' Cette adresse change quand la machine redémarre : pour qu’elle tienne, il faudra un nom de domaine.' : ''}`,
+      `Ajoute cette adresse dans ton app de chat : \`${url}\`\n\n- Claude.ai : Paramètres → Connecteurs → Ajouter un connecteur personnalisé, colle-la, puis Connecter.\n- ChatGPT : Paramètres → Applications et connecteurs → Paramètres avancés, active le mode développeur, puis Créer, colle-la.\n\nElle te demande une fois ton code d’accès weevils.${tunnel ? ' Cette adresse change encore quand la machine redémarre : weevils passe à une adresse fixe dès que possible, et je te la donne.' : ''}`,
     delegated: 'Je l’ai confié à un agent : il te demande ton accord dans l’app avant chaque étape.',
     // ---- GitHub
     githubPitch: 'Branche GitHub : je verrai tous tes repos (glisse le fil vers la gauche), j’en créerai pour tes nouvelles idées et je rangerai les sessions par projet.',
@@ -236,7 +236,8 @@ export default defineMessages({
     devilNoModel: (model: string, list: string): string => `Le serveur répond, mais je ne trouve pas « ${model} » chez lui. Il propose : ${list}. Réessaie avec l’un d’eux :`,
     devilFail: (why: string): string => `Je n’arrive pas à joindre le modèle (${why}). Vérifie l’adresse (elle finit souvent par /v1) et que sa machine est allumée, puis réessaie :`,
     // ---- e-mail
-    mailPitch: 'Tu veux me parler depuis ChatGPT, un autre agent ou n’importe quel outil qui envoie des mails ? Branche le pont e-mail : chaque expéditeur que tu autorises m’écrit, signé à son nom et dans sa couleur, et je lui réponds dans le même fil.',
+    agentKeysPitch: 'Pour qu’un autre agent m’écrive, le plus simple est une clé d’agent : dans les réglages, « clés d’agent », donne-lui un nom et colle la clé dans l’agent. Ses messages arrivent signés à son nom, et il lit mes réponses. ChatGPT ou Claude.ai passent plutôt par le connecteur (demande-le-moi).',
+    mailPitch: 'Ton agent ne sait qu’envoyer des mails ? Le pont e-mail reste possible en secours, éteint par défaut : chaque expéditeur que tu autorises m’écrit, signé à son nom, et je lui réponds dans le même fil.',
     mailAsk: 'Il faut une boîte Gmail avec la validation en deux étapes (myaccount.google.com/signinoptions/twosv). Crée un mot de passe d’application nommé « weevils » sur myaccount.google.com/apppasswords et garde-le sous la main : je te demande ton adresse Gmail, puis ce mot de passe. Je m’occupe de l’alias +weevils, sans filtre à créer.',
     mailOk: (alias: string): string =>
       `Pont branché : ${alias}. Rien à régler dans Gmail : les mails envoyés à cette adresse m’arrivent directement, et je ne lis jamais le reste de ta boîte. Dis-moi maintenant qui a le droit de m’écrire :`,
@@ -459,7 +460,7 @@ export default defineMessages({
     connectorNeedsHttps: (url: string): string =>
       `ChatGPT and Claude.ai only reach me at a public https address, and right now I’m at ${url}. Ask me to make me reachable from anywhere: we’ll plug it in right after.`,
     connectorHow: (url: string, tunnel: boolean): string =>
-      `Add this address to your chat app: \`${url}\`\n\n- Claude.ai: Settings → Connectors → Add custom connector, paste it, then Connect.\n- ChatGPT: Settings → Apps & Connectors → Advanced settings, turn on developer mode, then Create and paste it.\n\nIt asks once for your weevils access code.${tunnel ? ' This address changes when the machine restarts: to keep it, you’ll need a domain name.' : ''}`,
+      `Add this address to your chat app: \`${url}\`\n\n- Claude.ai: Settings → Connectors → Add custom connector, paste it, then Connect.\n- ChatGPT: Settings → Apps & Connectors → Advanced settings, turn on developer mode, then Create and paste it.\n\nIt asks once for your weevils access code.${tunnel ? ' This address still changes when the machine restarts: weevils moves to a permanent one as soon as it can, and I’ll give it to you.' : ''}`,
     delegated: 'I’ve handed it to an agent: it asks for your OK in the app before each step.',
     githubPitch: 'Plug in GitHub: I’ll see all your repos (swipe the feed left), create new ones for your ideas, and sort sessions by project.',
     githubAsk: (s: SetupState): string =>
@@ -507,7 +508,8 @@ export default defineMessages({
     devilOk: (model: string, ms: number): string => `Plugged in: ${model} answers (${ms} ms). Tap the devil to switch: the band turns orange, its answers come in green, in this same thread.`,
     devilNoModel: (model: string, list: string): string => `The server answers, but it has no “${model}”. It offers: ${list}. Try again with one of them:`,
     devilFail: (why: string): string => `I can’t reach the model (${why}). Check the address (it often ends in /v1) and that its machine is on, then try again:`,
-    mailPitch: 'Want to talk to me from ChatGPT, another agent, or any tool that sends e-mail? Plug in the e-mail bridge: every sender you allow writes to me, signed with their name and color, and I answer them in the same thread.',
+    agentKeysPitch: 'For another agent to write to me, the simplest way is an agent key: in settings, “agent keys”, give it a name and paste the key into the agent. Its messages come signed with its name, and it reads my replies. ChatGPT or Claude.ai rather go through the connector (ask me).',
+    mailPitch: 'Your agent can only send e-mail? The e-mail bridge is still there as a fallback, off by default: every sender you allow writes to me, signed with their name, and I answer them in the same thread.',
     mailAsk: 'You need a Gmail inbox with 2-step verification (myaccount.google.com/signinoptions/twosv). Create an app password named “weevils” at myaccount.google.com/apppasswords and keep it handy: I’ll ask for your Gmail address, then that password. I take care of the +weevils alias, no filter to create.',
     mailOk: (alias: string): string =>
       `Bridge plugged in: ${alias}. Nothing to set up in Gmail: mail sent to this address reaches me directly, and I never read the rest of your inbox. Now tell me who may write to me:`,

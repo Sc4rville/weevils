@@ -7,13 +7,13 @@ import M from '../i18n/cut-band'
 import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
 import { ResumeButton } from './bits'
-import { status } from './format'
 import { startSetup } from './setup'
 
 const TOOL_NAME: Record<Session['tool'], string> = { claude: 'Claude', codex: 'Codex' }
 
-/** A session that stopped (crash, usage limit, signed out, service error): the plain reason, the tool's own words folded
- * away, and always a way on. Signed out, Resume alone would fail again: « sign in again » runs the in-app login in
+/** A session that stopped (crash, usage limit, signed out, service error): its band, in the theme's calm colours
+ * (« Paused, pick it back up? », never red), the reason only when it helps, the tool's own words folded away,
+ * and always a way on. Signed out, Resume alone would fail again: « sign in again » runs the in-app login in
  * weevboss's thread (a link, then a code to paste), and Resume stays for once it is done. Session page and focused
  * thread show the same band, so a stopped session never looks idle. */
 export function CutBand({ session: s, onError }: { session: Session; onError: (text: string) => void }) {
@@ -21,6 +21,7 @@ export function CutBand({ session: s, onError }: { session: Session; onError: (t
   const [signing, setSigning] = useState(false)
   if (s.status !== 'interrupted') return null
   const signedOut = s.interrupted?.reason === 'auth'
+  const why = s.interrupted ? t.cutWhy(s.interrupted.reason) : ''
   const signIn = async () => {
     if (signing) return
     setSigning(true)
@@ -37,8 +38,8 @@ export function CutBand({ session: s, onError }: { session: Session; onError: (t
     <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band cut-band">
       <div className="in">
         <span className="who">
-          {status.interrupted.label}
-          {s.interrupted ? ` · ${t.cutWhy(s.interrupted.reason)}` : ''}
+          {t.paused}
+          {why ? ` · ${why}` : ''}
         </span>
         {s.interrupted?.detail && (
           <details className="cut-detail">

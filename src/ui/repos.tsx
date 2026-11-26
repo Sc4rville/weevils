@@ -132,7 +132,7 @@ export function ReposPage() {
       {err && (
         <Notice eventId={noticeKey('error:repos', location.pathname, location.hash, err)} ref={errBand} className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
-            ! {err}
+            {err}
           </div>
         </Notice>
       )}

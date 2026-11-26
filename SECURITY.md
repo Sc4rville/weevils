@@ -19,17 +19,35 @@ folder?" only for folders inside your project roots.
 
 On your own computer, weevils works the same way, but its agents can reach everything your user can. There:
 
-- **the computer answers from the Internet.** The phone reaches it through a Cloudflare quick tunnel to weevils' port
-  on `127.0.0.1` (`cloudflared`, from Cloudflare's GitHub release, checked against the SHA-256 GitHub publishes for
-  it): a public `https://….trycloudflare.com` address. Only weevils' app is behind it, and only with your access
-  code (72 random bits; a wrong code waits 800 ms); a browser that logged in keeps a device cookie for a year (log
-  out, or the "lost a phone" steps in the README, to revoke it). The setup page and the script say so before the
+- **the computer answers from the Internet.** It gets a stable address, `https://<name>.tryweevils.scarville.tech`,
+  the same after every restart or network change, so the installed app and a chat app's connector (`…/mcp`) keep
+  working. weevils keeps one outgoing HTTPS connection to the weevils relay (`server/link-relay.ts`, run by
+  Scarville on that domain), which passes the requests for that name, and only those, down it to weevils' port on
+  `127.0.0.1`: no port opens on the computer or the router. The relay keeps a SHA-256 hash of the name's token,
+  never the token; it logs when a name connects or leaves, never an IP address, a request or its content. Like any
+  HTTPS proxy (Cloudflare's tunnel included) it decrypts the traffic it passes on. Each name gets its own
+  certificate, so it appears in public certificate logs: expect the login page to be found. Only weevils' app is
+  behind it, and only with your access code (72 random bits; a wrong code waits 800 ms); a browser that logged in
+  keeps a device cookie for a year (log out, or the "lost a phone" steps in the README, to revoke it). Requests
+  through the relay are never taken for the machine itself (they carry `X-Forwarded-For`). `weevils address
+  release` gives the name back (it stops answering at once). The setup page and the script say so before the
   install. `--no-link` installs without it: weevils stays on this machine until you set up a private way in
-  (Tailscale, a private network between your own devices). A quick tunnel gets a new address each time it starts
-  again (a restart, a network change): weevils takes the new one and sends your phone a notification with the new
-  login link (push notifications don't go through the tunnel); the app then has to be added to the home screen again.
+  (Tailscale, a private network between your own devices). If the relay cannot be reached at install time, a
+  Cloudflare quick tunnel (`cloudflared`, from Cloudflare's GitHub release, checked against the SHA-256 GitHub
+  publishes for it) stands in, with a new `https://….trycloudflare.com` address at each start; weevils moves to a
+  stable address by itself as soon as it can, and stops that tunnel. Anyone can run their own relay
+  (`WEEVILS_LINK_RELAY`, docs/stable-address.md).
 - programs on the computer don't get in without the code either, unless they can read weevils' local token
   (`~/.local/share/weevils/local-token`, readable by your user only), which weevils' own commands send.
+
+## Other ways in
+
+Besides the app and your access code, two optional ways in, both closed until you open them. The connector for
+ChatGPT or Claude.ai (`/mcp`): you sign it in with your access code, and its tokens reach only the weevbook, never
+`/api`. Agent keys (`/agent/v1`, [docs/agents.md](docs/agents.md)): made in the app's settings, each one can only
+send messages to weevboss, signed with its own name (never yours), and read the replies to them; weevils keeps only
+their SHA-256, and a revoked key stops working at once. The e-mail bridge is deprecated and off unless
+`WEEVILS_MAIL_BRIDGE=on`.
 
 ## What the install does
 
@@ -78,8 +96,9 @@ router, and on a computer never touches its firewall. Apart from this script its
   with the same key), checks the signature the same way, and fast-forwards to that exact commit from GitHub, only
   when it descends from the one installed. Turn updates off with `--no-auto-update` at install time, in the
   app's settings, or with `weevils config set WEEVILS_AUTO_UPDATE 0`. They then stop entirely.
-- **The computer's phone link**, when there is one: the app's traffic between your phone and the computer goes
-  through Cloudflare's quick tunnel, which carries the HTTPS connection to your phone.
+- **The computer's phone link**, when there is one: the app's traffic between your phone (or a chat app) and the
+  computer goes through the weevils relay (or, as a fallback, Cloudflare's quick tunnel), which carries the HTTPS
+  connection.
 - **The setup page** counts visits anonymously: counters only, no cookie, no IP address kept, deleted after 90 days.
 
 Nothing else. Your agents talk to Anthropic and OpenAI the way Claude Code and Codex always do.

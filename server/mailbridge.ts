@@ -1,3 +1,5 @@
+// Deprecated, off by default (WEEVILS_MAIL_BRIDGE=on turns it on): agent keys replace it (server/agent-api.ts, docs/agents.md).
+//
 // Le pont e-mail : des agents externes (un bot de CI, un autre agent IA…) écrivent dans les sessions weevils par e-mail.
 //
 //   Adresse         un alias de la boîte perso (moi+weevils@gmail.com), sans filtre à créer. Le pont surveille INBOX, mais
@@ -569,9 +571,17 @@ export class MailBridge {
 }
 
 /** Lance le pont si l'adresse et le mot de passe sont configurés. */
-export function startMailBridge(deps: BridgeDeps, dataDir: string): MailBridge | null {
-  const cfg = mailConfig()
+/** WEEVILS_MAIL_BRIDGE=on (or 1, true): the bridge is opt-in since agent keys replaced it (docs/agents.md). */
+export const mailBridgeOn = (env: Record<string, string | undefined> = process.env) => /^(on|1|true|yes)$/i.test(env.WEEVILS_MAIL_BRIDGE?.trim() ?? '')
+
+/** Deprecated: off unless WEEVILS_MAIL_BRIDGE=on, even with an address and a password (docs/email.md). */
+export function startMailBridge(deps: BridgeDeps, dataDir: string, env: Record<string, string | undefined> = process.env, log: (line: string) => void = (l) => console.log(l)): MailBridge | null {
+  const cfg = mailConfig(env)
   if (!cfg) return null
+  if (!mailBridgeOn(env)) {
+    log('[mail] e-mail bridge off (deprecated, agent keys replace it: docs/agents.md); WEEVILS_MAIL_BRIDGE=on in the config turns it back on')
+    return null
+  }
   const b = new MailBridge(cfg, deps, dataDir)
   b.start()
   return b

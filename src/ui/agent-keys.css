@@ -1,0 +1,59 @@
+/* Agent keys (src/ui/agent-keys.tsx): one line per key, the new key shown once, the agent's address. Flat, no frame. */
+
+.ak-page .in + .in { margin-top: 2px; }
+
+.ak-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 2px;
+  padding-block: 10px;
+}
+
+.ak-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ak-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.ak-sure { flex-basis: 100%; }
+
+
+.ak-new {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.ak-new input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  padding-block: 14px;
+}
+
+.ak-fresh { padding-block: 8px; }
+
+.ak-key,
+.ak-addr code {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  user-select: all;
+}
+
+.ak-addr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+}

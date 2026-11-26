@@ -331,13 +331,13 @@ body { overflow: hidden; }
 .nx-fx-project .ch { background: none; border: 0; color: var(--ink); }
 .nx-fx-room { visibility: hidden; }
 
-/* A thin bar under a name: a machine's health (how full: ink, then orange, then red), a subscription's power (what is
-   left: the working green, then orange, then red). */
+/* A thin bar under a name: a machine's health (how full: ink, then orange, then a deeper amber), a subscription's power (what is
+   left: the working green, then orange, then a deeper amber). */
 .nx-fx-bar { display: block; height: 3px; width: 100%; max-width: 150px; background: color-mix(in oklab, var(--ink) 15%, transparent); overflow: hidden; }
 .nx-fx-bar i { display: block; height: 100%; background: color-mix(in oklab, var(--ink) 70%, transparent); transition: width .5s ease; }
 .nx-fx-bar.power i { background: var(--fluo); }
 .nx-fx-bar.nx-lv-warn i { background: var(--warn, oklch(0.72 0.17 60)); }
-.nx-fx-bar.nx-lv-crit i { background: var(--crit, oklch(0.6 0.22 27)); }
+.nx-fx-bar.nx-lv-crit i { background: var(--crit, oklch(0.55 0.14 50)); }
 
 /* A machine at work: its icon takes on colour, slowly moving through the hues. */
 @property --nx-hue { syntax: '<angle>'; inherits: false; initial-value: 0deg; }

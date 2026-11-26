@@ -12,7 +12,7 @@ const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0
 const flag = (name) => args.includes(`--${name}`)
 const token = process.env.WEEVILS_CAPTURE_TOKEN
 const base = process.env.WEEVILS_CAPTURE_BASE || 'http://127.0.0.1:4179'
-if (!out || !token) { console.error('usage: weevils capture <out.png|out.mp4> [--open "#s=<session id>"] [--theme <name>] [--seconds N] [--size 390x844] [--frame] [--wait ms]'); process.exit(2) }
+if (!out || !token) { console.error('usage: weevils capture <out.png|out.mp4> [--open "#s=<session id>"] [--theme <name>] [--lang fr|en] [--seconds N] [--size 390x844] [--frame] [--wait ms]'); process.exit(2) }
 
 /** weevils' own copy, installed here the first time a capture needs it (no root, no global install). */
 const OWN = path.join(os.homedir(), '.local', 'share', 'weevils', 'capture')
@@ -56,6 +56,8 @@ const ctx = await browser.newContext({ viewport: { width: w, height: h }, device
 const u = new URL(base)
 await ctx.addCookies([{ name: 'wv', value: token, domain: u.hostname, path: '/', httpOnly: true, sameSite: 'Lax' }])
 const theme = opt('theme')
+const lang = opt('lang')
+if (lang) await ctx.addInitScript((l) => { try { localStorage.setItem('weevils-language', l) } catch {} }, lang)
 if (theme) await ctx.addInitScript((t) => { try { localStorage.setItem('wv-theme', t) } catch {} ; document.addEventListener('DOMContentLoaded', () => { document.documentElement.dataset.theme = t }) }, theme)
 const page = await ctx.newPage()
 await page.goto(base + '/')

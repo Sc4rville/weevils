@@ -9,8 +9,8 @@ export default defineMessages({
     nothingRunning: 'rien ne tourne',
     yours: (n: number) => `${n} à toi`,
     /** Sessions coupées en plein travail. */
-    cut: (n: number) => `${n} ${n > 1 ? 'interrompues' : 'interrompue'}`,
-    cutAria: (n: number) => `${n} ${n > 1 ? 'sessions coupées' : 'session coupée'} en plein travail`,
+    cut: (n: number) => `${n} en pause`,
+    cutAria: (n: number) => `${n} ${n > 1 ? 'sessions en pause' : 'session en pause'}, à reprendre quand tu veux`,
     conversations: (n: number) => `${n} conversation${n > 1 ? 's' : ''}`,
 
     // Bande de l'orchestrateur
@@ -27,7 +27,7 @@ export default defineMessages({
     forYou: 'pour toi',
     forYouOpen: 'ouvrir « pour toi » en grand',
     forYouEmpty: 'rien de neuf pour l’instant',
-    forYouLoading: 'chargement…',
+    forYouLoading: 'synchronisation…',
     forYouUnseen: (n: number) => `${n} pas encore ${n > 1 ? 'vus' : 'vu'}`,
     forYouSpeaking: 'en cours de lecture',
 
@@ -83,8 +83,8 @@ export default defineMessages({
     improvingWeevils: 'Improving weevils',
     nothingRunning: 'nothing running',
     yours: (n: number) => `${n} need${n === 1 ? 's' : ''} you`,
-    cut: (n: number) => `${n} interrupted`,
-    cutAria: (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'} cut off mid-work`,
+    cut: (n: number) => `${n} paused`,
+    cutAria: (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'} paused, ready to pick back up`,
     conversations: (n: number) => `${n} conversation${n === 1 ? '' : 's'}`,
 
     agentBand: 'weevboss, the orchestrator',
@@ -98,7 +98,7 @@ export default defineMessages({
     forYou: 'for you',
     forYouOpen: 'open “for you” full screen',
     forYouEmpty: 'nothing new for now',
-    forYouLoading: 'loading…',
+    forYouLoading: 'syncing…',
     forYouUnseen: (n: number) => `${n} not seen yet`,
     forYouSpeaking: 'playing',
 

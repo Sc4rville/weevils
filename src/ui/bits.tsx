@@ -80,7 +80,7 @@ export function Appear({ children }: { children: ReactNode }) {
 export function StatusChar({ s, auto = false }: { s: Session['status']; auto?: boolean }) {
   if (auto && s === 'working') return <AutoMark />
   return (
-    <span className={s === 'working' ? 'spin fluo' : s === 'interrupted' ? 'alert' : undefined}>
+    <span className={s === 'working' ? 'spin fluo' : undefined}>
       <G c={status[s].ch} />
     </span>
   )
@@ -259,7 +259,7 @@ export function ResumeButton({ session, onError, stay }: { session: Session; onE
   }
   return (
     <button className="resume" onClick={() => void go()} disabled={busy || !!sourceIssue} aria-label={t.resumeAria(session.title)} title={err ?? sourceIssue ?? undefined}>
-      {busy ? <span className="spin"><Icon name="star" /></span> : err ? <G c="!" /> : null} {t.resume}
+      {busy ? <span className="spin"><Icon name="star" /></span> : null} {t.resume}
     </button>
   )
 }
@@ -638,7 +638,7 @@ export function Composer({
               </button>
             </>
           )}
-          {err && <span>! {err}</span>}
+          {err && <span>{err}</span>}
         </div>
       )}
       <div className="in">

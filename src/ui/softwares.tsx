@@ -12,7 +12,7 @@ import './softwares.css'
 import { PreviewChat } from './preview-chat'
 import { useSteadyUrl } from './preview'
 import { GoneBack, useGoneTitle } from './gone'
-import { WeevilLoading } from './loading'
+import { useLongWait, WeevilLoading } from './loading'
 
 // « Mes logiciels » : tout ce que l'utilisateur construit ou fait tourner, un rectangle de couleur par logiciel (même
 // grille que les repos). Dedans, son interface (capture) ou, sans capture, une phrase simple (jamais de sortie brute) ;
@@ -189,9 +189,9 @@ function PhaseFix({ progress, onFix, onReset }: { progress: Progress; onFix: (p:
 
 function ErrorBand({ text }: { text: string }) {
   return (
-    <Notice eventId={noticeKey('error:softwares', location.pathname, location.hash, text)} className="band invert" role="alert">
+    <Notice eventId={noticeKey('error:softwares', location.pathname, location.hash, text)} className="band tone calm-note" role="alert">
       <div className="in meta" style={{ paddingBlock: 12 }}>
-        ! {text}
+        {text}
       </div>
     </Notice>
   )
@@ -296,6 +296,8 @@ export function SoftwarePage({ id }: { id: string }) {
   const { snap, colors } = useApp()
   const [sw, setSw] = useState<Software | null>(() => known.get(id) ?? null)
   const [missing, setMissing] = useState(false)
+  // « Gone » only after a long wait: a network blip reads « syncing… », never a breakdown.
+  const goneForGood = useLongWait(missing)
   const [brokenShot, setBrokenShot] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
   /** Corrections en vol : la relecture ne remet pas l'ancienne barre sous le doigt. */
@@ -345,10 +347,9 @@ export function SoftwarePage({ id }: { id: string }) {
 
   if (!sw) {
     return (
-      <Shell slot="agent" kicker={t.kicker} title={missing ? gone : '…'}>
+      <Shell slot="agent" kicker={t.kicker} title={goneForGood ? gone : '…'}>
         {err && <ErrorBand text={err} />}
-        {missing && <GoneBack />}
-        {!err && !missing && <WeevilLoading />}
+        {goneForGood ? <GoneBack /> : !err && <WeevilLoading />}
       </Shell>
     )
   }

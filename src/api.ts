@@ -16,6 +16,7 @@ import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts
 import type { ForYouFeed, ForYouOpen } from '../shared/foryou.ts'
 import type { AgentMode, AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 import type { LedgerView } from '../shared/ledger.ts'
+import type { AgentKeyCreated, AgentKeysList } from '../shared/agent-keys.ts'
 
 export class ApiError extends Error {
   status: number
@@ -175,6 +176,10 @@ export const api = {
   addMemory: (text: string) => call<{ item: MemoryItem }>('POST', '/api/memory', { text }),
   editMemory: (id: string, text: string) => call<{ item: MemoryItem }>('PUT', `/api/memory/${enc(id)}`, { text }),
   deleteMemory: (id: string) => call<{ ok: true }>('DELETE', `/api/memory/${enc(id)}`),
+  // Agent keys (docs/agents.md): listed without secrets; the key itself comes back once, from its creation.
+  agentKeys: () => call<AgentKeysList>('GET', '/api/agent-keys'),
+  createAgentKey: (name: string) => call<AgentKeyCreated>('POST', '/api/agent-keys', { name }),
+  revokeAgentKey: (id: string) => call<{ revoked: true }>('DELETE', `/api/agent-keys/${enc(id)}`),
   /** « Pour toi » (shared/foryou.ts) : le flux, puis ce qu'on y fait. */
   foryou: () => call<ForYouFeed>('GET', `/api/foryou${inLang()}`),
   foryouSeen: (ids: string[]) => call<{ ok: true }>('POST', '/api/foryou/seen', { ids }),

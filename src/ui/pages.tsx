@@ -1,3 +1,4 @@
+import { useFollowFetch } from './newest.ts'
 import { sourceAccessIssue, sourceForRepo, sourceForSession } from './source-access'
 import { ThinkGate, LostFeaturesPage } from './lost-features'
 import { ModelControlsPage } from './model-controls'
@@ -44,11 +45,12 @@ import M from '../i18n/pages'
 import PM from '../i18n/plain-steps'
 import { MemoryPage } from './memory'
 import { RequestsPage } from './requests'
+import { AgentKeysPage } from './agent-keys'
 import { ProjectPage } from './project-screen'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 import { WebPage } from './living-link'
-import { WeevilLoading } from './loading'
+import { useLongWait, WeevilLoading } from './loading'
 
 
 
@@ -108,6 +110,8 @@ export function PageView({ page }: { page: Page }) {
       return <MemoryPage />
     case 'requests':
       return <RequestsPage />
+    case 'agent-keys':
+      return <AgentKeysPage />
     case 'formats':
       return <FormatsPage />
     case 'foryou':
@@ -148,9 +152,9 @@ function Missing() {
 
 function ErrorBand({ text }: { text: string }) {
   return (
-    <Notice eventId={noticeKey("page-error", location.pathname, text)} className="band invert" role="alert">
+    <Notice eventId={noticeKey("page-error", location.pathname, text)} className="band tone calm-note" role="alert">
       <div className="in meta" style={{ paddingBlock: 12 }}>
-        ! {text}
+        {text}
       </div>
     </Notice>
   )
@@ -171,6 +175,7 @@ function SessionPage({ id }: { id: string }) {
   const gone = useGoneTitle()
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
+  const goneForGood = useLongWait(missing && !snap.sessions.some((x) => x.id === id))
   const [err, setErr] = useState<string | null>(null)
   // Le premier message d'une session qu'on vient de lancer est déjà là (pending.ts : seedPending).
   const [pending, setPending] = useState<Pending[]>(() => peekSeed(id))
@@ -181,22 +186,13 @@ function SessionPage({ id }: { id: string }) {
   /** Whether the header pill shows its phrase whole (not cut with « … » on a narrow screen). */
 
 
-  // Le détail suit chaque nouvelle version annoncée par le serveur.
-  useEffect(() => {
-    let off = false
-    api
-      .session(id)
-      .then((d) => {
-        if (off) return
-        setDetail(d)
-        setMissing(false)
-        if (d.session.id !== id) replace({ kind: 'session', id: d.session.id })
-      })
-      .catch(() => !off && setMissing(true))
-    return () => {
-      off = true
-    }
-  }, [id, snap.version, replace, appLang])
+  // Le détail suit chaque nouvelle version annoncée par le serveur : une demande à la fois, puis une de plus si ça a
+  // bougé entre-temps, et chaque réponse s'affiche (newest.ts : sinon un weevils occupé ne montrait jamais le fil).
+  useFollowFetch(id, `${snap.version}:${appLang}`, () => api.session(id), (d) => {
+    setDetail(d)
+    setMissing(false)
+    if (d.session.id !== id) replace({ kind: 'session', id: d.session.id })
+  }, () => setMissing(true))
 
   const s = snap.sessions.find((x) => x.id === id) ?? detail?.session
   // Ouverte : tout ce qu'elle a dit jusqu'ici est lu.
@@ -217,12 +213,13 @@ function SessionPage({ id }: { id: string }) {
   const toEnd = follow.toEnd
 
 
-  // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
+  // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite). « Partie » seulement après une
+  // longue attente (gone) : un raté du réseau ou une session pas encore listée se lit « synchronisation… », jamais une panne.
   if (!s)
     return (
-      <Shell slot={held?.slot ?? 'agent'} kicker={held?.kicker ?? 'weevils'} title={missing && !pending.length ? gone : '…'} bodyRef={body} side={held?.side}>
+      <Shell slot={held?.slot ?? 'agent'} kicker={held?.kicker ?? 'weevils'} title={goneForGood && !pending.length ? gone : '…'} bodyRef={body} side={held?.side}>
         {/* A session just launched (its first message is on its way) is not gone, only not listed yet. */}
-        {missing && !pending.length ? <GoneBack /> : !pending.length && <WeevilLoading />}
+        {goneForGood && !pending.length ? <GoneBack /> : !pending.length && <WeevilLoading />}
       </Shell>
     )
 

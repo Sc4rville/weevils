@@ -65,6 +65,6 @@ it('a stopped session in its focused thread shows why and a way on, never an idl
   const out = { ...session, status: 'interrupted', interrupted: { at: NOW, reason: 'auth' } } as Session
   render('s1', { ...snap, sessions: [out] })
   const band = host.querySelector('.cut-band')!
-  expect(text(band.querySelector('.who'))).toBe('interrupted · signed out')
+  expect(text(band.querySelector('.who'))).toBe('Paused, pick it back up? · it needs a fresh sign-in')
   expect([...band.querySelectorAll('button')].map(text)).toEqual(['sign in again', 'resume', 'dismiss'])
 })

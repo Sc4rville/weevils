@@ -504,8 +504,8 @@ export function reorder(list: FactoryOnDemand[], id: string, to: 'on' | 'off' | 
 
 const SESSIONS_PAGE = 40
 const DRAWER_ICON: Record<Drawer, IconName> = { misc: 'repo', autonomous: 'cycle', pages: 'page', settings: 'settings' }
-const STATE_ICON: Partial<Record<Session['status'], IconName>> = { needs_user: 'waits', interrupted: 'bang', done: 'check' }
-const STATE_WORD: Partial<Record<Session['status'], string>> = { working: 'working', needs_user: 'needs you', interrupted: 'stopped', done: 'done', idle: 'idle' }
+const STATE_ICON: Partial<Record<Session['status'], IconName>> = { needs_user: 'waits', interrupted: 'pause', done: 'check' }
+const STATE_WORD: Partial<Record<Session['status'], string>> = { working: 'working', needs_user: 'needs you', interrupted: 'paused', done: 'done', idle: 'idle' }
 
 /** Every session, the most recent first, each with its place in its run: how many bands of the same repo come
  *  right before it (0 for the first of a run), the tone step of its band. */

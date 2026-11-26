@@ -1,0 +1,53 @@
+// Messages of server/agent-keys.ts and server/agent-api.ts: why a key can't be created, and the agent endpoint's
+// refusals (read by another program, but its person may show them).
+import { defineMessages } from '../i18n.ts'
+
+export default defineMessages({
+  fr: {
+    nameMissing: 'Donne un nom à cette clé (celui de l’agent).',
+    nameTooLong: 'Ce nom est trop long (40 caractères au plus).',
+    nameBad: 'Ce nom ne donne pas d’identifiant : utilise au moins une lettre ou un chiffre.',
+    nameReserved: (id: string) => `« ${id} » est réservé : choisis un autre nom.`,
+    nameTaken: (id: string) => `Une clé « ${id} » existe déjà : retire-la d’abord, ou choisis un autre nom.`,
+    notFound: 'Clé inconnue.',
+    createFromApp: 'Une clé se crée depuis l’app, connectée avec le code d’accès.',
+    // L'adresse des agents.
+    noKey: 'Il faut une clé d’agent : Authorization: Bearer <clé>.',
+    badKey: 'Clé d’agent inconnue ou retirée.',
+    tooManyBadKeys: 'Trop de clés fausses depuis cette adresse : réessaie plus tard.',
+    rateLimited: 'Trop de messages pour cette clé : réessaie plus tard.',
+    emptyMessage: 'Message vide : envoie {"text": "…"}.',
+    tooLong: (max: number) => `Message trop long (${max} caractères au plus).`,
+    badJson: 'Corps illisible : envoie du JSON {"text": "…"} ou du texte brut.',
+    badType: 'Type de contenu non pris en charge : application/json ou text/plain.',
+    unknownMessage: 'Message inconnu pour cette clé.',
+    unknownRoute: 'Adresse inconnue.',
+    badMethod: 'Méthode non autorisée.',
+    notHere: 'weevboss ne tourne pas sur cette machine.',
+    waiting: 'weevboss ne peut pas recevoir de message pour l’instant : réessaie plus tard.',
+    failed: 'Le message n’a pas pu être remis à weevboss.',
+  },
+  en: {
+    nameMissing: 'Give this key a name (the agent’s).',
+    nameTooLong: 'This name is too long (40 characters at most).',
+    nameBad: 'This name gives no id: use at least one letter or digit.',
+    nameReserved: (id: string) => `“${id}” is reserved: pick another name.`,
+    nameTaken: (id: string) => `A key “${id}” already exists: revoke it first, or pick another name.`,
+    notFound: 'Unknown key.',
+    createFromApp: 'A key is created from the app, signed in with the access code.',
+    noKey: 'An agent key is needed: Authorization: Bearer <key>.',
+    badKey: 'Unknown or revoked agent key.',
+    tooManyBadKeys: 'Too many wrong keys from this address: try again later.',
+    rateLimited: 'Too many messages for this key: try again later.',
+    emptyMessage: 'Empty message: send {"text": "…"}.',
+    tooLong: (max: number) => `Message too long (${max} characters at most).`,
+    badJson: 'Unreadable body: send JSON {"text": "…"} or plain text.',
+    badType: 'Unsupported content type: application/json or text/plain.',
+    unknownMessage: 'Unknown message for this key.',
+    unknownRoute: 'Unknown address.',
+    badMethod: 'Method not allowed.',
+    notHere: 'weevboss does not run on this machine.',
+    waiting: 'weevboss cannot take a message right now: try again later.',
+    failed: 'The message could not be delivered to weevboss.',
+  },
+})

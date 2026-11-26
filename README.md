@@ -25,8 +25,8 @@ No API cost: weevils drives the official `claude` and `codex` commands you are a
 - **It does**: installs in your home folder (`~/weevils`), runs a small service on `127.0.0.1`, adds its hooks to
   `~/.claude/settings.json`, and lets your phone reach that service with a private access code. Agents ask before
   acting (you answer from the phone) unless you turn that off. On a computer set up from
-  [tryweevils](https://tryweevils.scarville.tech), the phone link is a public Cloudflare tunnel: the computer then
-  answers from the Internet, behind the access code (`--no-link` to avoid it, then Tailscale).
+  [tryweevils](https://tryweevils.scarville.tech), the phone link is a stable public address through the weevils relay
+  (`https://<name>.tryweevils.scarville.tech`): the computer then answers from the Internet, behind the access code (`--no-link` to avoid it, then Tailscale).
 - **It never** sends your files, code, conversations, keys or passwords anywhere, never opens a port on your router
   (on a server with `--domain`, it opens 80 and 443 in an active ufw, after asking), and never updates itself to code that weevils' release key didn't sign: a snapshot from the setup
   page carries the key's signature, and a clone of this repository moves only to the main commit named in a signed
@@ -111,10 +111,11 @@ Sessions opened in a plain terminal (without `wv`) are hidden: weevils can't wri
 With an OpenAI key, quick answers and spoken summaries also use OpenAI; without one they use Claude on your
 subscription.
 
-## E-mail
+## Other agents
 
-Other agents (a CI bot, another assistant) can write to your sessions by e-mail, through an alias of your inbox.
-Only senders you declare get through. Setup and rules: [docs/email.md](docs/email.md).
+Other agents (a bot, a web agent, a CI job) can write to weevboss and read its replies with an agent key made in the
+app's settings; ChatGPT and Claude.ai go through the connector. How: [docs/agents.md](docs/agents.md). The older
+e-mail bridge ([docs/email.md](docs/email.md)) is deprecated and off by default.
 
 ## Settings
 

@@ -54,9 +54,9 @@ export function Login({ onDone }: { onDone: () => void }) {
           </div>
         </form>
         {err && (
-          <Notice eventId={noticeKey('error:login', location.pathname, location.hash, err)} className="band invert" role="alert">
+          <Notice eventId={noticeKey('error:login', location.pathname, location.hash, err)} className="band tone calm-note" role="alert">
             <div className="in meta" style={{ paddingBlock: 12 }}>
-              ! {err}
+              {err}
             </div>
           </Notice>
         )}

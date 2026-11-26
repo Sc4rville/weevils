@@ -154,7 +154,7 @@ export function NightBand() {
         <button className="night-wake" onClick={wake} aria-label={t.wakeUpLabel}>
           {t.wakeUp}
         </button>
-        {err && <p className="meta" role="alert">! {err}</p>}
+        {err && <p className="meta" role="alert">{err}</p>}
       </div>
     </section>
   )

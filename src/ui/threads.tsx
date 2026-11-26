@@ -20,7 +20,7 @@ import { projectSlug, threadsOn } from './threads-on'
 
 export { threadOf, threadsOn } from './threads-on'
 import { FootError, Shell } from './shell'
-import { WeevilLoading } from './loading'
+import { useLongWait, WeevilLoading } from './loading'
 
 
 const STATE_CHAR: Record<ThreadState, string> = { working: '*', waiting: '·', paused: '‖' }
@@ -98,6 +98,8 @@ export function ThreadPage({ id, session }: { id: string; session?: Session }) {
   const word = useStateWord()
   const sentence = useHoldSentence()
   const { view, missing, setView } = useThread(id)
+  // « Untitled / gone » only after a long wait: until then the thread reads « syncing… ».
+  const goneForGood = useLongWait(missing)
   const [err, setErr] = useState<string | null>(null)
   const [sending, setSending] = useState<{ id: string; text: string } | null>(null)
   const body = useRef<HTMLDivElement>(null)
@@ -137,7 +139,7 @@ export function ThreadPage({ id, session }: { id: string; session?: Session }) {
     <Shell
       slot={(project && colors[project.id]) ?? 'agent'}
       kicker={project?.name ?? view?.project ?? 'weevils'}
-      title={view?.title || (missing ? t.untitled : '…')}
+      title={view?.title || (goneForGood ? t.untitled : '…')}
       scrollHeading
       sessionLayout
       meta={stateLine}
@@ -151,7 +153,7 @@ export function ThreadPage({ id, session }: { id: string; session?: Session }) {
     >
       <div className="ask-thread session-thread thread-view" data-thread={id}>
         {view && <Messages session plain messages={messages} author="" working={view.state === 'working'} />}
-        {!view && !missing && <WeevilLoading />}
+        {!view && !goneForGood && <WeevilLoading />}
       </div>
       {hold && (
         <div className="in thread-hold" role="status">

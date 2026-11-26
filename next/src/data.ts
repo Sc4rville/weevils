@@ -1,4 +1,5 @@
 // weevils next — the data: only weevilsd's API (/api), like the main app. Nothing faked.
+import { useFollowFetch } from '../../src/ui/newest.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Message, SessionDetail, Snapshot } from '../../shared/api.ts'
 
@@ -85,12 +86,8 @@ export function useSnapshot(enabled: boolean): { snap: Snapshot | null; reload: 
 export function useSession(id: string | null, version: number): { detail: SessionDetail | null; reload: () => void } {
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [tick, setTick] = useState(0)
-  useEffect(() => {
-    if (!id) return setDetail(null)
-    let gone = false
-    call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(id)}`).then((d) => !gone && setDetail(d), () => {})
-    return () => { gone = true }
-  }, [id, version, tick])
+  // One fetch at a time, once more if the snapshot moved meanwhile; every answer is shown (src/ui/newest.ts).
+  useFollowFetch(id ?? '', `${version}:${tick}`, () => call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(id ?? '')}`), setDetail, undefined, !!id)
   useEffect(() => setDetail(null), [id])
   return { detail, reload: () => setTick((t) => t + 1) }
 }

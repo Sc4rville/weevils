@@ -40,8 +40,8 @@ on its own.
 4. Push fast-forward to main, never forced, to the repository main is fetched from (`git remote get-url origin`: a
    checkout may point its pushes elsewhere on purpose). main moved meanwhile: refused, the branch stays.
 5. The running weevils takes it: its checkout fast-forwards (only on main and clean: someone's work is never touched)
-   and the app is rebuilt; when server code changed, weevils restarts the way an update does (`weevils-service
-   restart`: agent sessions live in tmux and go on).
+   and the app is rebuilt (the classic one and the default one, `next/`); when server code changed, weevils restarts
+   the way an update does (`weevils-service restart`: agent sessions live in tmux and go on).
 6. The run's line records `merged`. A new theme gets one line in For you ("new theme desert is in your selector");
    the automation's ordinary work (a cleanup, in-scope work) lands without a card.
 

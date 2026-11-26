@@ -164,18 +164,25 @@ export async function autoMerge(dir: string, app: string, box?: Sandbox, git: Gi
   return { merged: true, commit, kinds: v.kinds, themes: v.themes, ...(touchesServer(changes) ? { restart: true } : {}) }
 }
 
+/** The default app's own build (package.json « build » runs both). */
+const NEXT_CONFIG = 'next/vite.config.ts'
+
 /**
  * The running weevils takes the merged commit: its checkout fast-forwards (only when on main and clean: someone's work
- * is never touched) and the app is rebuilt. When server code changed (a cleanup), the service restarts the way an
- * update restarts it (weevils-service restart: agent sessions live in tmux and go on).
+ * is never touched) and the app is rebuilt, the classic one and the default one (next/). When server code changed (a
+ * cleanup), the service restarts the way an update restarts it (weevils-service restart: agent sessions live in tmux
+ * and go on).
  */
-export async function updateLive(app: string, commit: string, git: Git = gitOut, run: Run = runOk, restart?: () => void): Promise<boolean> {
+export async function updateLive(app: string, commit: string, git: Git = gitOut, run: Run = runOk, restart?: () => void, exists: (p: string) => boolean = fs.existsSync): Promise<boolean> {
   if ((await git(app, ['symbolic-ref', '--short', 'HEAD'])) !== 'main') return false
   if ((await git(app, ['status', '--porcelain', '--untracked-files=no'])) !== '') return false
   if ((await git(app, ['fetch', '-q', 'origin', 'main'], 60_000)) === null) return false
   if ((await git(app, ['merge', '-q', '--ff-only', commit], 60_000)) === null) return false
   // weevils' own vite (the app checkout's node_modules, never the run's): the CSS and copy are only bundled.
   if (!(await run(app, 'npx', ['vite', 'build'], 600_000))) return false
+  // The default app (next/) bundles the same themes and copy into its own folder: without its build, what just
+  // landed (a new theme in the selector) would show in the classic app only.
+  if (exists(`${app}/${NEXT_CONFIG}`) && !(await run(app, 'npx', ['vite', 'build', '-c', NEXT_CONFIG], 600_000))) return false
   restart?.()
   return true
 }

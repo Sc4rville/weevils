@@ -147,6 +147,17 @@ describe('updateLive', () => {
     expect(calls.map((c) => c.slice(1).join(' '))).toContain('merge -q --ff-only abc')
     expect(runs).toEqual(['npx vite build'])
   })
+  it('rebuilds the default app too, so a landed theme shows in it', async () => {
+    const { git } = fakeGit({ 'symbolic-ref': 'main', status: '' })
+    const runs: string[] = []
+    const run = async (_d: string, cmd: string, args: string[]) => (runs.push([cmd, ...args].join(' ')), true)
+    expect(await updateLive('/app', 'abc', git, run, undefined, (p) => p === '/app/next/vite.config.ts')).toBe(true)
+    expect(runs).toEqual(['npx vite build', 'npx vite build -c next/vite.config.ts'])
+    // A build of the default app that fails: the update is not called done, and nothing restarts.
+    const restart = vi.fn()
+    expect(await updateLive('/app', 'abc', git, async (_d, _c, args) => !args.includes('-c'), restart, () => true)).toBe(false)
+    expect(restart).not.toHaveBeenCalled()
+  })
   it.each([
     ['on another branch', { 'symbolic-ref': 'fix/x', status: '' }],
     ['with someone\'s uncommitted work', { 'symbolic-ref': 'main', status: ' M src/App.tsx' }],

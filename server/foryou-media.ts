@@ -31,6 +31,46 @@ export interface ShelfEntry {
   h?: number
   /** The mockup asked for with `weevils show --mockup` (shared/mockup.ts); otherwise the app picks one. */
   mockup?: Mockup
+  /** A clip recorded smaller than its frame (a browser recorder at a higher pixel density pads the rest in flat grey):
+   *  the part that holds the picture, from the top-left corner, in pixels. The app shows that part only. */
+  area?: { w: number; h: number }
+  /** The file's mtime when `area` was looked for (looked for once per version of the file). */
+  areaOf?: number
+}
+
+/** Sampled frame width for the padding check: enough to find an edge, cheap to read. */
+const PAD_SAMPLE_W = 200
+
+/**
+ * The picture's part of a padded frame (rgb24, w × h), as fractions of the frame, or null when the frame is not padded.
+ * Padded means: the same flat neutral grey fills the right and the bottom, and the picture keeps the frame's shape in
+ * the top-left corner (both sides cut by the same factor, as a recorder at 2× or 3× pixel density does). Anything
+ * else, a dark app with an empty bottom included, is left as it is.
+ */
+export function paddedArea(rgb: Uint8Array, w: number, h: number): { fw: number; fh: number } | null {
+  if (w < 8 || h < 8 || rgb.length < w * h * 3) return null
+  const at = (x: number, y: number) => (y * w + x) * 3
+  const b = at(w - 1, h - 1)
+  const [r, g, bl] = [rgb[b], rgb[b + 1], rgb[b + 2]]
+  if (Math.abs(r - g) > 4 || Math.abs(g - bl) > 4 || r < 40 || r > 215) return null
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = at(x, y)
+      if (Math.abs(rgb[i] - r) > 10 || Math.abs(rgb[i + 1] - g) > 10 || Math.abs(rgb[i + 2] - bl) > 10) {
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  const fw = (maxX + 1) / w
+  const fh = (maxY + 1) / h
+  if (fw < 0.2 || fh < 0.2 || fw > 0.9 || fh > 0.9 || Math.abs(fw - fh) > 0.04) return null
+  // Snap to the density it comes from (1/2, 1/3, 2/3…): a picture whose own edge is the same grey stays whole.
+  const f = Math.max(fw, fh)
+  for (const d of [2, 3, 4, 1.5]) if (Math.abs(f - 1 / d) < 0.04) return { fw: 1 / d, fh: 1 / d }
+  return { fw: f, fh: f }
 }
 
 /** Why a file was refused: `reason` is the catalog key (the message is already in the server's language). */
@@ -364,7 +404,36 @@ export class MediaShelf {
       for (const e of old) this.entries.delete(e.id)
     }
     this.save()
+    if (entry.type === 'video') void this.measure(entry)
     return entry
+  }
+
+  private measuring = new Map<string, Promise<void>>()
+
+  /** Looks once (per version of the clip) for a recorder's grey padding (paddedArea); the app then shows the picture
+   *  part only, and the poster is cut to it. Never throws: no ffmpeg, an unreadable clip, the clip stays as it is. */
+  measure(e: ShelfEntry): Promise<void> {
+    if (e.type !== 'video' || e.areaOf === e.mtime || !canDrawPosters() || !e.w || !e.h) return Promise.resolve()
+    const key = `${e.id}-${e.mtime}`
+    const busy = this.measuring.get(key)
+    if (busy) return busy
+    const sh = Math.max(8, Math.round((PAD_SAMPLE_W * e.h) / e.w / 2) * 2)
+    const frame = (seek: string[]) => new Promise<Buffer | null>((done) => {
+      execFile('ffmpeg', ['-loglevel', 'error', ...seek, '-i', e.path, '-frames:v', '1', '-vf', `scale=${PAD_SAMPLE_W}:${sh}:flags=neighbor,format=rgb24`, '-f', 'rawvideo', '-'],
+        { timeout: 20_000, encoding: 'buffer', maxBuffer: PAD_SAMPLE_W * sh * 3 + 1024 }, (err, out) => done(!err && out.length >= PAD_SAMPLE_W * sh * 3 ? out : null))
+    })
+    const job = (async () => {
+      const buf = (await frame(['-ss', '1'])) ?? (await frame([]))
+      const pad = buf ? paddedArea(buf, PAD_SAMPLE_W, sh) : null
+      const cur = this.entries.get(e.id)
+      if (!cur || cur.mtime !== e.mtime) return
+      if (pad) cur.area = { w: Math.round(cur.w! * pad.fw), h: Math.round(cur.h! * pad.fh) }
+      else delete cur.area
+      cur.areaOf = e.mtime
+      this.save()
+    })().catch(() => {}).finally(() => this.measuring.delete(key))
+    this.measuring.set(key, job)
+    return job
   }
 
   /** A cited path is refused when it goes through a hidden folder below a root (.run, .work, .git, node_modules). */
@@ -438,7 +507,10 @@ export class MediaShelf {
 
   view(e: ShelfEntry): ForYouMedia {
     const url = '/api/foryou/media/' + e.id
-    return { id: e.id, type: e.type, url, name: e.name, bytes: e.bytes, ...(e.w && e.h ? { w: e.w, h: e.h } : {}), ...(e.mockup ? { mockup: e.mockup } : {}), ...(e.type === 'video' && canDrawPosters() ? { poster: url + '/poster' } : {}) }
+    // A clip registered before the padding check, or changed since: looked at now, shown whole until then.
+    if (e.type === 'video' && e.areaOf !== e.mtime) void this.measure(e)
+    const area = e.area && e.areaOf === e.mtime && e.w && e.h ? { area: e.area } : {}
+    return { id: e.id, type: e.type, url, name: e.name, bytes: e.bytes, ...(e.w && e.h ? { w: e.w, h: e.h } : {}), ...area, ...(e.mockup ? { mockup: e.mockup } : {}), ...(e.type === 'video' && canDrawPosters() ? { poster: url + '/poster' } : {}) }
   }
 
   private drawing = new Map<string, Promise<string | null>>()
@@ -448,14 +520,21 @@ export class MediaShelf {
   poster(id: string): Promise<string | null> {
     const e = this.get(id)
     if (!e || e.type !== 'video' || !canDrawPosters()) return Promise.resolve(null)
+    // The padding check first: the poster shows the picture part only, as the clip does.
+    if (e.areaOf !== e.mtime) return this.measure(e).then(() => (this.entries.get(id)?.areaOf === e.mtime ? this.poster(id) : this.drawPoster(e)))
+    return this.drawPoster(e)
+  }
+
+  private drawPoster(e: ShelfEntry): Promise<string | null> {
     const dir = path.join(path.dirname(this.file), 'foryou-posters')
-    const out = path.join(dir, `${e.id}-${e.mtime}.jpg`)
+    const area = e.area && e.areaOf === e.mtime ? e.area : undefined
+    const out = path.join(dir, `${e.id}-${e.mtime}${area ? `-${area.w}x${area.h}` : ''}.jpg`)
     if (fs.existsSync(out)) return Promise.resolve(out)
     const busy = this.drawing.get(out)
     if (busy) return busy
     const draw = (seek: string[]) => new Promise<boolean>((done) => {
       const tmp = `${out}.${process.pid}.tmp.jpg`
-      execFile('ffmpeg', ['-loglevel', 'error', '-y', ...seek, '-i', e.path, '-frames:v', '1', '-vf', "scale='min(720,iw)':-2", '-q:v', '4', tmp], { timeout: 20_000 }, (err) => {
+      execFile('ffmpeg', ['-loglevel', 'error', '-y', ...seek, '-i', e.path, '-frames:v', '1', '-vf', `${area ? `crop=${area.w}:${area.h}:0:0,` : ''}scale='min(720,iw)':-2`, '-q:v', '4', tmp], { timeout: 20_000 }, (err) => {
         try {
           if (!err && fs.statSync(tmp).size > 0) {
             fs.renameSync(tmp, out)

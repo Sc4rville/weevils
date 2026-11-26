@@ -149,7 +149,13 @@ function MediaTile({ m, link }: { m: ForYouMedia; link?: PostLink }) {
   const sized = (w: number, h: number) => {
     if (w > 0 && h > 0 && (size?.w !== w || size?.h !== h)) setSize({ w, h })
   }
-  const { kind, sr } = mockupOf(m, size?.w, size?.h)
+  // A clip padded in grey by its recorder (m.area): its mockup takes the picture's shape, and the clip is drawn larger,
+  // from the top-left corner, so the picture alone fills the screen.
+  const area = m.type === 'video' && m.area && size ? m.area : null
+  const { kind, sr } = mockupOf(m, area?.w ?? size?.w, area?.h ?? size?.h)
+  // k: how much wider than the screen the picture's part is drawn so it covers it (the screen's shape may be clamped).
+  const k = area ? Math.max(1, sr / (area.h / area.w)) : 1
+  const crop = area && size ? { width: `${(k * size.w / area.w) * 100}%`, height: `${(k * size.h / (area.w * sr)) * 100}%`, objectFit: 'fill' as const, objectPosition: '0 0' } : undefined
   // Muted, inline, and only while it is under the eyes. iPhone plays a clip by itself only when it is muted as an
   // attribute too (React sets the property alone) and inline; until it really plays, its poster and play mark show.
   const [playing, setPlaying] = useState(false)
@@ -180,7 +186,7 @@ function MediaTile({ m, link }: { m: ForYouMedia; link?: PostLink }) {
       <MockupFrame kind={kind} sr={sr} side={sideOf(m.id)}>
         {m.type === 'video' ? (
           // #t: the first frame shows even where a poster is missing and nothing plays yet (iPhone).
-          <video ref={video} src={`${m.url}#t=0.001`} poster={m.poster} playsInline muted loop preload="metadata" onPlaying={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
+          <video ref={video} src={`${m.url}#t=0.001`} poster={crop ? undefined : m.poster} style={crop} playsInline muted loop preload="metadata" onPlaying={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
         ) : (
           <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} style={focus && kind !== 'phone' ? { objectPosition: `50% ${focus.at}%` } : undefined} onLoad={(e) => { const el = e.currentTarget; sized(el.naturalWidth, el.naturalHeight); setFocus(busyOf(el)) }} />
         )}

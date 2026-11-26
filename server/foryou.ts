@@ -696,7 +696,9 @@ export class ForYou {
     // repo (<projects>/.auto/<repo>/<id>) stays a session like another.
     if (s.cwd && /(?:^|\/)\.auto\/\.[^/]+(?:\/|$)/.test(s.cwd)) return false
     const t = this.w.store?.get(s.id)
-    if (t?.headless || t?.originator === 'codex_exec') return false
+    // A one-shot call (claude -p, codex exec) is a script's, not a person's. A session weevils runs in its own pane is
+    // never one, even when every line of its transcript comes through the SDK (server/claude-pump.mjs): its posts are its own.
+    if ((t?.headless && s.origin !== 'weevils') || t?.originator === 'codex_exec') return false
     const test = this.deps.isTestBrief ?? ((p?: string) => !!p && /^\s*\[test\]/.test(p))
     // A session of another machine has no transcript here: its title still starts with the brief.
     return !test(t?.firstPrompt) && !test(s.title)
@@ -930,8 +932,9 @@ export class ForYou {
   }
 
   /**
-   * « weevils show »: a file an agent wants the user to see. Its session is the most recently active one working in
-   * (or above) the caller's folder; files shown by the same session within two minutes join one item.
+   * « weevils show »: a file an agent wants the user to see. Its session is the one that ran the command; a caller that
+   * names none gets the most recently active one working in (or above) its folder. Files shown by the same session
+   * within two minutes, with no new caption, join one item.
    */
   addMedia(o: { path: unknown; caption?: unknown; mockup?: unknown; cwd?: unknown; from?: string; evidence?: unknown; source?: unknown; link?: unknown }): ForYouItem {
     if (!this.shelf) throw new Error(tr(M).noMedia)
@@ -941,16 +944,21 @@ export class ForYou {
     const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 320)
     const proof = evidenceInput(o.evidence)
     const snap = this.w.snapshot()
-    const s = this.sourceSession(o.source) ?? (cwd
+    // The session that ran the command says who it is: never guess another one by folder then (two agents often share a
+    // checkout, and the file would land in the other one's post). Only a caller that names none is found by its folder.
+    const named = typeof o.source === 'string' && !!o.source
+    const s = this.sourceSession(o.source) ?? (cwd && !named
       ? snap.sessions
           .filter((x) => x.machineId === this.machineId && x.cwd && (cwd === x.cwd || cwd.startsWith(x.cwd + path.sep)) && this.eligible(x))
           .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]
       : undefined)
     const now = this.now()
-    const open = this.s.items.find((i) => i.kind === 'media' && !i.gone && now - i.at < MEDIA_JOIN_MS && (i.mediaIds?.length ?? 0) < MAX_MEDIA && (s ? i.sessionId === s.id : !i.sessionId && i.cwd === cwd))
+    // Files shown together join one post: same session (or the same folder without one), within two minutes, and the
+    // same words (none, or the post's own title). A new caption is a new post: never another post's media or limits.
+    const open = this.s.items.filter((i) => i.kind === 'media' && !i.gone && now - i.at < MEDIA_JOIN_MS && (i.mediaIds?.length ?? 0) < MAX_MEDIA && (!caption || caption === i.title) && (s ? i.sessionId === s.id : !i.sessionId && i.cwd === cwd))
+      .sort((a, b) => b.at - a.at)[0]
     if (open) {
       if (!open.mediaIds!.includes(entry.id)) open.mediaIds!.push(entry.id)
-      if (caption) open.title = caption
       const evidence = mergeEvidence(open.evidence, proof)
       if (evidence) open.evidence = evidence
       if (where) open.link = where

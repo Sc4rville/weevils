@@ -1,5 +1,6 @@
-// In a session's thread only your own words sit on the right; whoever else prompts the agent (weevboss, another agent,
-// an automation) is their mirror, against the left edge (2026-11-22, replacing « on the right » of 2026-11-21).
+// In the app's session thread only your own words sit on the right; whoever else prompts the agent (weevboss, another
+// agent, an automation) is their mirror, against the left edge (2026-11-22). In weevils next, every message stands in
+// weevboss's one column instead (2026-11-26).
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'vitest'
@@ -15,13 +16,11 @@ it('the app: only your words sit on the right; someone else’s prompt sits agai
   expect(b).not.toMatch(/border-inline-end:/)
 })
 
-it('next: someone else’s prompt reaches the left edge, the mirror of yours on the right', () => {
+it('next: every message in weevboss’s one column, someone else’s prompt included: no offset of its own (2026-11-26)', () => {
   const f = path.join(root, 'next/src/next.css')
   if (!fs.existsSync(f)) return
   const css = fs.readFileSync(f, 'utf8')
-  const orch = body(css, '.session-page .session-thread .msg.band.orch')
-  expect(orch).toMatch(/margin-left:\s*0/)
-  expect(orch).toMatch(/margin-right:\s*var\(--pad\)/)
-  // Your own words keep reaching the right edge.
-  expect(body(css, '.session-page .session-thread .msg.band:not(.tone):not(.orch)')).toMatch(/margin-right:\s*var\(--pad\)/)
+  expect(body(css, '.session-page .session-thread .msg.band.orch')).not.toMatch(/margin-left/)
+  // Your own words reach the column's right edge; everyone else's keep its small gap.
+  expect(body(css, '.nx-stage .session-page .session-thread > :not(:has(.msg.band.tone))')).toMatch(/margin-right:\s*var\(--pad\)/)
 })

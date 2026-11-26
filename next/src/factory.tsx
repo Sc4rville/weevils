@@ -62,10 +62,11 @@ function useFold(key: string): [boolean, () => void] {
   return [open, () => setOpen((v) => (saveFold(key, v), !v))]
 }
 
-/** A repo with no project yet keeps a colour of its own, the same every time (the app's 16 slots). */
-const slotOf = (id: string) => `p${[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 16}`
+/** A repo with no project yet, or a loose conversation, keeps a colour of its own, the same every time (the app's 16
+ *  slots). */
+export const slotOf = (id: string) => `p${[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 16}`
 
-/** Reserved project ids (server/projects.ts): automations' own folder, and Misc. */
+/** Reserved project ids (server/projects.ts): automations' own folder, and the loose conversations' (« side quests »). */
 const HIDDEN_IDS = new Set(['auto', 'divers'])
 /** An automation's own folder (server/projects.ts isAutomationFolder): autonomous's, never a project. */
 const AUTOMATION_FOLDER = /^auto-[0-9a-f]{10}$/
@@ -84,12 +85,13 @@ export function mothersOf(folders: string[]): Mother[] {
   return [...by.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** A project is in the side bar: never once switched off (whatever its conversations do: off means off at once);
- *  else pinned (the app's pin), or with conversations. One rule, used by the side bar and by its switch here. */
+/** A repo is in the side bar only while it is pinned (2026-11-26: a repo not pinned leaves it, whatever its
+ *  conversations do; it stays in Your factory's Projects, one switch away). weevils itself is always there, never
+ *  pinned. One rule, used by the side bar and by its switch here. */
 export function inSideBar(snap: Snapshot, p: Project): boolean {
+  if (selfProject(p)) return true
   if (snap.hiddenProjects?.includes(p.id)) return false
-  if (p.repos.some((r) => snap.pinnedRepos.includes(r)) || snap.pinnedRepos.includes(p.id)) return true
-  return snap.sessions.some((s) => s.projectId === p.id && !s.archived)
+  return p.repos.some((r) => snap.pinnedRepos.includes(r)) || snap.pinnedRepos.includes(p.id)
 }
 
 /** A project carries its pin in the side bar: one of its repos (or itself) pinned, and not switched off. */
@@ -118,12 +120,21 @@ export function drawerChoice(snap: Snapshot, id: Drawer): boolean | undefined {
 }
 /** What the drawers hold now (shared/drawers.ts DrawerFacts). */
 export function drawerFacts(snap: Snapshot) {
-  const misc = snap.sessions.filter((s) => s.projectId === 'divers' && !s.archived)
-  return {
-    miscAny: misc.length > 0,
-    miscNeedsYou: misc.some((s) => s.status === 'needs_user' || s.status === 'interrupted'),
-    autonomous: (snap.optimizers ?? []).some((o) => o.state !== 'proposed' && o.state !== 'refused'),
-  }
+  return { autonomous: (snap.optimizers ?? []).some((o) => o.state !== 'proposed' && o.state !== 'refused') }
+}
+/** The conversations started with no repo (the reserved « divers » id, never shown as such): each its own band in the
+ *  side bar while pinned. A page's conversation (pages band) or a machine's (its page) is not one of them. */
+export function looseSessions(snap: Snapshot): Session[] {
+  const pages = new Set((snap.pageBand ?? []).flatMap((p) => (p.session ? [p.session] : [])))
+  return snap.sessions.filter((s) => s.projectId === 'divers' && !s.archived && !pages.has(s.id))
+}
+/** A loose conversation is in the side bar while pinned (a switch just flipped, else the server's list). A server
+ *  that does not keep that list yet (an older one): those that need you. */
+export const sessionPinned = (snap: Snapshot, s: Session) =>
+  flipped.get(`session:${s.id}`) ?? (snap.pinnedSessions ? snap.pinnedSessions.includes(s.id) : s.status === 'needs_user' || s.status === 'interrupted')
+export function pinSession(id: string, on: boolean) {
+  flipProject(`session:${id}`, on)
+  void call('POST', '/api/factory/session', { id, pinned: on }).catch(() => flipProject(`session:${id}`, null))
 }
 /** Whether a drawer is in the side bar now, and whether it wears its pin. */
 export function drawerOn(snap: Snapshot, id: Drawer): boolean {
@@ -142,7 +153,9 @@ export function useFlips(snap: Snapshot) {
   useEffect(() => {
     let changed = false
     for (const [id, on] of flipped) {
-      const agrees = id.startsWith('drawer:') ? snap.sideDrawers?.[id.slice(7)] === on : !!snap.hiddenProjects?.includes(id) === !on
+      const agrees = id.startsWith('drawer:') ? snap.sideDrawers?.[id.slice(7)] === on
+        : id.startsWith('session:') ? !!snap.pinnedSessions?.includes(id.slice(8)) === on
+        : !!snap.hiddenProjects?.includes(id) === !on
       if (agrees) { flipped.delete(id); changed = true }
     }
     if (changed) flipEmit()
@@ -503,7 +516,7 @@ export function reorder(list: FactoryOnDemand[], id: string, to: 'on' | 'off' | 
 // ---------------------------------------------------------------- sessions
 
 const SESSIONS_PAGE = 40
-const DRAWER_ICON: Record<Drawer, IconName> = { misc: 'repo', autonomous: 'cycle', pages: 'page', settings: 'settings' }
+const DRAWER_ICON: Record<Drawer, IconName> = { autonomous: 'cycle', pages: 'page', settings: 'settings' }
 const STATE_ICON: Partial<Record<Session['status'], IconName>> = { needs_user: 'waits', interrupted: 'pause', done: 'check' }
 const STATE_WORD: Partial<Record<Session['status'], string>> = { working: 'working', needs_user: 'needs you', interrupted: 'paused', done: 'done', idle: 'idle' }
 
@@ -586,6 +599,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
     void call('POST', '/api/factory/drawer', { id, shown: on }).catch(() => flipProject(`drawer:${id}`, null))
   }
   const sessions = sOpen ? sessionRuns(snap.sessions) : []
+  const loose = new Set(sOpen ? looseSessions(snap).map((x) => x.id) : [])
   const showProject = (r: Row, on: boolean) => {
     flipProject(r.id, on)
     void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))
@@ -666,12 +680,14 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
           {/* Every session, the most recent first, each in its repo's colour; a run of the same repo steps its tone,
               band after band (the Autonomous staircase), never a line between them. */}
           {sessions.slice(0, sessionsShown).map(({ s: x, run }) => (
-            <Band key={x.id} step={0} depth={2} className="nx-fx-session" style={{ '--c': `var(--${colors[x.projectId] ?? slotOf(x.projectId)})`, '--run': runTone(run) } as CSSProperties}>
+            <Band key={x.id} step={0} depth={2} className="nx-fx-session" style={{ '--c': `var(--${x.projectId === 'divers' ? slotOf(x.id) : (colors[x.projectId] ?? slotOf(x.projectId))})`, '--run': runTone(run) } as CSSProperties}>
               <button className="nx-fx-main" onClick={() => openSession(x.id)}>
                 <span className="nx-mark">{x.status === 'working' ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name={STATE_ICON[x.status] ?? 'idle'} />}</span>
                 <span className="nx-row-title">{x.title || 'Untitled'}</span>
                 <span className="nx-fx-val">{STATE_WORD[x.status] ?? ''}</span>
               </button>
+              {/* A conversation started with no repo is its own band in the side bar: pinned here, or out. */}
+              {loose.has(x.id) && <Switch small on={sessionPinned(snap, x)} label={`${x.title || 'Untitled'} in the side bar`} onChange={(v2) => pinSession(x.id, v2)} />}
             </Band>
           ))}
           {sessions.length > sessionsShown && (
@@ -688,10 +704,10 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
     </section>
   )
 
-  /** A drawer's band (misc, autonomous, pages, settings): its side bar colour and icon, its switch: on pins it there. */
+  /** A drawer's band (autonomous, pages, settings): its side bar colour and icon, its switch: on pins it there. */
   function drawerBand(id: Drawer, at: number) {
     const on = drawerOn(snap, id)
-    const c = id === 'misc' ? (colors.divers ?? slotOf('divers')) : id === 'autonomous' ? 'h24' : id === 'pages' ? PAGES_SLOT : (colors.__foot ?? 'p3')
+    const c = id === 'autonomous' ? 'h24' : id === 'pages' ? PAGES_SLOT : (colors.__foot ?? 'p3')
     return (
       <Band key={id} step={at} depth={2} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${c})` } as CSSProperties}>
         <span className="nx-fx-main">

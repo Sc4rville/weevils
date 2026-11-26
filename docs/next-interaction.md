@@ -46,9 +46,16 @@ once, and the code follows. Behaviour is never flipped back and forth.
   (Machines), a brain (Intelligence), GitHub's mark (Projects), a lightning bolt (Tempo).
 - **Pins: you choose what is in the side bar** (2026-11-26). A drawer pinned in it wears a small thin pin between its
   icon and its name (the name never moves); unpinned, the pin is gone. weevils and Your factory are always there and
-  never pinned. Every drawer has its switch in Your factory's **Projects**: each project (on pins it with the app's
-  pin, off takes it out), then misc, autonomous, pages and settings (shared/drawers.ts: on pins it, off takes it out;
-  never touched, each keeps its own rule: misc while a conversation needs you, autonomous while it has automations).
+  never pinned. **A repo is in the side bar only while it is pinned**, whatever its conversations do; it stays in Your
+  factory's **Projects**, one switch away (on pins it with the app's pin, off takes it out). autonomous, pages and
+  settings have the same switch there (shared/drawers.ts: on pins it, off takes it out; never touched, each keeps its
+  own rule: autonomous while it has automations, pages and settings always).
+- **No catch-all band** (2026-11-26, « misc » is gone): a conversation started with no repo is its own band, titled by
+  its topic, in a colour of its own, laid out like a repo's head (a speech bubble in the logo's column, its pin, its
+  sign where a repo's working star sits), there while pinned; its switch is on its line in Your factory's Sessions.
+- **Never empty**: a repo or a conversation started with no repo is pinned once, the first time it shows up in use (the
+  last 3 days; a finished conversation is not), never again after it was unpinned (server/auto-pins.ts). An install
+  where repos were already pinned keeps that choice for what was already there.
 - **Sessions** (2026-11-26): a fifth level of Your factory (a speech bubble), every session, the most recent first,
   one band each in its repo's colour, its title and its state in a word; a tap opens it. Bands of one repo in a row
   are told apart by tone alone, the Autonomous staircase going up three steps and back down: never a line or a strip.
@@ -110,7 +117,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
   does for the two that are not pages is written once in `next/src/reach.ts`, and tested. A destination next cannot
   reach draws no button.
 - **Backend stays out of the side bar**: the « auto » folder (where automations without a repo run) is never listed;
-  « Misc » shows only when one of its conversations needs you. The automation loop shows only on the automation that
+  A conversation started with no repo is its own band while pinned (no « Misc » band since 2026-11-26). The automation loop shows only on the automation that
   runs and on the conversation it works in, never on a project nor beside the Autonomous name (2026-11-23).
 - **Anything you open is pushed in from the right edge**: a conversation, « / », « > », a file, a photo, a session
   from a page. It does not matter where it was opened from (the side bar, weevboss's thread, For you or a page).
@@ -180,6 +187,11 @@ once, and the code follows. Behaviour is never flipped back and forth.
   Tapping it is one motion in from the right, weevboss's strip travelling with it.
 - **A session's screen gives the thread the room** (2026-11-22): its head is one compact row (the back chevron, the
   title, the model; no repo name, no logo: its colour says the repo) with no second gap under weevboss's strip.
+- **Every session's thread is weevboss's own** (2026-11-26, replaces the full-width bands and the mirrored prompts of
+  2026-11-21/22): the page's body is weevboss's one reading column (720px, centred on every width, the head's row over
+  it), each message under its author's small name, your words a tinted band reaching the column's right edge, every
+  other message on the column with its small gap, the pause card in the same column. No message has an offset of its
+  own.
 - **Every chat's box to write in is weevboss's own** (2026-11-24, replaces « one line while empty » of 2026-11-22):
   weevboss's thread, a session, an automation's chat, a thread, a talk in your factory. The same roomy box, a band
   from edge to edge, the text on top and its +, mic and send on a row under it, standing the phone's bottom inset

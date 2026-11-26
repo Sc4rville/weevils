@@ -1611,19 +1611,22 @@ button.fy-hit {
 
 /* A post's direct link (shared/post-link.ts), under its words: where what it shows lives, one tap away. */
 .fy-post-link {
-  margin: 0;
+  /* Vertical margins only: .in centres it in the post's column, like the title above (a wide screen included). */
+  margin-block: 0;
   padding-top: 8px;
   font-size: 0.9375rem;
   line-height: 1.35;
 }
 
 .fy-post-limit {
-  margin: 0;
+  /* Vertical margins only: .in centres it in the post's column, like the title above (a wide screen included). */
+  margin-block: 0;
   padding-top: 10px;
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.4;
   opacity: 0.74;
+  overflow-wrap: anywhere;
 }
 
 .fy-post-foot {

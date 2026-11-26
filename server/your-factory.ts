@@ -167,6 +167,12 @@ export interface FactoryState {
   /** The side bar's other drawers (shared/drawers.ts): true pinned (always there, with its pin), false out of it;
    *  absent, its own rule. */
   drawers?: Record<string, boolean>
+  /** Conversations started with no repo, each its own band in the side bar while pinned (2026-11-26). */
+  pinnedSessions?: string[]
+  /** What the side bar has already met (auto-pins.ts): a repo or a loose conversation is pinned once, the first time it
+   *  shows up in use, never again after it was unpinned. */
+  metRepos?: string[]
+  metSessions?: string[]
 }
 
 export interface FactoryDeps {
@@ -379,6 +385,18 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
       const b = await readBody(req)
       if (!DRAWERS.includes(b.id as Drawer) || typeof b.shown !== 'boolean') return json(res, 400, { error: t().cantSwitch })
       d.change((f) => void (f.drawers = { ...(f.drawers ?? {}), [b.id as Drawer]: b.shown as boolean }))
+      json(res, 200, { ok: true })
+    }],
+    // A conversation started with no repo, pinned in the side bar (its own band) or taken out of it.
+    ['POST', /^\/api\/factory\/session$/, async (req, res) => {
+      const b = await readBody(req)
+      const id = String(b.id ?? '')
+      if (!/^[\w-]{1,80}$/.test(id) || typeof b.pinned !== 'boolean') return json(res, 400, { error: t().cantSwitch })
+      d.change((f) => {
+        f.pinnedSessions = (f.pinnedSessions ?? []).filter((x) => x !== id)
+        if (b.pinned) f.pinnedSessions.push(id)
+        f.metSessions = [...new Set([...(f.metSessions ?? []), id])]
+      })
       json(res, 200, { ok: true })
     }],
     // A machine of yours that does not answer: the one line that brings it back, pasted on it (the same computer keeps

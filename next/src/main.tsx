@@ -39,7 +39,7 @@ import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
-import { drawerOn, drawerPinned, FactorySection, NextMachinePage, pinnedProject, shownNow, useFlips } from './factory.tsx'
+import { drawerOn, drawerPinned, FactorySection, looseSessions, NextMachinePage, pinnedProject, sessionPinned, shownNow, slotOf, useFlips } from './factory.tsx'
 import { PinMark } from './pin.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
@@ -135,7 +135,8 @@ const alone = (snap: Snapshot, s: Session) => s.status === 'working' && !!autoOf
  *  bold while something of it works, and its sessions under it. Done sessions stay folded behind the name. */
 /** boss: this is weevils' own repo, one block with weevboss (they are the same thing: weevils improving itself). Its
  *  head is weevboss's logo and « weevils », and a tap opens weevboss's conversation; « / » and « > » stay the repo's. */
-/** Reserved project ids (server/projects.ts): automations' own folder, and Misc. */
+/** Reserved project ids (server/projects.ts): automations' own folder, and the conversations started with no repo
+ *  (never a band of its own: each of them is one, LooseBand). */
 const AUTO_DIR = 'auto'
 const MISC = 'divers'
 
@@ -216,6 +217,26 @@ function ProjectGroup({ snap, project, color, current, open, page, boss, pinned 
   )
 }
 
+/** A conversation started with no repo, as its own band (2026-11-26): laid out like a repo's head (its mark in the
+ *  logo's column, its pin, its title, its sign where a repo's working star sits), in a colour of its own; a tap opens it. */
+function LooseBand({ snap, s, current, open }: { snap: Snapshot; s: Session; current: string | null; open: (id: string | null) => void }) {
+  const sub = s.status === 'needs_user' ? s.attention : s.status === 'working' ? s.now : undefined
+  return (
+    <section className="nx-project nx-loose band" style={{ '--c': `var(--${slotOf(s.id)})` } as React.CSSProperties}>
+      <div className="nx-project-line">
+        <button className={`nx-row nx-project-head nx-repo-row ${live(s) ? 'nx-active' : ''} ${current === s.id ? 'nx-current' : ''}`} onClick={() => open(s.id)}>
+          <span className="nx-repo-mark" aria-hidden><Icon name="bubble" /><PinMark /></span>
+          <span className="nx-row-text">
+            <span className="nx-row-title nx-project-name">{s.title || 'Untitled'}</span>
+            {sub && <span className="nx-row-sub">{sub}</span>}
+          </span>
+          <span className="nx-mark nx-loose-sign"><Sign snap={snap} s={s} /></span>
+        </button>
+      </div>
+    </section>
+  )
+}
+
 /** still: shown again in place (no slide), as the page that covered it leaves. */
 function SideBar({ snap: all, colors, current, open, close, page, openPages, still = false }: {
   still?: boolean
@@ -235,13 +256,13 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
   const last = (p: Project) => Math.max(0, ...snap.sessions.filter((s) => s.projectId === p.id && !s.archived).map((s) => s.lastActivityAt))
   const busy = (p: Project) => snap.sessions.some((s) => s.projectId === p.id && !s.archived && live(s))
   // « auto » is where automations without a repo run: backend, never a project of yours (an automation shows on its
-  // own row below). « Misc » shows only when one of its conversations needs you.
-  // Your factory decides which projects are here (factory.tsx inSideBar): never one switched off there, pinned ones
-  // always, the others while they have conversations; a switch just flipped shows here at once (shownNow).
+  // own row below). Your factory decides what is here (factory.tsx inSideBar): only what is pinned, weevils always; a
+  // switch just flipped shows here at once (shownNow).
   useFlips(snap)
-  // Misc follows its drawer's choice (shared/drawers.ts): pinned, out, or shown while one of its conversations needs you.
+  // No catch-all band (2026-11-26): a conversation started with no repo is its own band below, while pinned. A repo
+  // shows only while it is pinned (factory.tsx inSideBar); weevils always.
   const projects = snap.projects
-    .filter((p) => p.id !== AUTO_DIR && (p.id === MISC ? drawerOn(snap, 'misc') : shownNow(snap, p)))
+    .filter((p) => p.id !== AUTO_DIR && p.id !== MISC && shownNow(snap, p))
     .sort((a, b) => mainProjectRank(a, busy(a) ? 0 : 1) - mainProjectRank(b, busy(b) ? 0 : 1) || last(b) - last(a))
   const self = snap.projects.find((p) => selfProject(p))
   const [autosFolded, setAutosFolded] = useState(() => !!foldPrefs().__automations)
@@ -298,8 +319,11 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
           )}
           {projects.filter((p) => p !== self).map((p) => (
             <ProjectGroup key={p.id} snap={snap} project={p} color={colors[p.id] ?? 'p0'} current={current} open={open} page={page}
-              pinned={p.id === MISC ? drawerPinned(snap, 'misc') : pinnedProject(snap, p)} />
+              pinned={pinnedProject(snap, p)} />
           ))}
+          {/* A conversation started with no repo: its own band, titled by its topic, while pinned (Your factory). */}
+          {looseSessions(snap).filter((s) => sessionPinned(snap, s)).sort((a, b) => (live(b) ? 1 : 0) - (live(a) ? 1 : 0) || b.lastActivityAt - a.lastActivityAt)
+            .map((s) => <LooseBand key={s.id} snap={snap} s={s} current={current} open={open} />)}
           {autosOn && (
             <section className="nx-project nx-autos band" style={{ '--c': 'var(--h24)' } as React.CSSProperties}>
               {/* A tap on its name folds it, like a project's (same motion, kept from one visit to the next). */}

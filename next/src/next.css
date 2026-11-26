@@ -208,20 +208,22 @@ body { overflow: hidden; }
 .nx-project-foot .nx-more { flex: 1; min-width: 0; }
 .nx-project-foot .ch { min-height: 38px; height: 38px; }
 
-/* A session's thread: no lines between messages (2026-11-21: no thin light lines); the bands of who wrote what
-   and the room between messages separate them. weevboss's briefs keep their own tint (styles.css .orch). */
-/* …and every message reads as on weevboss's screen: the same size, the same room, your words a tinted band reaching
-   the right edge, the agent's on the page with the small gap on both sides, each under its author's name. */
-.session-page .session-thread .msg.band { margin-left: var(--pad); }
-.session-page .session-thread .msg.band:not(.tone):not(.orch) { margin-right: var(--pad); }
-/* Someone else prompting this session (weevboss, another agent, an automation, a bot: the server's author of a signed
-   message) is the mirror of your own words: against the left edge (2026-11-22; only yours sit on the right). It keeps
-   its author's name and colour (bits.tsx authorTone). */
-.session-page .session-thread .msg.band.orch { margin-left: 0; margin-right: var(--pad); }
-.session-page .session-thread .msg.band.tone:not(.orch) { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
-.session-page .session-thread .msg > .in { padding-block: 10px; }
-.session-page .session-thread .msg .text { font-size: 1.0625rem; line-height: 1.4; }
-.session-page .session-thread .msg .who { opacity: 1; }
+/* A session's thread is weevboss's own (2026-11-26, replaces the full-width bands of 11-21/22, which drew a ragged « C »
+   and sat off-centre on a wide screen): the page's whole body is weevboss's one reading column (.nx-thread: 720px,
+   centred on every width), the head over it. Each message the same component, the same room between them, your words
+   a tinted band reaching the column's right edge, everyone else's on the column with its small gap on both sides,
+   each under its author's small name. The pause card and any other band of the page stand in that column too. */
+.nx-stage .session-page .page-body > :not(.fill):not(.session-heading) { box-sizing: border-box; width: 100%; max-width: 720px; margin-inline: auto; }
+.nx-stage .session-page .page-head > .in { max-width: 720px; }
+.nx-stage .session-page .session-thread { padding: 4px 0 18px var(--pad); }
+.nx-stage .session-page .session-thread > :has(.msg) ~ :has(.msg) { margin-top: 18px; }
+.nx-stage .session-page .session-thread > :not(:has(.msg.band.tone)) { margin-right: var(--pad); }
+.nx-stage .session-page .session-thread .msg > .in { padding-block: 10px; }
+.nx-stage .session-page .session-thread .msg .text { font-size: 1.0625rem; line-height: 1.4; }
+.nx-stage .session-page .session-thread .msg .who { opacity: 1; margin-bottom: 2px; }
+.nx-stage .session-page .session-thread .msg.band.tone:not(.orch) { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
+/* A band of the page itself (the pause card): from the column's small gap to its right edge, like your words. */
+.nx-stage .session-page .page-body > .msg.band { border-left: var(--pad) solid transparent; background-clip: padding-box; }
 
 /* weevboss's box to write in: a band from one edge to the other, no frame, like the lines of a thread. */
 
@@ -246,6 +248,11 @@ body { overflow: hidden; }
 .nx-pin { position: absolute; right: -5px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; }
 .nx-repo-mark .nx-pin .ic { width: 15px; height: 15px; }
 .nx-repo-mark .nx-pin .ic path { stroke-width: 1.5; }
+/* A conversation started with no repo, its own band (main.tsx LooseBand): a repo's head, its title on the name's line,
+   what it waits for under it, its sign in the working star's column. */
+.nx-loose .nx-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.nx-loose .nx-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-loose .nx-loose-sign { flex: none; margin-left: auto; padding-right: 10px; }
 /* Autonomous at rest: its loop, still and in ink like the other marks; running, the app's AutoMark (colour, travelling). */
 .nx-autos-mark .auto-mark { width: 26px; height: 26px; }
 .nx-autos-mark .auto-mark path { stroke-width: 1.5; }

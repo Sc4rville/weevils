@@ -31,6 +31,9 @@ export interface ForYouMedia {
   /** Pixel size, when the file's header said it (otherwise the app reads it once the media loads). */
   w?: number
   h?: number
+  /** A clip recorded smaller than its frame and padded in flat grey: the picture's part, from the top-left corner, in
+   *  pixels (server/foryou-media.ts paddedArea). The app shows that part only, filling its mockup's screen. */
+  area?: { w: number; h: number }
   /** The mockup asked for with `weevils show --mockup`; otherwise the app picks one (shared/mockup.ts pickMockup). */
   mockup?: Mockup
   /** A clip's first frame (GET /api/foryou/media/<id>/poster), when this machine can draw it: never a black box while

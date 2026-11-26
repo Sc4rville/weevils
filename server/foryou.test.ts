@@ -307,7 +307,7 @@ describe('session results', () => {
       session({ id: 'archived-case', archived: true }),
       session({ id: 't1' }),
       session({ id: 't2', title: '[test] remote probe', machineId: 'pc' }),
-      session({ id: 'h1' }),
+      session({ id: 'h1', origin: 'terminal' }),
       session({ id: 'c1' }),
       session({ id: 'h2', origin: 'headless' }),
       session({ id: 'd1', cwd: '/home/u/.local/share/weevils/titles' }),
@@ -846,6 +846,32 @@ describe('media', () => {
     expect(find(fy, b.id)?.link?.label).toBe('The site')
     expect(() => fy.setLink(b.id, { url: 'http://127.0.0.1:4179/' })).toThrow(M.en.linkLocal)
     expect(() => fy.setLink('nope', { url: 'https://x.dev' })).toThrow(M.en.notFound)
+  })
+
+  it('a file belongs to the session that showed it: never to another one in the same folder, never joined under a new caption', () => {
+    const fy = make()
+    // Two agents in one checkout; the landing one runs through weevils' SDK pump only (its transcript says « sdk »).
+    transcripts.set('lp', { headless: true })
+    snap.sessions = [session({ id: 'lp', lastActivityAt: T0 - MIN }), session({ id: 'th', lastActivityAt: T0 })]
+    for (const f of ['lp.mp4', 'thread.compare.png', 'more.png', 'x.png']) shelf.known.add(`/home/u/projects/myshop/${f}`)
+    const cwd = '/home/u/projects/myshop'
+    const a = fy.addMedia({ path: 'lp.mp4', caption: 'The new landing', cwd, source: 'lp', evidence: { limits: ['not tried in an in-app browser'] } })
+    expect(a).toMatchObject({ sessionId: 'lp', title: 'The new landing' })
+    now = T0 + 20_000
+    const b = fy.addMedia({ path: 'thread.compare.png', caption: 'A conversation always shows its history', cwd, source: 'th' })
+    expect(b.id).not.toBe(a.id)
+    expect(b).toMatchObject({ sessionId: 'th', title: 'A conversation always shows its history' })
+    expect(b.media).toHaveLength(1)
+    expect(b.evidence?.limits ?? []).not.toContain('not tried in an in-app browser')
+    // The same session, a new caption: a new post. No caption: the same post.
+    now += 10_000
+    const c = fy.addMedia({ path: 'more.png', caption: 'Something else', cwd, source: 'th' })
+    expect(c.id).not.toBe(b.id)
+    expect(fy.addMedia({ path: 'x.png', cwd, source: 'th' }).id).toBe(c.id)
+    expect(find(fy, b.id)?.media).toHaveLength(1)
+    // A caller that names a session this stream does not take is never given another one by its folder.
+    const d = fy.addMedia({ path: 'x.png', caption: 'From a probe', cwd, source: 'unknown-session' })
+    expect(d.sessionId).toBeUndefined()
   })
 
   it('one item holds six files at most; no session: weevboss from its folder, else weevils', () => {

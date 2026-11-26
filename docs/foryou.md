@@ -173,9 +173,19 @@ shown as recorded), read again whenever the file changes:
 `weevils show <path> ["caption"]` registers a file: it must exist under the projects roots, the inbox or weevils'
 data, be an image or a video by extension and sniffed header, and stay under a size cap (image 25 MB, video 400 MB).
 The store keeps `{ id, path, type, bytes, mtime }`; the route serves only registered ids, streams with
-`206 Partial Content`, and never follows a path from the request. The calling session is found from `$WV_SESSION` /
-the cwd when present, so the item knows its project. Files cited in the closing message of a turn are registered the
-same way (same checks, at most 4, dot-directories refused).
+`206 Partial Content`, and never follows a path from the request. The calling session is the one that ran the
+command (its `CLAUDE_CODE_SESSION_ID`…); only a caller that names none is matched by its folder, so two agents in one
+checkout never get each other's files. A session weevils runs in its own pane counts as one even when its transcript
+only comes through the SDK. Files shown by the same session within two minutes join one post only when they bring no
+new caption: a new caption is a new post, with its own evidence and limits. Files cited in the closing message of a
+turn are registered the same way (same checks, at most 4, dot-directories refused).
+
+**Padded clips.** A browser recorder asked for a frame larger than the page at 2× or 3× density draws the page in
+the top-left corner and fills the rest with flat grey. The shelf looks for that once per version of a clip (one frame,
+`paddedArea`: the same neutral grey on the right and the bottom, both sides cut by the same factor) and records the
+picture's part as `area`; the app sizes the mockup to it and draws the clip larger from the corner, so the picture
+alone fills the screen, and the poster is cut to it. Any other clip, a dark app with an empty bottom included, is shown
+whole.
 
 **Mockups** (`shared/mockup.ts`, `src/ui/foryou-mockup.tsx`). In a post, every picture or clip sits in a mockup drawn
 in CSS, sized to the post, on the post's own colour (no box around it): `phone` (an app on a phone, slightly turned,

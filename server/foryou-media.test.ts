@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { tr } from './i18n.ts'
 import M from './i18n/foryou-media.ts'
-import { MAX_ENTRIES, MediaRefused, MediaShelf, canDrawPosters, citedPaths, disposition, imageSize, mimeOf, parseRange, sniff, videoSize } from './foryou-media.ts'
+import { MAX_ENTRIES, MediaRefused, MediaShelf, canDrawPosters, citedPaths, disposition, imageSize, mimeOf, paddedArea, parseRange, sniff, videoSize } from './foryou-media.ts'
 
 // The media shelf of « for you » (server/foryou-media.ts): temp folders only, never the real projects or data.
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(40, 1)])
@@ -239,6 +239,51 @@ describe('a clip\'s poster', () => {
       expect(file && fs.readFileSync(file).subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]))
       expect(await shelf.poster(v.id)).toBe(file)
       expect(await shelf.poster('nope')).toBeNull()
+    } finally {
+      fs.rmSync(top, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('a clip padded in grey by its recorder', () => {
+  /** w × h, the picture (a colour) in the top-left fw × fh, the rest flat `pad`. */
+  const frame = (w: number, h: number, fw: number, fh: number, pick: (x: number, y: number) => number[], pad = [128, 128, 128]) => {
+    const b = new Uint8Array(w * h * 3)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) b.set(x < w * fw && y < h * fh ? pick(x, y) : pad, (y * w + x) * 3)
+    return b
+  }
+  const app = (x: number, y: number) => (y % 7 < 3 ? [90, 40, 200] : [20, 20, 30 + (x % 5)])
+  it('finds the picture in the top-left corner when both sides are cut alike (2×, 3×)', () => {
+    expect(paddedArea(frame(200, 432, 0.5, 0.5, app), 200, 432)).toEqual({ fw: 0.5, fh: 0.5 })
+    expect(paddedArea(frame(198, 429, 1 / 3, 1 / 3, app), 198, 429)).toEqual({ fw: 1 / 3, fh: 1 / 3 })
+  })
+  it('leaves alone a whole picture, a dark app with an empty bottom, and a picture cut on one side only', () => {
+    expect(paddedArea(frame(200, 432, 1, 1, app), 200, 432)).toBeNull()
+    expect(paddedArea(frame(200, 432, 1, 0.5, app, [12, 12, 16]), 200, 432)).toBeNull()
+    expect(paddedArea(frame(200, 432, 0.5, 0.5, app, [12, 12, 16]), 200, 432)).toBeNull()
+    expect(paddedArea(frame(200, 432, 1, 0.5, app), 200, 432)).toBeNull()
+    expect(paddedArea(frame(200, 432, 0.5, 0.8, app), 200, 432)).toBeNull()
+  })
+  it('the shelf says which part to show, and the poster is cut to it', async () => {
+    if (!canDrawPosters()) return
+    const top = fs.mkdtempSync(path.join(os.tmpdir(), 'fy-pad-'))
+    try {
+      const clipFile = path.join(top, 'rec.mp4')
+      // A 160 × 320 frame whose top-left 80 × 160 holds the picture, the rest Playwright's grey.
+      expect(spawnSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=s=80x160:d=1.5', '-vf', 'pad=160:320:0:0:color=0x808080', '-pix_fmt', 'yuv420p', clipFile]).status).toBe(0)
+      const whole = path.join(top, 'whole.mp4')
+      expect(spawnSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=s=160x320:d=1.5', '-pix_fmt', 'yuv420p', whole]).status).toBe(0)
+      const shelf = new MediaShelf({ file: path.join(top, 'data', 'media.json'), roots: [top] })
+      const v = shelf.add(clipFile)
+      const ok = shelf.add(whole)
+      await shelf.measure(v)
+      await shelf.measure(ok)
+      expect(shelf.view(shelf.get(v.id)!).area).toEqual({ w: 80, h: 160 })
+      expect(shelf.view(shelf.get(ok.id)!).area).toBeUndefined()
+      const poster = await shelf.poster(v.id)
+      expect(poster).toMatch(/-80x160\.jpg$/)
+      // Kept across a restart: looked for once per version of the file.
+      expect(new MediaShelf({ file: path.join(top, 'data', 'media.json'), roots: [top] }).view(shelf.get(v.id)!).area).toEqual({ w: 80, h: 160 })
     } finally {
       fs.rmSync(top, { recursive: true, force: true })
     }

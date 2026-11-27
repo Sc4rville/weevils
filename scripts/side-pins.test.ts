@@ -24,10 +24,10 @@ describe('the pin', () => {
   it('sits in the icon of every drawer that can be pinned, never on weevils', () => {
     const main = fs.readFileSync(path.join(import.meta.dirname, '../next/src/main.tsx'), 'utf8')
     const pages = fs.readFileSync(path.join(import.meta.dirname, '../next/src/pages.tsx'), 'utf8')
-    expect(main.match(/<PinMark /g)).toHaveLength(4) // a repo, a conversation with no repo, autonomous, settings
+    expect(main.match(/<PinMark /g)).toHaveLength(3) // a repo, a conversation with no repo, autonomous
     expect(pages).toMatch(/<Icon name="page" \/>\{pinned && <PinMark name="pages" onUnpin=\{onUnpin\} \/>\}/)
     // A tap on the pin unpins: every pin of the side bar carries what takes its drawer out.
-    expect(main.match(/<PinMark [^\n>]*onUnpin=/g)).toHaveLength(4)
+    expect(main.match(/<PinMark [^\n>]*onUnpin=/g)).toHaveLength(3)
     const pin = fs.readFileSync(path.join(import.meta.dirname, '../next/src/pin.tsx'), 'utf8')
     expect(pin).toMatch(/e\.stopPropagation\(\)/)
     const css = fs.readFileSync(path.join(import.meta.dirname, '../next/src/next.css'), 'utf8')
@@ -49,7 +49,13 @@ describe('every drawer, chosen in Your factory', () => {
     expect(drawerShown(undefined, 'requests', { autonomous: false, requests: 3 })).toBe(true)
     expect(drawerShown(undefined, 'autonomous', facts)).toBe(false)
     expect(drawerShown(undefined, 'pages', facts)).toBe(true)
-    expect(drawerShown(undefined, 'settings', facts)).toBe(true)
+  })
+  it('settings is no drawer: always in the side bar like weevils, no pin on it, no switch for it, whatever was kept', () => {
+    expect(DRAWERS).not.toContain('settings')
+    const main = fs.readFileSync(path.join(import.meta.dirname, '../next/src/main.tsx'), 'utf8')
+    // Drawn with no condition before it and no pin in its mark.
+    expect(main).toMatch(/\n\s*<div className="nx-settings"><FootBand toNext=\{false\} factory mark=\{<span className="nx-repo-mark"><Icon name="settings" \/><\/span>\} \/><\/div>/)
+    expect(main).not.toMatch(/'settings'\)/)
   })
   it('pinned, always there; out, never', () => {
     for (const d of DRAWERS) expect(drawerShown(true, d, facts)).toBe(true)
@@ -77,7 +83,6 @@ describe('every drawer, chosen in Your factory', () => {
     expect(drawerPinned(s, 'pages')).toBe(true)
     flipProject('drawer:pages', false)
     expect(drawerOn(s, 'pages')).toBe(false)
-    expect(drawerOn(snap({ sideDrawers: { settings: false } }), 'settings')).toBe(false)
   })
 })
 

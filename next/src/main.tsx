@@ -417,7 +417,8 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
           <FactorySection snap={snap} colors={colors} page={page} toBoss={close} openSession={(id) => open(id)} />
           {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
               shows here too; machines, subscriptions and Tempo live in Your factory; no line to the classic app (an address away). */}
-          {drawerOn(snap, 'settings') && <div className="nx-settings"><FootBand toNext={false} factory mark={<span className="nx-repo-mark"><Icon name="settings" />{drawerPinned(snap, 'settings') && <PinMark name="settings" onUnpin={() => showDrawer('settings', false)} />}</span>} /></div>}
+          {/* Always there, like weevils: no pin, no switch (2026-11-27). It is the way back to everything else. */}
+          <div className="nx-settings"><FootBand toNext={false} factory mark={<span className="nx-repo-mark"><Icon name="settings" /></span>} /></div>
         </div>
       </motion.nav>
     </>

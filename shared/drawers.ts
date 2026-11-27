@@ -1,13 +1,14 @@
 // The side bar's drawers other than the repos and the loose conversations (weevils next, main.tsx SideBar): each one pinned (always there, its
-// small pin between its icon and its name), out of it, or left to its own rule. weevils and Your factory are always
-// there (Your factory is where this is chosen), never pinned. Projects follow the same idea with the app's pins
-// (next/src/factory.tsx inSideBar).
+// small pin between its icon and its name), out of it, or left to its own rule. weevils, Your factory and settings are
+// always there, never pinned, with no switch: Your factory is where this is chosen, and settings is the way back to
+// everything else (2026-11-27: it was a drawer for a day, one stray tap on its pin took it away; a choice kept for it
+// from then is ignored). Projects follow the same idea with the app's pins (next/src/factory.tsx inSideBar).
 
-export const DRAWERS = ['requests', 'autonomous', 'pages', 'settings'] as const
+export const DRAWERS = ['requests', 'autonomous', 'pages'] as const
 export type Drawer = (typeof DRAWERS)[number]
 
 /** What the drawers hold now, for their own rule: requests shows while there is an open request, autonomous while it
- *  has automations, pages and settings always. requests: how many are open, absent where weevboss keeps no ledger:
+ *  has automations, pages always. requests: how many are open, absent where weevboss keeps no ledger:
  *  no band there whatever was chosen, it would open on nothing. A server from before this drawer still shows the band
  *  while a request is open, and takes no choice for it (Your factory offers no switch there).
  *  (No catch-all drawer since 2026-11-26: a conversation started with no repo is its own band.) */

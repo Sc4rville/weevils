@@ -131,6 +131,8 @@ describe('what the factory switches', () => {
     await route(d, 'POST', '/api/factory/drawer', { id: 'requests', shown: false })
     expect(d.st.drawers).toEqual({ pages: false, autonomous: true, requests: false })
     expect((await route(d, 'POST', '/api/factory/drawer', { id: 'misc', shown: true })).status).toBe(400)
+    // settings is always in the side bar: it cannot be taken out.
+    expect((await route(d, 'POST', '/api/factory/drawer', { id: 'settings', shown: false })).status).toBe(400)
     expect((await route(d, 'POST', '/api/factory/drawer', { id: 'weevils', shown: false })).status).toBe(400)
     expect((await route(d, 'POST', '/api/factory/drawer', { id: 'pages' })).status).toBe(400)
   })

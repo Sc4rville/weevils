@@ -256,6 +256,11 @@ body { overflow: hidden; }
 .nx-pin.nx-pin-tap { pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .nx-pin.nx-pin-tap::before { content: ''; position: absolute; inset: -16px -9px; }
 .nx-pin.nx-pin-tap:active { opacity: .5; }
+/* A first tap asks (pin.tsx): the pin tilts and « unpin? » stands beside it, over the start of the name, in the band's
+   own two colours swapped, so it reads in every theme. A second tap on either one unpins; anything else is a no. */
+.nx-pin.nx-pin-asking { z-index: 3; }
+.nx-pin.nx-pin-asking .ic { transform: rotate(35deg); }
+.nx-pin-ask { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); white-space: nowrap; padding: 7px 9px; font-size: 14px; line-height: 1; font-weight: 400; background: var(--ink); color: var(--c, var(--bg, Canvas)); }
 .nx-repo-mark .nx-pin .ic { width: 15px; height: 15px; }
 .nx-repo-mark .nx-pin .ic path { stroke-width: 1.5; }
 /* A conversation started with no repo, its own band (main.tsx LooseBand): a repo's head, its title on the name's line,

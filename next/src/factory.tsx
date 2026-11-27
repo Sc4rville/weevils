@@ -120,7 +120,7 @@ export function showProject(r: { id: string; repos: string[] }, on: boolean) {
   flipProject(r.id, on)
   void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))
 }
-/** A drawer (autonomous, pages, settings) pinned or taken out, shown at once. */
+/** A drawer (requests, autonomous, pages) pinned or taken out, shown at once. */
 export function showDrawer(id: Drawer, on: boolean) {
   flipProject(`drawer:${id}`, on)
   void call('POST', '/api/factory/drawer', { id, shown: on }).catch(() => flipProject(`drawer:${id}`, null))
@@ -528,7 +528,7 @@ export function reorder(list: FactoryOnDemand[], id: string, to: 'on' | 'off' | 
 // ---------------------------------------------------------------- sessions
 
 const SESSIONS_PAGE = 40
-const DRAWER_ICON: Record<Drawer, IconName> = { requests: 'bang', autonomous: 'cycle', pages: 'page', settings: 'settings' }
+const DRAWER_ICON: Record<Drawer, IconName> = { requests: 'bang', autonomous: 'cycle', pages: 'page' }
 const STATE_ICON: Partial<Record<Session['status'], IconName>> = { needs_user: 'waits', interrupted: 'pause', done: 'check' }
 const STATE_WORD: Partial<Record<Session['status'], string>> = { working: 'working', needs_user: 'needs you', interrupted: 'paused', done: 'done', idle: 'idle' }
 
@@ -715,7 +715,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
     </section>
   )
 
-  /** A drawer's band (requests, autonomous, pages, settings): its side bar colour and icon, its switch: on pins it there. */
+  /** A drawer's band (requests, autonomous, pages; never settings, always in the side bar): its side bar colour and icon, its switch: on pins it there. */
   function drawerBand(id: Drawer, at: number) {
     const on = drawerOn(snap, id)
     const c = id === 'autonomous' ? 'h24' : id === 'pages' ? PAGES_SLOT : (colors.__foot ?? 'p3')

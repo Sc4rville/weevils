@@ -6,7 +6,7 @@ import { setLang } from '../../src/i18n'
 
 const app = { snap: { main: [] } }
 vi.mock('../../src/ui/app-context', () => ({ useApp: () => app }))
-const explain = vi.fn(async () => ({ text: 'It opens the post.' }))
+const explain = vi.fn(async (_body: unknown) => ({ text: 'It opens the post.' }))
 vi.mock('../../src/api', () => ({ api: { explain: (b: unknown) => explain(b) } }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

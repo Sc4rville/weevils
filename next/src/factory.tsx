@@ -223,6 +223,24 @@ export function productGroups(snap: Snapshot, rows: Row[], github: { name: strin
   }).sort((a, b) => b.at - a.at || a.name.localeCompare(b.name))
 }
 
+/** What Projects lists at once and what waits behind « + »: a product weevils knows or the person chose about (a
+ *  project, a repo pinned, one unpinned) is always listed, so an unpinned repo stays one tap from its pin and never
+ *  slips behind « Add a project » (2026-11-27); their other GitHub repos fill the list up to PRODUCTS_SHOWN. The most
+ *  recently active first in both. */
+export function splitProducts(snap: Snapshot, groups: ProductRow[]): [ProductRow[], ProductRow[]] {
+  const chosen = new Set([...snap.pinnedRepos, ...(snap.hiddenProjects ?? [])])
+  const kept = (g: ProductRow) => g.self || !!g.project || chosen.has(g.id) || g.repos.some((r) => chosen.has(r))
+  let room = PRODUCTS_SHOWN - groups.filter(kept).length
+  const shown: ProductRow[] = []
+  const rest: ProductRow[] = []
+  for (const g of groups) {
+    if (kept(g)) shown.push(g)
+    else if (room-- > 0) shown.push(g)
+    else rest.push(g)
+  }
+  return [shown, rest]
+}
+
 // ---------------------------------------------------------------- small parts
 
 /** The switch: a plain rectangle and its square knob, in the band's own ink. */
@@ -649,10 +667,11 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
   // Already there: every row, and every project weevils knows (its own block at the top included).
   const known = new Set([...rows, ...snap.projects].flatMap((r) => [r.id, ...r.repos]))
   // One row per product, the most recently active first: what weevils knows and the person's GitHub repos, each
-  // product's other repos folded inside it. The first ones listed, the rest behind « + » with this machine's folders.
+  // product's other repos folded inside it. Those it knows always listed, the rest behind « + » with this machine's folders.
   const groups = productGroups(snap, rows, github ?? [])
   for (const g of groups) for (const r of g.repos) known.add(r)
-  const others: ProductRow[] = [...groups.slice(PRODUCTS_SHOWN), ...(mothers ?? []).filter((m) => !known.has(m.id) && !m.repos.some((r) => known.has(r)) && !storageRepo({ name: m.id })).map((m) => ({ id: m.id, name: m.name, repos: m.repos, project: null, parts: m.repos.filter((r) => r !== m.id), at: 0, self: false }))]
+  const [listed, overflow] = splitProducts(snap, groups)
+  const others: ProductRow[] = [...overflow, ...(mothers ?? []).filter((m) => !known.has(m.id) && !m.repos.some((r) => known.has(r)) && !storageRepo({ name: m.id })).map((m) => ({ id: m.id, name: m.name, repos: m.repos, project: null, parts: m.repos.filter((r) => r !== m.id), at: 0, self: false }))]
   const sessions = sOpen ? sessionRuns(snap.sessions) : []
 
   // The staircase: every band one small step from the one above it, counting only what is unfolded (as Autonomous).
@@ -717,7 +736,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
         </Collapse>
         <LevelHead step={step()} name="Projects" mark="github" open={pOpen} onFold={pFold} />
         <Collapse open={pOpen}>
-          {groups.slice(0, PRODUCTS_SHOWN).map((r) => projectBand(r, step(pOpen), 2))}
+          {listed.map((r) => projectBand(r, step(pOpen), 2))}
           <PlusBand step={step(pOpen)} label="Add a project" open={more} onClick={() => setMore((m) => !m)} />
           <Collapse open={more}>
             {others.map((r) => projectBand(r, step(pOpen && more), 3))}

@@ -2,7 +2,7 @@
 // weevils' own storage, the most recently active first.
 import { expect, it } from 'vitest'
 import type { Snapshot } from '../../shared/api.ts'
-import { productGroups } from './factory.tsx'
+import { productGroups, splitProducts } from './factory.tsx'
 
 const NOW = 1_800_000_000_000
 const H = 3600_000
@@ -32,4 +32,16 @@ it('a product with no mother repo of its name still reads as one row', () => {
 it('a product of one repo reads as that repo, never cut into a name and a part', () => {
   const g = productGroups({ projects: [] } as unknown as Snapshot, [], [gh('cash-tempo', 1), gh('site.com', 2)])
   expect(g.map((x) => [x.name, x.parts.length])).toEqual([['cash-tempo', 0], ['site.com', 0]])
+})
+
+it('an unpinned repo stays listed, never behind « + », however old its last push', () => {
+  const many = Array.from({ length: 14 }, (_, i) => gh(`repo${i}`, i + 1))
+  const off = { ...snap, pinnedRepos: [], hiddenProjects: ['old'] } as unknown as Snapshot
+  const g = productGroups(off, [{ id: 'notes', name: 'notes', repos: ['notes'], project: snap.projects[1] }, { id: 'old', name: 'old', repos: ['old'], project: null }], [...many, gh('old', 900)])
+  const [listed, rest] = splitProducts(off, g)
+  expect(listed.map((x) => x.name)).toContain('old')
+  expect(listed.map((x) => x.name)).toContain('notes')
+  expect(listed).toHaveLength(12)
+  expect(rest.map((x) => x.name)).not.toContain('old')
+  expect(listed.length + rest.length).toBe(g.length)
 })

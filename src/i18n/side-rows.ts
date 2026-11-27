@@ -12,6 +12,8 @@ export default defineMessages({
     unpin: 'Désépingler',
     unpinSure: 'Confirmer : désépingler',
     unpinAsk: 'retirer ?',
+    // The strip of recent conversations started with no repo, under the projects (next/src/main.tsx LooseStrip).
+    looseStrip: 'sessions isolées',
   },
   en: {
     untitled: 'Untitled',
@@ -21,5 +23,6 @@ export default defineMessages({
     unpin: 'Unpin',
     unpinSure: 'Confirm: unpin',
     unpinAsk: 'unpin?',
+    looseStrip: 'standalone sessions',
   },
 })

@@ -167,12 +167,15 @@ export interface FactoryState {
   /** The side bar's other drawers (shared/drawers.ts): true pinned (always there, with its pin), false out of it;
    *  absent, its own rule. */
   drawers?: Record<string, boolean>
-  /** Conversations started with no repo, each its own band in the side bar while pinned (2026-11-26). */
+  /** Kept from 2026-11-26, read by no side bar since 2026-11-27: a conversation started with no repo is never pinned,
+   *  the side bar's strip shows it while recent. */
   pinnedSessions?: string[]
-  /** What the side bar has already met (auto-pins.ts): a repo or a loose conversation is pinned once, the first time it
-   *  shows up in use, never again after it was unpinned. */
+  /** What the side bar has already met (auto-pins.ts): a repo is pinned once, the first time it shows up in use, never
+   *  again after it was unpinned. */
   metRepos?: string[]
   metSessions?: string[]
+  /** A fresh install's most recent GitHub repos were pinned, or it had choices of its own (core.ts githubFirstPins). */
+  githubPinned?: boolean
 }
 
 export interface FactoryDeps {

@@ -44,7 +44,7 @@ import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
 import { droppedNow, onOffNow, useAutoFlips } from './auto-state.ts'
-import { drawerOn, drawerPinned, FactorySection, looseSessions, NextMachinePage, pinnedProject, pinSession, sessionPinned, showDrawer, showProject, shownNow, slotOf, useFlips } from './factory.tsx'
+import { drawerOn, drawerPinned, FactorySection, looseSessions, looseShown, NextMachinePage, pinnedProject, showDrawer, showProject, shownNow, useFlips } from './factory.tsx'
 import { PinMark } from './pin.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
@@ -145,7 +145,7 @@ const alone = (snap: Snapshot, s: Session) => s.status === 'working' && !!autoOf
 /** boss: this is weevils' own repo, one block with weevboss (they are the same thing: weevils improving itself). Its
  *  head is weevboss's logo and « weevils », and a tap opens weevboss's conversation; « / » and « > » stay the repo's. */
 /** Reserved project ids (server/projects.ts): automations' own folder, and the conversations started with no repo
- *  (never a band of its own: each of them is one, LooseBand). */
+ *  (never a band, never among the projects: the side bar's strip, LooseStrip). */
 const AUTO_DIR = 'auto'
 const MISC = 'divers'
 /** The automations whose runs are unfolded under their row, as `<project id>/<automation id>`. Kept outside the
@@ -274,24 +274,29 @@ export function ProjectGroup({ snap, project, color, current, open, page, boss, 
   )
 }
 
-/** A conversation started with no repo, as its own band (2026-11-26): laid out like a repo's head (its mark in the
- *  logo's column, its pin, its title, its sign where a repo's working star sits), in a colour of its own; a tap opens it. */
-export function LooseBand({ snap, s, current, open }: { snap: Snapshot; s: Session; current: string | null; open: (id: string | null) => void }) {
-  // Over, with a question left in its last message: that question under its title, and the mark of one that waits.
-  const sub = sessionSub(s)
+/** The conversations started with no repo (2026-11-27): one quiet strip of their own, under the projects and never
+ *  looking like one (no band, no colour, no pin). Only the person's own, recent or still open (factory.tsx
+ *  looseShown); after that they are in Your factory's Sessions. A tap opens one. */
+export function LooseStrip({ snap, current, open }: { snap: Snapshot; current: string | null; open: (id: string | null) => void }) {
   const t = useT(SR)
+  const list = looseSessions(snap).filter((s) => looseShown(s, snap.now))
+    .sort((a, b) => (live(b) ? 1 : 0) - (live(a) ? 1 : 0) || b.lastActivityAt - a.lastActivityAt)
+  if (!list.length) return null
   return (
-    <section className="nx-project nx-loose band" style={{ '--c': `var(--${slotOf(s.id)})` } as React.CSSProperties}>
-      <div className="nx-project-line">
-        <button className={`nx-row nx-project-head nx-repo-row ${live(s) ? 'nx-active' : ''} ${current === s.id ? 'nx-current' : ''}`} onClick={() => open(s.id)}>
-          <span className="nx-repo-mark"><Icon name="bubble" /><PinMark name={s.title || 'Untitled'} onUnpin={() => pinSession(s.id, false)} /></span>
-          <span className="nx-row-text">
-            <span className="nx-row-title nx-project-name">{s.title || t.untitled}</span>
-            {sub && <span className="nx-row-sub">{sub}</span>}
-          </span>
-          <span className="nx-mark nx-loose-sign"><Sign snap={snap} s={s} /></span>
-        </button>
-      </div>
+    <section className="nx-loose-strip" aria-label={t.looseStrip}>
+      <div className="nx-loose-head">{t.looseStrip}</div>
+      {list.map((s) => {
+        const sub = sessionSub(s)
+        return (
+          <button key={s.id} className={`nx-row nx-sub ${live(s) ? 'nx-active' : ''} ${current === s.id ? 'nx-current' : ''}`} onClick={() => open(s.id)}>
+            <span className="nx-mark"><Sign snap={snap} s={s} /></span>
+            <span className="nx-row-text">
+              <span className="nx-row-title">{s.title || t.untitled}</span>
+              {sub && <span className="nx-row-sub">{sub}</span>}
+            </span>
+          </button>
+        )
+      })}
     </section>
   )
 }
@@ -382,9 +387,8 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
             <ProjectGroup key={p.id} snap={snap} project={p} color={colors[p.id] ?? 'p0'} current={current} open={open} page={page}
               pinned={pinnedProject(snap, p)} />
           ))}
-          {/* A conversation started with no repo: its own band, titled by its topic, while pinned (Your factory). */}
-          {looseSessions(snap).filter((s) => sessionPinned(snap, s)).sort((a, b) => (live(b) ? 1 : 0) - (live(a) ? 1 : 0) || b.lastActivityAt - a.lastActivityAt)
-            .map((s) => <LooseBand key={s.id} snap={snap} s={s} current={current} open={open} />)}
+          {/* The conversations started with no repo: one strip of their own, recent ones only, never a project. */}
+          <LooseStrip snap={snap} current={current} open={open} />
           {autosOn && (
             <section className="nx-project nx-autos band" style={{ '--c': 'var(--h24)' } as React.CSSProperties}>
               {/* A tap on its name folds it, like a project's (same motion, kept from one visit to the next). */}

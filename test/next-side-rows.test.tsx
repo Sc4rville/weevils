@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// The session rows of a project band in next's side bar (next/src/main.tsx ProjectGroup, LooseBand), as drawn: an
+// The session rows of a project band in next's side bar (next/src/main.tsx ProjectGroup, LooseStrip), as drawn: an
 // automation that reruns is one row that unfolds its runs, and a session that is over but still asks something wears
 // the mark of one that waits, with its question, among the active rows; the coloured band and the bold stay for a
 // live wait. The rules themselves are pinned in next/src/side-rows.test.ts.
@@ -20,7 +20,7 @@ vi.mock('../src/api', () => ({ api: {} }))
 localStorage.setItem('weevils-language', 'en')
 const { MotionGlobalConfig } = await import('motion/react')
 MotionGlobalConfig.skipAnimations = true
-const { ProjectGroup, LooseBand } = await import('../next/src/main.tsx')
+const { ProjectGroup, LooseStrip } = await import('../next/src/main.tsx')
 const { setLang } = await import('../src/i18n/index.ts')
 
 const NOW = Date.now()
@@ -182,10 +182,10 @@ it('in French, the count and the fold of finished rows are French', () => {
 })
 
 it('a conversation with no repo that is over and still asks: its question under its title, the mark of one that waits', () => {
-  const snap = { now: NOW, projects: [], sessions: [], optimizers: [] } as unknown as Snapshot
   const draw = (x: Session) => {
-    act(() => root.render(<LooseBand snap={snap} s={x} current={null} open={(id) => opened.push(id)} />))
-    return { sub: host.querySelector('.nx-row-sub')?.textContent ?? '', mark: host.querySelector('.nx-loose-sign')!.innerHTML }
+    const snap = { now: NOW, projects: [], sessions: [{ ...x, projectId: 'divers', messageCount: 4, origin: 'terminal' }], optimizers: [] } as unknown as Snapshot
+    act(() => root.render(<LooseStrip snap={snap} current={null} open={(id) => opened.push(id)} />))
+    return { sub: host.querySelector('.nx-loose-strip .nx-row-sub')?.textContent ?? '', mark: host.querySelector('.nx-loose-strip .nx-mark')!.innerHTML }
   }
   const waits = draw(s('w', 5, { status: 'needs_user', attention: 'Allow the push?' }))
   const plain = draw(s('p', 5))
@@ -194,4 +194,16 @@ it('a conversation with no repo that is over and still asks: its question under 
   expect(asks.mark).toBe(waits.mark)
   expect(plain).toMatchObject({ sub: '' })
   expect(plain.mark).not.toBe(waits.mark)
+})
+
+it('the strip of conversations with no repo: one label, plain rows, never a test run nor an old one', () => {
+  const snap = { now: NOW, projects: [], optimizers: [], sessions: [
+    s('mine', 5, { projectId: 'divers', messageCount: 4, origin: 'terminal' }),
+    s('test', 5, { projectId: 'divers', messageCount: 4, origin: 'terminal', cwd: '/tmp/warmtest' }),
+    s('old', 60 * 30, { projectId: 'divers', messageCount: 4, origin: 'terminal' }),
+  ] } as unknown as Snapshot
+  act(() => root.render(<LooseStrip snap={snap} current={null} open={(id) => opened.push(id)} />))
+  expect(host.querySelector('.nx-loose-head')?.textContent).toBeTruthy()
+  expect([...host.querySelectorAll('.nx-loose-strip .nx-row-title')].map((e) => e.textContent)).toEqual(['title of mine'])
+  expect(host.querySelector('.nx-project, .band')).toBeNull()
 })

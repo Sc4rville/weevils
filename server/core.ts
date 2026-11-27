@@ -34,7 +34,7 @@ import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, 
 import { Remote, parseRemotes } from './remotes.ts'
 import { weevbookDetail } from './offline-machines.ts'
 import { SeenThreads } from './seen-threads.ts'
-import { autoPins } from './auto-pins.ts'
+import { autoPins, firstGithubPins } from './auto-pins.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
@@ -558,23 +558,33 @@ export class Weevils {
     this.snap = null
     this.bump()
   }
-  /** The side bar shows what is pinned: a repo or a loose conversation met in use is pinned once (auto-pins.ts). */
+  /** The side bar shows what is pinned: a repo met in use is pinned once (auto-pins.ts). A conversation started with no
+   *  repo is never pinned: the side bar's strip shows it while recent. */
   autoPinTick(now = Date.now()) {
     const snap = this.snapshot()
     const f = this.factory
     const projects = snap.projects.filter((p) => p.id !== MISC && p.id !== 'auto' && !/^auto-[0-9a-f]{10}$/.test(p.id) && p.kind !== 'installation' && !f.hidden.includes(p.id))
-    // A page's conversation lives in the pages band, a machine's on its page: neither is a loose conversation.
-    const elsewhere = new Set([...(snap.pageBand ?? []).flatMap((b) => (b.session ? [b.session] : [])), ...Object.values(f.talks)])
-    const loose = snap.sessions.filter((x) => x.projectId === MISC && !elsewhere.has(x.id))
-    const r = autoPins(projects, loose, { repos: f.metRepos ?? [], sessions: f.metSessions ?? [], firstRun: f.metRepos === undefined }, { repos: this.pinnedRepos, sessions: f.pinnedSessions ?? [] }, now)
-    const changed = r.pinRepos.length || r.pinSessions.length || f.metRepos === undefined || r.met.repos.length !== f.metRepos.length || r.met.sessions.length !== (f.metSessions ?? []).length
+    const r = autoPins(projects, { repos: f.metRepos ?? [], firstRun: f.metRepos === undefined }, this.pinnedRepos, now)
+    const changed = r.pinRepos.length || f.metRepos === undefined || r.met.repos.length !== f.metRepos.length
     if (!changed) return
     for (const repo of r.pinRepos) if (/^[\w.@+-]+$/.test(repo) && !this.pinnedRepos.includes(repo)) this.pinnedRepos.push(repo)
     this.setFactory((x) => {
       x.metRepos = r.met.repos
-      x.metSessions = r.met.sessions
-      if (r.pinSessions.length) x.pinnedSessions = [...new Set([...(x.pinnedSessions ?? []), ...r.pinSessions])]
     })
+  }
+
+  /** A fresh install (nothing pinned, nothing switched off yet): the person's most recently active GitHub repos pinned
+   *  once, so the side bar shows their real projects from the start (auto-pins.ts firstGithubPins). Tried again while
+   *  GitHub can't be read yet (not signed in); done for good once it could decide. */
+  async githubFirstPins(now = Date.now()) {
+    const f = this.factory
+    if (f.githubPinned) return
+    if (this.pinnedRepos.length || f.hidden.some((id) => id !== MISC && id !== 'auto')) return this.setFactory((x) => { x.githubPinned = true })
+    const list = await listRepos().catch(() => null)
+    if (!list?.length) return
+    const dir = this.installationIdentity.repositoryDirectory
+    for (const repo of firstGithubPins(list, this.factory.hidden, dir ? path.basename(dir) : undefined, now)) if (!this.pinnedRepos.includes(repo)) this.pinnedRepos.push(repo)
+    this.setFactory((x) => { x.githubPinned = true })
   }
 
   /** The machine a session would start on is turned off in Your factory. */
@@ -739,6 +749,8 @@ export class Weevils {
     }
     setInterval(() => void this.watchImports(), 30_000)
     setInterval(() => this.autoPinTick(), 10_000)
+    setTimeout(() => void this.githubFirstPins(), 20_000)
+    setInterval(() => void this.githubFirstPins(), 10 * 60_000)
     setInterval(() => void this.keepRemoteThreads(), 30_000)
     setInterval(() => void this.classify(), 60_000)
     setTimeout(() => void this.classify(), 5000)

@@ -263,11 +263,12 @@ body { overflow: hidden; }
 .nx-pin-ask { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); white-space: nowrap; padding: 7px 9px; font-size: 14px; line-height: 1; font-weight: 400; background: var(--ink); color: var(--c, var(--bg, Canvas)); }
 .nx-repo-mark .nx-pin .ic { width: 15px; height: 15px; }
 .nx-repo-mark .nx-pin .ic path { stroke-width: 1.5; }
-/* A conversation started with no repo, its own band (main.tsx LooseBand): a repo's head, its title on the name's line,
-   what it waits for under it, its sign in the working star's column. */
-.nx-loose .nx-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.nx-loose .nx-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nx-loose .nx-loose-sign { flex: none; margin-left: auto; padding-right: 10px; }
+/* The conversations started with no repo (main.tsx LooseStrip): one quiet strip on the side bar's own ground, a small
+   label and plain rows, never a coloured band nor a project's bold name. */
+.nx-loose-strip { padding: 10px 0 8px; }
+.nx-loose-head { padding: 0 var(--pad, 16px); font-size: 13px; font-weight: 600; letter-spacing: .02em; opacity: .6; }
+.nx-loose-strip .nx-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.nx-loose-strip .nx-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Autonomous at rest: its loop, still and in ink like the other marks; running, the app's AutoMark (colour, travelling). */
 .nx-autos-mark .auto-mark { width: 26px; height: 26px; }
 .nx-autos-mark .auto-mark path { stroke-width: 1.5; }

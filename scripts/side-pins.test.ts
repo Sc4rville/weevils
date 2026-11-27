@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Project, Snapshot } from '../shared/api.ts'
 import { DRAWERS, drawerShown } from '../shared/drawers.ts'
-import { drawerOn, drawerPinned, flipProject, looseSessions, pinnedProject, runTone, sessionPinned, sessionRuns } from '../next/src/factory.tsx'
+import { drawerOn, drawerPinned, flipProject, LOOSE_FRESH, looseSessions, looseShown, pinnedProject, runTone, sessionRuns } from '../next/src/factory.tsx'
 
 const p = (id: string, repos = [id]): Project => ({ id, name: id, kind: 'repo', repos, where: {}, lastActivityAt: 0 })
 const snap = (over: Partial<Snapshot>) => ({ pinnedRepos: [], hiddenProjects: [], sessions: [], projects: [], optimizers: [], sideDrawers: {}, ...over }) as unknown as Snapshot
@@ -24,10 +24,10 @@ describe('the pin', () => {
   it('sits in the icon of every drawer that can be pinned, never on weevils', () => {
     const main = fs.readFileSync(path.join(import.meta.dirname, '../next/src/main.tsx'), 'utf8')
     const pages = fs.readFileSync(path.join(import.meta.dirname, '../next/src/pages.tsx'), 'utf8')
-    expect(main.match(/<PinMark /g)).toHaveLength(3) // a repo, a conversation with no repo, autonomous
+    expect(main.match(/<PinMark /g)).toHaveLength(2) // a repo, autonomous (a conversation with no repo is never pinned)
     expect(pages).toMatch(/<Icon name="page" \/>\{pinned && <PinMark name="pages" onUnpin=\{onUnpin\} \/>\}/)
     // A tap on the pin unpins: every pin of the side bar carries what takes its drawer out.
-    expect(main.match(/<PinMark [^\n>]*onUnpin=/g)).toHaveLength(3)
+    expect(main.match(/<PinMark [^\n>]*onUnpin=/g)).toHaveLength(2)
     const pin = fs.readFileSync(path.join(import.meta.dirname, '../next/src/pin.tsx'), 'utf8')
     expect(pin).toMatch(/e\.stopPropagation\(\)/)
     const css = fs.readFileSync(path.join(import.meta.dirname, '../next/src/next.css'), 'utf8')
@@ -75,19 +75,28 @@ describe('every drawer, chosen in Your factory', () => {
 })
 
 describe('a conversation started with no repo', () => {
-  const loose = ses('a', 'divers', 5, 'idle') as never
-  it('is its own band while pinned, never under a catch-all; a page\'s conversation is not one', () => {
-    const s = snap({ sessions: [loose, ses('b', 'divers', 4), ses('c', 'shop', 3)] as never, pinnedSessions: ['a'], pageBand: [{ slug: 'x', session: 'b' }] as never })
+  const NOW = 1_800_000_000_000
+  const c = (o: Record<string, unknown>) => ({ id: 'a', projectId: 'divers', status: 'done', live: false, cwd: '/home/me', origin: 'terminal', messageCount: 6, lastActivityAt: NOW - 3600_000, ...o }) as never
+  it('is never a band nor a project: the side bar has one strip of them, under the projects', () => {
+    const s = snap({ sessions: [ses('a', 'divers', 5, 'idle'), ses('b', 'divers', 4), ses('c', 'shop', 3)] as never, pageBand: [{ slug: 'x', session: 'b' }] as never })
     expect(looseSessions(s).map((x) => x.id)).toEqual(['a'])
-    expect(sessionPinned(s, loose)).toBe(true)
-    expect(sessionPinned(snap({ pinnedSessions: [] }), loose)).toBe(false)
     const main = fs.readFileSync(path.join(import.meta.dirname, '../next/src/main.tsx'), 'utf8')
     expect(main).toMatch(/p\.id !== AUTO_DIR && p\.id !== MISC && shownNow\(snap, p\)/)
-    expect(main).toMatch(/<LooseBand key=\{s\.id\}/)
+    expect(main).not.toMatch(/LooseBand|pinSession|sessionPinned/)
+    expect(main).toMatch(/<LooseStrip snap=\{snap\}/)
+    const factory = fs.readFileSync(path.join(import.meta.dirname, '../next/src/factory.tsx'), 'utf8')
+    expect(factory).not.toMatch(/looseBand|pinSession|sessionPinned/)
   })
-  it('on a server that keeps no pins yet, shows while it needs you', () => {
-    expect(sessionPinned(snap({ pinnedSessions: undefined }), ses('a', 'divers', 5, 'interrupted') as never)).toBe(true)
-    expect(sessionPinned(snap({ pinnedSessions: undefined }), loose)).toBe(false)
+  it('shows while recent or still open, then only in Sessions', () => {
+    expect(looseShown(c({}), NOW)).toBe(true)
+    expect(looseShown(c({ lastActivityAt: NOW - LOOSE_FRESH - 1 }), NOW)).toBe(false)
+    expect(looseShown(c({ lastActivityAt: NOW - LOOSE_FRESH - 1, status: 'needs_user' }), NOW)).toBe(true)
+    expect(looseShown(c({ lastActivityAt: NOW - LOOSE_FRESH - 1, live: true, status: 'working' }), NOW)).toBe(true)
+  })
+  it('never a test run, an automation run or an empty conversation', () => {
+    expect(looseShown(c({ cwd: '/tmp/warmtest' }), NOW)).toBe(false)
+    expect(looseShown(c({ origin: 'automation-run' }), NOW)).toBe(false)
+    expect(looseShown(c({ messageCount: 1 }), NOW)).toBe(false)
   })
 })
 

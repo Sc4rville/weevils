@@ -77,12 +77,18 @@ once, and the code follows. Behaviour is never flipped back and forth.
   not a live wait either: no notification, no For you card, weevboss is not woken. For a folded automation only its
   newest run counts, so an old question does not come back at every run; unfolded, the run that asked keeps its mark.
   The band's order: what waits for you live, what works, what still asks, what was cut, what rests.
-- **No catch-all band** (2026-11-26, « misc » is gone): a conversation started with no repo is its own band, titled by
-  its topic, in a colour of its own, laid out like a repo's head (a speech bubble in the logo's column, its pin, its
-  sign where a repo's working star sits), there while pinned; its switch is on its line in Your factory's Sessions.
-- **Never empty**: a repo or a conversation started with no repo is pinned once, the first time it shows up in use (the
-  last 3 days; a finished conversation is not), never again after it was unpinned (server/auto-pins.ts). An install
-  where repos were already pinned keeps that choice for what was already there.
+- **A conversation started with no repo is never a project** (2026-11-27): no band of its own, no pin, never in
+  Projects. The side bar has one quiet strip of them under the projects (a small « standalone sessions » label on the
+  bar's own ground, then plain rows: its sign, its title, what it waits for), only those the person really started,
+  with something in them (never a test run in a temporary folder, an automation's run, an empty one), and recent or
+  still open (touched in the last day, working, or waiting for you). After that it is in Your factory's Sessions only.
+- **Never empty**: a repo is pinned once, the first time it shows up in use (the last 3 days), never again after it
+  was unpinned (server/auto-pins.ts). An install where repos were already pinned keeps that choice for what was
+  already there. A fresh install with nothing pinned and nothing switched off pins the person's three most recently
+  pushed GitHub repos once (one per product, never weevils' own nor its storage), so a new user sees their real
+  projects at once.
+- **Projects in Your factory are the person's repos**: those weevils knows, then their other GitHub repos, the most
+  recently pushed first (eight, the rest behind « + »), each with its switch; never a conversation.
 - **Sessions** (2026-11-26): a fifth level of Your factory (a speech bubble), every session, the most recent first,
   one band each in its repo's colour, its title and its state in a word; a tap opens it. Bands of one repo in a row
   are told apart by tone alone, the Autonomous staircase going up three steps and back down: never a line or a strip.
@@ -150,7 +156,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
   does for the two that are not pages is written once in `next/src/reach.ts`, and tested. A destination next cannot
   reach draws no button.
 - **Backend stays out of the side bar**: the « auto » folder (where automations without a repo run) is never listed;
-  A conversation started with no repo is its own band while pinned (no « Misc » band since 2026-11-26). The automation loop shows only on the automation that
+  A conversation started with no repo is a row of the side bar's strip while recent (2026-11-27). The automation loop shows only on the automation that
   runs and on the conversation it works in, never on a project nor beside the Autonomous name (2026-11-23).
 - **Anything you open is pushed in from the right edge**: a conversation, « / », « > », a file, a photo, a session
   from a page. It does not matter where it was opened from (the side bar, weevboss's thread, For you or a page).

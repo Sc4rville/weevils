@@ -349,6 +349,11 @@ Note for the person: newsprint belongs in the `.nx-fx-busy` list of `next/src/ne
 the person like carbon and atlas were. This run's worktree was on the branch `feat/theme-textures`, level with main,
 not on the `auto/…` branch named in its brief: the work is committed there, without switching branch.
 
+Tooling note for next runs: `weevils post --help` does not print a usage, it posts « --help » in For you (it happened
+in this run, and a run has no command to take a post back): the usage is the header of `server/weevils-cli`. The
+pictures of a run go in a dated folder next to the worktree (`<worktree>.shots/<date>/`), which `weevils page library
+"Title" <folder>` turns into the page; weevils' own data folder is hidden from a run.
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.

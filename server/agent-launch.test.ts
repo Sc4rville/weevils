@@ -42,6 +42,8 @@ describe('the plain-voice rule', () => {
       expect(JSON.parse(value)).toBe(projectInstructions(l))
       expect(projectInstructions(l)).toContain('weevils page')
       expect(projectInstructions(l)).toContain('weevils post')
+      // One product, one GitHub repo: a session never makes a satellite repo unless the person asks for one.
+      expect(projectInstructions(l)).toContain('gh repo create')
     }
   })
 

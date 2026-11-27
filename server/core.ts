@@ -34,7 +34,7 @@ import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, 
 import { Remote, parseRemotes } from './remotes.ts'
 import { weevbookDetail } from './offline-machines.ts'
 import { SeenThreads } from './seen-threads.ts'
-import { autoPins, firstGithubPins } from './auto-pins.ts'
+import { autoPins, firstGithubPins, storageRepo } from './auto-pins.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
@@ -472,8 +472,9 @@ export class Weevils {
 
   // ---------------------------------------------------------------- repos GitHub
 
+  /** The person's GitHub repos, never weevils' own storage (the weevbook vault and its raw copies): no list shows them. */
   async githubRepos(force = false) {
-    const list = await listRepos(force)
+    const list = (await listRepos(force)).filter((r) => !storageRepo(r))
     this.githubCache = new Map(list.map((r) => [r.name, r.pushedAt]))
     const blurbs = loadBlurbs(DATA_DIR)
     void describeRepos(list, PROJECT_ROOTS, DATA_DIR, () => this.bump())

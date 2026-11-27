@@ -19,6 +19,8 @@
 #   weevils show <fichier> ["légende"] [--mockup phone|browser|tablet|print|cinema|board]   une image ou une vidéo dans « pour toi », dans sa maquette
 #     post et show : --link <https://…> [--link-label "libellé"] quand ce qu'ils montrent vit à une adresse (site, aperçu, page) ;
 #     weevils link <id du post> <https://…> ["libellé"] l'ajoute après coup. Jamais localhost ni une adresse privée.
+#     Un thème à essayer : --link '#theme=<id>' (plusieurs : '#theme=a,b') ; le post propose « Essayer ce thème », garde
+#     son propre lien, et ne paraît que quand l'app en marche a ce thème (docs/themes.md).
 #   weevils capture <sortie.png|.mp4> [--open "#s=<id>"] [--theme t] [--seconds N] [--frame]   l'app vue d'un téléphone, sans lire le code d'accès
 #   weevils compare <avant> <après> <sortie.compare.png|.mp4> [--crop x,y,w,h]   un avant/après lisible d'un coup d'œil (avant de weevils show)
 #   weevils diagram <schéma.mmd> [sortie.diagram.png]   un travail backend dessiné (flowchart mermaid → image weevils) ; weevils show <schéma.mmd> le fait seul
@@ -206,7 +208,8 @@ for_you() {
   local out code body
   out=$(printf '%s' "$3" | curl -s -m 30 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/foryou/$1") || true
   code=${out##*$'\n'} body=${out%$'\n'*}
-  [ "$code" = 200 ] && { echo "$2"; return 0; }
+  # A post that waits (its themes are not in the running app yet) says so instead of « shown ».
+  [ "$code" = 200 ] && { printf '%s' "$body" | json "print(d.get('note') or '')" 2>/dev/null | grep . || echo "$2"; return 0; }
   printf '%s' "$body" | json "print(d.get('error') or '')" 2>/dev/null | grep . >&2 || echo "$WVM_ERROR $code" >&2
   exit 1
 }

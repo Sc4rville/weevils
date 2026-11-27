@@ -373,7 +373,7 @@ describe('auto — the runner', () => {
     const add = vi.fn()
     sys.merge = vi.fn(async () => ({ merged: true as const, commit: 'abc1234def', kinds: ['theme' as const], themes: ['desert'] }))
     sys.live = vi.fn(async () => true)
-    const o = await accepted(1, { foryou: { add } })
+    const o = await accepted(1, { foryou: { add, releaseThemes: () => false } })
     o.tick(T0 + IDLE_MS)
     await flush()
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: the desert theme.' })]
@@ -381,7 +381,22 @@ describe('auto — the runner', () => {
     for (let i = 0; i < 5; i++) await flush()
     expect(sys.live).toHaveBeenCalledWith('abc1234def', undefined)
     expect(o.list()[0].runs?.at(-1)?.merged).toBe('abc1234def')
-    expect(add).toHaveBeenCalledWith(expect.objectContaining({ title: O.en.themesLive(['desert']) }))
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ title: O.en.themesLive(['desert']), themes: ['desert'] }))
+  })
+
+  it("the run's own post about its themes waited for the landing: it shows then, and weevils adds no second line", async () => {
+    const add = vi.fn()
+    const releaseThemes = vi.fn(() => true)
+    sys.merge = vi.fn(async () => ({ merged: true as const, commit: 'abc1234def', kinds: ['theme' as const], themes: ['desert'] }))
+    sys.live = vi.fn(async () => true)
+    const o = await accepted(1, { foryou: { add, releaseThemes } })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: the desert theme.' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    for (let i = 0; i < 5; i++) await flush()
+    expect(releaseThemes).toHaveBeenCalledWith(['desert'], { id: 'land:abc1234def', kind: 'land' })
+    expect(add).not.toHaveBeenCalled()
   })
 
   it('work inside its automation\'s job lands with no card, and the server restarts when its code changed', async () => {

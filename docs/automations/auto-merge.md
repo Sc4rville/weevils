@@ -45,10 +45,12 @@ on its own.
 5. The running weevils takes it: its checkout fast-forwards (only on main and clean: someone's work is never touched)
    and the app is rebuilt (the classic one and the default one, `next/`); when server code changed, weevils restarts
    the way an update does (`weevils-service restart`: agent sessions live in tmux and go on).
-6. The run's line records `merged`. A new theme gets one line in For you ("new theme desert is in your selector");
-   the automation's ordinary work (a cleanup, in-scope work) lands without a card.
+6. The run's line records `merged`. New themes are told once in For you, with « Try this theme »: the run's own
+   post, which weevils held until this moment, or without one a line of weevils' ("new theme desert is in your
+   selector"). The automation's ordinary work (a cleanup, in-scope work) lands without a card.
 
-An automation's own posts must not claim its work is live: weevils posts that itself, at step 6.
+A run's post about a theme is never shown before the theme is on main and built in the running app, and never at all
+when it does not land (docs/themes.md, « The post »): weevils enforces it, whatever the run's agent was told.
 
 ## What did not land is handed over, never stranded
 

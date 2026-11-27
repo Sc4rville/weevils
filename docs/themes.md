@@ -36,8 +36,44 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
   overlay, soft-light, darken, lighten) and `--texture-opacity` (≤ 0.12). It sits over everything (`html::after` in
   `src/styles.css`), never takes a tap, fetches nothing; `test/theme-contrast.test.ts` holds the bounds. Seen in
   coastal (sand grain and tide ripples, multiply) and deco (gold fan scales in offset rows);
-- landing: a theme run's branch merges into main by itself once the checks pass, and weevils then posts "new theme X
-  is in your selector" (docs/automations/auto-merge.md). The run's own post never says the theme is live.
+- landing: a theme run's branch merges into main by itself once the checks pass (docs/automations/auto-merge.md).
+  The run's post about its themes is held by weevils until they are on main **and** built in the running app, then
+  shown with « Try this theme »; a theme that never lands is never announced (« The post », below).
+
+## Trying a theme
+
+The person was getting « new theme » posts and could not find the themes (2026-11-27: « je reçois dans le for you et
+je peux jamais les tester »). So a theme is one tap away from wherever it is announced, and one tap from undone:
+
+- **the link**: `#theme=<id>` at the end of this weevils' address (`https://<address>/#theme=departures`; several:
+  `#theme=departures,newsprint`). The app opened on it applies the theme at once, takes the request out of the
+  address, and shows for a moment a calm line low on the screen: « <theme> · back to my theme » (`src/ui/theme-try.tsx`,
+  `shared/theme-link.ts`). Both apps, any page;
+- **a For you post** that announces themes carries them (`ForYouItem.themes`): under its title, « Try this theme »
+  (one link per theme, by name, when it announces several). Once tapped, the same line says the theme's name and
+  « back to my theme »; the theme the person had is kept on the device until they go back, pick another or keep it;
+- **the settings' theme line** opens the list of every theme by name (`ThemeLine`, `src/ui/prefs.tsx`): a tap applies,
+  the list stays open to try the next. While a theme is only being tried, its first line goes back to the person's
+  own. A new theme needs nothing here: the list is `THEMES`;
+- trying is picking: the theme is saved like any pick (every device), so the person can look at the whole app in it.
+  Going back is another pick, to the remembered theme.
+
+### The post
+
+A post offers themes when it was given a theme link: `weevils show <picture> "words" --link '#theme=<id>'` (or
+`weevils post … --link`, or `weevils link <post id> '#theme=<id>'` for a post already out; the post keeps its own
+link). An automation's run needs no flag: its post carries the themes its worktree adds over `origin/main`
+(`server/live-themes.ts`), whatever its agent wrote.
+
+**A post that offers a theme is shown only when the running app has it**, in the classic app and in the default one
+(read from the built styles, so it can only say what a phone can do). Posted earlier, it waits unseen and appears by
+itself, dated from that moment, when the theme is on main and built; the command answers « held » instead of
+« shown ». If the theme never lands, the post never shows. When a run's themes land, its own post stands for the
+news (picture, words, try links); without one, weevils says « new theme X is in your selector » with the same links.
+
+A page that meets a theme it does not know (in a post, in the address, as the person's saved theme) is older than the
+server's build: it asks for the new one at once (`next/src/fresh.ts` `freshNow`), instead of waiting for its next
+return to the screen.
 
 ## The bar for a new theme (from the person, 2026-11-23)
 

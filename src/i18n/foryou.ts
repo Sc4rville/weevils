@@ -68,6 +68,11 @@ export default defineMessages({
 
     openMedia: (name: string) => `voir ${name} en grand`,
     openLink: (where: string) => `ouvrir ${where}`,
+    themeTry: 'Essayer ce thème',
+    themeTryNamed: (name: string) => `Essayer ${name}`,
+    themeTrying: (name: string) => `thème ${name}`,
+    themeIsYours: (name: string) => `${name} est ton thème`,
+    themeBack: 'revenir à mon thème',
     mediaStrip: (n: number) => `${n} médias`,
     openIdea: 'voir cette idée',
     readTranscript: 'Lire la transcription',
@@ -163,6 +168,11 @@ export default defineMessages({
 
     openMedia: (name: string) => `view ${name} full screen`,
     openLink: (where: string) => `open ${where}`,
+    themeTry: 'Try this theme',
+    themeTryNamed: (name: string) => `Try ${name}`,
+    themeTrying: (name: string) => `${name} theme`,
+    themeIsYours: (name: string) => `${name} is your theme`,
+    themeBack: 'back to my theme',
     mediaStrip: (n: number) => `${n} media`,
     openIdea: 'view this idea',
     readTranscript: 'Read transcript',

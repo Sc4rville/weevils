@@ -1,6 +1,7 @@
 import { pageLinks } from '../../shared/pages'
 import { LivingLink, livingLink } from './living-link'
 import { linkText, type PostLink } from '../../shared/post-link.ts'
+import { ThemeTryLinks, isTryLink, postThemes, postThemesUnknown, staleApp } from './theme-try'
 import { InlineMediaFormats } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { SaveMediaButton, useLongPressSave } from './save-media'
@@ -272,7 +273,9 @@ function PostMedia({ item }: { item: ForYouItem }) {
   const media = item.resultGroup?.final ? [item.resultGroup.final] : (item.media ?? [])
   if (item.composition && !item.resultGroup) return <div className="fy-post-media"><InlineMediaFormats item={item} /></div>
   if (!media.length) return null
-  return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} link={item.link} />)}</div> : <MediaStrip media={media} link={item.link} />}</div>
+  // A link that only says « try this theme » is the line under the title: a tap on the picture shows the picture.
+  const link = isTryLink(item) ? undefined : item.link
+  return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} link={link} />)}</div> : <MediaStrip media={media} link={link} />}</div>
 }
 
 /** Opens a post's sheet (ForYouPage provides it). */
@@ -288,6 +291,11 @@ function Post({ item, format }: CardProps & { format: ForYouFormat }) {
   const tap = piece && !unfolded ? () => setUnfolded(true) : sheet ? () => sheet(item) : undefined
   // « Not checked: not checked on a real iPhone » says it twice: the limit keeps its words, without the repeat.
   const limits = (shownEvidence(item.evidence)?.limits ?? []).map((l) => l.replace(/^\s*not (?:checked|tested|verified)\s+/i, ''))
+  // A post that announces themes offers each in one tap (theme-try.tsx). One this app does not know: it is older
+  // than the server's build, and says so to the part that loads the new one.
+  const themes = useMemo(() => postThemes(item), [item])
+  const stale = postThemesUnknown(item)
+  useEffect(() => { if (stale) staleApp.check?.() }, [stale])
   return (
     <>
       <button type="button" className="in fy-post-head fy-hit" onClick={tap} disabled={!tap} aria-haspopup="dialog">
@@ -296,7 +304,8 @@ function Post({ item, format }: CardProps & { format: ForYouFormat }) {
         {text && <span className={`fy-post-x${piece ? (unfolded ? ' piece open' : ' piece') : ''}`}>{text}</span>}
         {piece && !unfolded && <span className="fy-post-more">{t.readOn}</span>}
       </button>
-      {item.link && <PostLinkLine link={item.link} />}
+      {item.link && !isTryLink(item) && <PostLinkLine link={item.link} />}
+      <ThemeTryLinks themes={themes} />
       {format === 'visual' && <PostMedia item={item} />}
       {!!limits.length && <p className="in fy-post-limit">{t.notChecked(limits.join(' · '))}</p>}
       <div className="in fy-post-foot" />

@@ -1951,7 +1951,11 @@ export class Optimizers {
         if (!m.themes.length && (m.kinds.includes('scope') || m.kinds.includes('cleanup'))) return
         const t = tr(O)
         const text = m.themes.length ? t.themesLive(m.themes) : t.mergedLive(title)
-        this.w.foryou?.add({ id: `auto-live:${id}:${m.commit.slice(0, 12)}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: text, text, open: { page: 'auto', id }, win: { id: `land:${m.commit.slice(0, 12)}`, kind: 'land' } })
+        const win = { id: `land:${m.commit.slice(0, 12)}`, kind: 'land' as const }
+        // The run's own post about its themes waited for this moment (foryou.ts offerThemes): it shows now, with its
+        // picture and « try this theme », and says it all. Without one, weevils says it, with the same links.
+        if (m.themes.length && this.w.foryou?.releaseThemes(m.themes, win)) return
+        this.w.foryou?.add({ id: `auto-live:${id}:${m.commit.slice(0, 12)}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: text, text, open: { page: 'auto', id }, win, ...(m.themes.length ? { themes: m.themes } : {}) })
       })
       .then(() => this.sys.push(cwd, branch, baseCommit))
       .then(async (pushed) => {

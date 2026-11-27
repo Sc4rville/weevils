@@ -19,7 +19,7 @@ import RM from '../i18n/requests'
 import AKM from '../i18n/agent-keys'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
-import { THEMES, stableOrder, useApp, useSettled } from './app-context'
+import { stableOrder, useApp, useSettled } from './app-context'
 import { VoiceLogo } from './voice'
 import { useThreadAsk } from './askthread'
 import { isUnread, useSeen } from './seen'
@@ -32,7 +32,7 @@ import PM from '../i18n/project-screen'
 import TM from '../i18n/threads'
 import { autoOfSession } from './auto-model'
 import { ThreadPlans } from './relay'
-import { LanguageLine } from './prefs'
+import { LanguageLine, ThemeLine } from './prefs'
 import { UsageLine } from './infra'
 import { TokenMeter } from './rate'
 import { useDevil } from './devil'
@@ -680,7 +680,7 @@ const saveSettingsFolded = (folded: boolean) => { try { if (folded) localStorage
 
 export function FootBand({ toNext = true, factory = false, mark }: { toNext?: boolean; factory?: boolean; mark?: ReactNode } = {}) {
   const t = useT(M)
-  const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
+  const { snap, offline, colors, logout, push } = useApp()
   // The relay writes « until 6 pm » in this device's time zone (the Codex relay row moved to the subscriptions page).
   useEffect(() => {
     // Threads on (WEEVILS_THREADS): no relay to tell.
@@ -713,9 +713,7 @@ export function FootBand({ toNext = true, factory = false, mark }: { toNext?: bo
       )}
       {!factory && <UsageLine />}
       {!factory && <TempoLine />}
-      <Line ch="~" go={null} value={t.themeName(theme)} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>
-        {t.themeLabel}
-      </Line>
+      <ThemeLine />
       <LanguageLine />
       {snap.asksOpen !== undefined && (
         <Line ch="!" value={snap.asksOpen ? String(snap.asksOpen) : undefined} onClick={() => push({ kind: 'requests' })}>

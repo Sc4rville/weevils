@@ -112,6 +112,7 @@ import { AgentKeyStore, AGENT_KEY_FILE } from './agent-keys.ts'
 import { agentHttp, agentKeyRoutes } from './agent-api.ts'
 import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 import { startMoves } from './moves-app.ts'
+import { addedThemesIn, liveThemesReader } from './live-themes.ts'
 
 const w = new Weevils()
 // Claude Code's one-time warning about running without prompts follows the choice from the start: an install that
@@ -425,6 +426,8 @@ const foryou = ORCHESTRATOR
       machines: machineStates,
       mail: () => mailBridge,
       voiceOf: (who) => voices.of(who),
+      liveThemes: liveThemesReader([DIST_DIR, NEXT_DIST_DIR]),
+      addedThemes: addedThemesIn,
       op: (op) => cost.op(op),
       // Each session result card's title, from its whole closing message (subscription haiku, ~2 s).
       title: (prompt) => (claudeAvailable() ? haiku(prompt, 45_000) : Promise.resolve('')),

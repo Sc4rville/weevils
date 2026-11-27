@@ -1,6 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { LANGS, LANG_NAMES, installLang, langIsChosen, setLang, useLang, useT, type Lang } from '../i18n'
 import M from '../i18n/prefs'
+import BM from '../i18n/bands'
+import FM from '../i18n/foryou'
+import { THEMES } from './app-context'
+import { useThemeTry } from './theme-try'
 import { Line } from './bits'
 import { Icon } from './icons'
 import './prefs.css'
@@ -29,6 +33,37 @@ export function LanguageLine() {
           {LANGS.map((l: Lang) => (
             <Line key={l} ch={chosen && l === lang ? '✓' : ''} go={null} onClick={() => pick(l)}>
               <span lang={l}>{LANG_NAMES[l]}</span>
+            </Line>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Settings row: « theme   light ». A tap opens every theme the app has, by name; a tap on one applies it at once and
+ *  the list stays open, to try the next one. While a theme is only being tried (a For you post, a link), the first
+ *  line goes back to the person's own. */
+export function ThemeLine() {
+  const t = useT(BM)
+  const f = useT(FM)
+  const { theme, trying, back, pick } = useThemeTry()
+  const [picking, setPicking] = useState(false)
+  return (
+    <>
+      <Line ch="~" go={null} value={t.themeName(theme)} onClick={() => setPicking((p) => !p)}>
+        {t.themeLabel}
+      </Line>
+      {picking && (
+        <div className="lang-pick theme-pick" role="group" aria-label={t.themeLabel}>
+          {trying && (
+            <Line ch="←" go={null} onClick={back}>
+              {f.themeBack} ({t.themeName(trying.before)})
+            </Line>
+          )}
+          {THEMES.map((id) => (
+            <Line key={id} ch={id === theme ? '✓' : ''} go={null} onClick={() => pick(id)}>
+              {t.themeName(id)}
             </Line>
           ))}
         </div>

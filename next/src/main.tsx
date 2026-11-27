@@ -35,7 +35,8 @@ import { foldPrefs, saveFold } from './fold.ts'
 import { bandRows, holds, runRows, sessionState, sessionSub, type RowState } from './side-rows.ts'
 import { closesSideBar } from './keys.ts'
 import { registerWorker, useWorker } from './worker.ts'
-import { keepFresh } from './fresh.ts'
+import { freshNow, keepFresh } from './fresh.ts'
+import { ThemeTryLayer, staleApp } from '../../src/ui/theme-try.tsx'
 import { pageLink } from '../../shared/pages.ts'
 import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
@@ -82,6 +83,8 @@ function useTheme(shared: string | undefined): [Theme, (t: Theme) => void] {
   const pickedAt = useRef(0)
   useEffect(() => {
     if (isTheme(shared) && Date.now() - pickedAt.current > 4000) setTheme(shared)
+    // The person's theme is one this page has never heard of: a newer build has it (fresh.ts loads it).
+    else if (shared && !isTheme(shared)) freshNow()
   }, [shared])
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -780,6 +783,7 @@ function App() {
       </div>
       <Camera spot={spot} />
       <TourLayer {...tour} />
+      <ThemeTryLayer />
     </div>
     </TalkHost>
     </Ctx.Provider>
@@ -831,4 +835,5 @@ function SignIn({ login }: { login: (code: string) => Promise<void> }) {
 
 registerWorker()
 keepFresh()
+staleApp.check = freshNow
 createRoot(document.getElementById('root')!).render(<StrictMode><MotionConfig reducedMotion="user"><App /></MotionConfig></StrictMode>)

@@ -848,6 +848,60 @@ describe('media', () => {
     expect(() => fy.setLink('nope', { url: 'https://x.dev' })).toThrow(M.en.notFound)
   })
 
+  it('a theme link makes the post offer the theme, beside its own link; a theme the running app lacks keeps the post unseen until it is live', () => {
+    const live = new Set(['zen', 'dark'])
+    const fy = make({ liveThemes: () => live })
+    snap.sessions = [session({ lastActivityAt: T0 })]
+    shelf.known.add('/home/u/projects/myshop/out/zen.png')
+    // A theme the app has: shown at once, with the theme to try and no address in its place.
+    const a = fy.addMedia({ path: 'zen.png', caption: 'The zen theme', cwd: '/home/u/projects/myshop/out', link: { url: 'https://weevils.example.com/#theme=zen' } })
+    expect(a).toMatchObject({ themes: ['zen'] })
+    expect(a.link).toBeUndefined()
+    // Added afterwards with a bare hash: the post keeps its own link.
+    const b = fy.post('Two themes.', undefined, undefined, undefined, 'New themes', undefined, { url: 'https://weevils.example.com/p/library/themes' })
+    expect(fy.setLink(b.id, { url: '#theme=zen,dark' })).toMatchObject({ themes: ['zen', 'dark'], link: { url: 'https://weevils.example.com/p/library/themes' } })
+    // One the running app does not have yet: stored, never shown, and the caller is told it waits.
+    const waits = fy.post('Departures is a station board at night.', undefined, undefined, undefined, 'New theme', undefined, '#theme=departures')
+    expect(waits).toBeNull()
+    expect(ids(fy).some((i) => find(fy, i)?.themes?.includes('departures'))).toBe(false)
+    // It lands and both apps are rebuilt: the post appears by itself, as of now.
+    now = T0 + HOUR
+    live.add('departures')
+    const shown = fy.feed().items.find((i) => i.themes?.includes('departures'))
+    expect(shown).toMatchObject({ title: 'New theme', at: T0 + HOUR, themes: ['departures'] })
+    expect(shown?.seen).toBeUndefined()
+    // No app built here (a dev server): nothing can be said, nothing is held.
+    expect(make({ file: path.join(dir, 'other.json') }).post('Any theme.', undefined, undefined, undefined, undefined, undefined, '#theme=anything')).toMatchObject({ themes: ['anything'] })
+  })
+
+  it("an automation's run that adds themes: its post carries them whatever it was told, waits for them to be live, then says it all", () => {
+    const live = new Set(['zen'])
+    const asked: string[] = []
+    const fy = make({ liveThemes: () => live, addedThemes: (cwd) => (asked.push(cwd), ['departures', 'newsprint']) })
+    const run = '/home/u/projects/.auto/weevils/themes'
+    snap.sessions = [session({ id: 'run', cwd: run, lastActivityAt: T0 }), session({ id: 'mine', lastActivityAt: T0 })]
+    shelf.known.add(`${run}/shots/both.png`)
+    // The run posts before its branch landed: held, with the themes its worktree adds.
+    expect(fy.addMedia({ path: 'shots/both.png', caption: 'Two new themes are ready: departures and newsprint.', cwd: run, source: 'run' })).toBeNull()
+    expect(asked).toEqual([run])
+    expect(fy.feed().items.some((i) => i.kind === 'media')).toBe(false)
+    // A session that is not an automation's run is never asked what it adds.
+    fy.post('A note.', undefined, undefined, undefined, undefined, 'mine')
+    expect(asked).toEqual([run])
+    // Not landed, or landed but not built: still nothing, and weevils has no post of the run to rely on.
+    expect(fy.releaseThemes(['departures', 'newsprint'])).toBe(false)
+    expect(fy.feed().items.some((i) => i.kind === 'media')).toBe(false)
+    // On main and built: the run's post shows, carries the win, and stands for weevils' own line.
+    now = T0 + HOUR
+    live.add('departures').add('newsprint')
+    expect(fy.releaseThemes(['departures', 'newsprint'], { id: 'land:abc', kind: 'land' })).toBe(true)
+    expect(fy.feed().items.find((i) => i.kind === 'media')).toMatchObject({ themes: ['departures', 'newsprint'], at: T0 + HOUR, win: { id: 'land:abc', kind: 'land' } })
+    // weevils' own line about a theme follows the same rule.
+    expect(fy.add({ kind: 'boss', who: 'weevils', text: 'new theme woodblock is in your selector', themes: ['woodblock'] })).toBeNull()
+    live.add('woodblock')
+    expect(fy.feed().items.find((i) => i.themes?.includes('woodblock'))).toMatchObject({ who: 'weevils' })
+  })
+
   it('a file belongs to the session that showed it: never to another one in the same folder, never joined under a new caption', () => {
     const fy = make()
     // Two agents in one checkout; the landing one runs through weevils' SDK pump only (its transcript says « sdk »).

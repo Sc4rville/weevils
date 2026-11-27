@@ -6,6 +6,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { api, useLive } from './api'
+import { ThemeTryLayer } from './ui/theme-try'
 import { Ctx, THEME_COLOR, colorSlots, isTheme, isSettled, setSettledNow, stableOrder, type AppCtx, type Page, type Theme } from './ui/app-context'
 import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
@@ -552,6 +553,7 @@ export default function App() {
         <Tips paused={stack.length > 0} />
         <HintBubble />
         <GestureCoach />
+        <ThemeTryLayer />
       </MotionConfig>
     </Ctx.Provider>
   )

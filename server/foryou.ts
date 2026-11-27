@@ -30,6 +30,7 @@ import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, For
 import { isLang } from '../shared/i18n.ts'
 import { evidenceInput, evidenceLabel, mergeEvidence, type EvidenceInput } from '../shared/evidence.ts'
 import { postLink, type PostLink } from '../shared/post-link.ts'
+import { cleanThemeIds, isThemeLink, themeIds } from '../shared/theme-link.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { withoutWeevilsBlock } from './transcripts.ts'
 import type { Level, UsageInfo } from '../shared/infra.ts'
@@ -437,6 +438,10 @@ export interface ForYouDeps {
   mail?: () => MailOut | null
   /** The voice a speaker's words are read in (ForYouItem.voice), undefined when this server cannot speak. */
   voiceOf?: (who: string) => string | undefined
+  /** The themes the running app has (server/live-themes.ts); null or absent: no app built here, nothing is held. */
+  liveThemes?: () => Set<string> | null
+  /** The themes a checkout adds over main (an automation's run in its worktree). */
+  addedThemes?: (cwd: string) => string[]
   /** Runs fn after ms (default: an unref'd timer). */
   later?: (fn: () => void, ms: number) => void
   /** A button that acts here (server/cost.ts: switch a session's model, stop it), never through weevboss. */
@@ -502,6 +507,10 @@ interface Stored {
   evidence?: EvidenceInput
   /** weevils show / post --link, weevils link: where what it shows lives (shared/post-link.ts). */
   link?: PostLink
+  /** The themes this post offers to try (shared/theme-link.ts): given as a theme link, or the ones an automation's run adds. */
+  themes?: string[]
+  /** Waiting for its themes: never shown before the running app has them all (server/live-themes.ts). */
+  held?: boolean
 }
 
 interface LiveState {
@@ -550,6 +559,8 @@ export interface NewItem {
   lang?: Lang
   /** This card announces a real win, proven by the caller's state (its id, its kind): celebrated once in the app. */
   win?: { id: string; kind: WinKind }
+  /** Themes the running app has and this card offers to try (a run's themes, landed and built). */
+  themes?: string[]
 }
 
 const questionKey = (i: Stored) => crypto.createHash('sha256').update(JSON.stringify([i.at, i.text, i.q])).digest('hex').slice(0, 12)
@@ -913,7 +924,7 @@ export class ForYou {
   /** jailed: the caller runs in an automation's jail (server/jail-peer.ts), whatever session it names. */
   post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown, source?: unknown, link?: unknown, jailed = false): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
-    const where = this.linkOf(link)
+    const { link: where, themes: asked } = this.whereOf(link)
     // The post's title, in bold on top (weevils post --title): one short line.
     const head = typeof title === 'string' ? collapse(title).slice(0, POST_TITLE_MAX) : ''
     if (!body) throw new Error(tr(M).emptyText)
@@ -925,6 +936,7 @@ export class ForYou {
     if ((jailed || this.automationRun(source)) && saysNothingHappened({ title: head, text: body })) throw new Error(tr(M).quietRun)
     const s = this.sourceSession(source)
     const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: buttons, ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : { reply: 'boss' as const, open: { page: 'boss' as const } }), ...(proof ? { evidence: proof } : {}), ...(where ? { link: where } : {}) }
+    this.offerThemes(item, asked, source, jailed)
     this.retire(item)
     this.put(item)
     this.changed()
@@ -938,7 +950,7 @@ export class ForYou {
    */
   addMedia(o: { path: unknown; caption?: unknown; mockup?: unknown; cwd?: unknown; from?: string; evidence?: unknown; source?: unknown; link?: unknown }): ForYouItem {
     if (!this.shelf) throw new Error(tr(M).noMedia)
-    const where = this.linkOf(o.link)
+    const { link: where, themes: asked } = this.whereOf(o.link)
     const cwd = typeof o.cwd === 'string' && o.cwd ? path.resolve(o.cwd) : undefined
     const entry = this.shelf.add(String(o.path ?? ''), cwd, o.mockup)
     const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 320)
@@ -962,6 +974,7 @@ export class ForYou {
       const evidence = mergeEvidence(open.evidence, proof)
       if (evidence) open.evidence = evidence
       if (where) open.link = where
+      if (asked.length) this.offerThemes(open, asked, o.source)
       open.at = now
       delete open.seen
       this.changed()
@@ -984,9 +997,69 @@ export class ForYou {
       ...(where ? { link: where } : {}),
       ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : boss ? { reply: 'boss' as const, open: { page: 'boss' as const } } : {}),
     }
+    this.offerThemes(item, asked, o.source)
     this.put(item)
     this.changed()
     return this.view(item, snap)!
+  }
+
+  /**
+   * What « --link » gave: where the post's content lives, or themes to try (« #theme=<id> », alone or after this
+   * weevils' address). A theme link is kept as the post's themes, never as its direct link.
+   */
+  private whereOf(raw: unknown): { link?: PostLink; themes: string[] } {
+    const url = typeof raw === 'string' ? raw : (raw as { url?: unknown } | null | undefined)?.url
+    if (typeof url === 'string' && isThemeLink(url.trim())) return { themes: themeIds(url.trim()) }
+    return { link: this.linkOf(raw), themes: [] }
+  }
+
+  /**
+   * The themes a post offers to try: the ones it was given, and for an automation's run the ones its worktree adds
+   * over main, whatever its agent was told (a run's post about its new themes always carries them). A post whose
+   * themes the running app does not all have yet waits, unseen: it shows the day they are on main and built, and
+   * never when they are not (docs/themes.md).
+   */
+  private offerThemes(item: Stored, asked: string[], source: unknown, jailed = false) {
+    const ids = [...asked]
+    const s = typeof source === 'string' && source ? this.w.snapshot().sessions.find((x) => x.id === source && x.machineId === this.machineId) : undefined
+    if (s?.cwd && (jailed || automationRunDir(s.cwd))) for (const t of this.deps.addedThemes?.(s.cwd) ?? []) if (!ids.includes(t)) ids.push(t)
+    const themes = cleanThemeIds([...(item.themes ?? []), ...ids])
+    if (!themes.length) return
+    item.themes = themes
+    if (this.themesMissing(themes)) item.held = true
+    else delete item.held
+  }
+
+  /** Some of these themes are not in the running app; false when nothing can be said (no app built here). */
+  private themesMissing(themes: string[]): boolean {
+    const live = this.deps.liveThemes?.()
+    return !!live && themes.some((t) => !live.has(t))
+  }
+
+  /**
+   * Posts that waited for their themes and now have them: shown, as of now. With `themes` (a run's themes just
+   * landed and built, server/optimizers.ts), says whether a post of the run already tells the person: no second line
+   * for the same themes then, and that post carries the win.
+   */
+  releaseThemes(themes: string[] = [], win?: { id: string; kind: WinKind }): boolean {
+    const now = this.now()
+    let moved = false
+    for (const i of this.s.items) {
+      if (!i.held || i.gone || !i.themes?.length || this.themesMissing(i.themes)) continue
+      delete i.held
+      delete i.seen
+      i.at = now
+      moved = true
+    }
+    if (moved) this.changed()
+    if (!themes.length) return false
+    const told = this.s.items.filter((i) => !i.held && !i.gone && !!i.themes?.length && themes.every((t) => i.themes!.includes(t))).sort((a, b) => b.at - a.at)[0]
+    if (!told) return false
+    if (win && !told.win) {
+      told.win = { ...win, at: now }
+      this.changed()
+    }
+    return true
   }
 
   /** A post's direct link as given (shared/post-link.ts), or a plain refusal: never a link only this machine opens. */
@@ -1003,7 +1076,13 @@ export class ForYou {
   setLink(id: string, raw: unknown): ForYouItem | null {
     const item = this.get(id)
     if (!item) throw new Error(tr(M).notFound)
-    const l = this.linkOf(raw)
+    const { link: l, themes } = this.whereOf(raw)
+    if (themes.length) {
+      // « weevils link <post> '#theme=<id>' »: the post offers the theme; its own link stays.
+      this.offerThemes(item, themes, undefined)
+      this.changed()
+      return this.view(item, this.w.snapshot())
+    }
     if (!l) throw new Error(tr(M).linkBad)
     item.link = l
     this.changed()
@@ -1126,6 +1205,11 @@ export class ForYou {
       ...(gone ? { gone } : {}),
     }
     if (n.win) item.win = { ...n.win, at: item.at }
+    const themes = cleanThemeIds(n.themes)
+    if (themes.length) {
+      item.themes = themes
+      if (this.themesMissing(themes)) item.held = true
+    }
     if (!item.gone) this.retire(item, n.replaces)
     this.put(item)
     this.changed()
@@ -1321,7 +1405,7 @@ export class ForYou {
 
   /** What the app may read of a recorded item, or null when it has nothing to show right now. */
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
-    if (i.gone || i.id.startsWith('r:') || technicalEvent(i.id, i.text)) return null
+    if (i.gone || i.held || i.id.startsWith('r:') || technicalEvent(i.id, i.text)) return null
     if (((i.kind === 'session' && i.tone === 'result') || ['boss', 'improve', 'insight'].includes(i.kind)) && (internalFeedUpdate(i.body || i.text) || internalFeedUpdate([i.title, i.body || i.text].filter(Boolean).join('\n')))) return null
     let text = i.text
     if (i.id.startsWith('auto:proposed:')) {
@@ -1345,6 +1429,7 @@ export class ForYou {
     if (i.tool) out.tool = i.tool
     if (i.title) out.title = i.title
     if (i.link) out.link = i.link
+    if (i.themes?.length) out.themes = i.themes
     if (i.body) out.body = i.body
     if (i.open) out.open = i.open
     if (i.reply && (i.reply !== 'session' || snap.sessions.some(s => s.id === i.sessionId && s.controllable))) out.reply = i.reply
@@ -1641,6 +1726,7 @@ export class ForYou {
     if (wrote) this.changed(false)
     this.backfill(snap, now)
     this.autoEvents(snap)
+    if (this.s.items.some((i) => i.held && !i.gone)) this.releaseThemes()
     const out: { item: ForYouItem; lang?: Lang }[] = []
     // Only the newest stored items are read for a view (view() is the costly part): the stream shows MAX_FEED at
     // most, the rest stays stored as history, untouched.
@@ -2007,6 +2093,8 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
   }
   const langOf = (url: URL) => (isLang(url.searchParams.get('lang')) ? url.searchParams.get('lang') : undefined)
   /** A refusal is a 400 with its short reason; an item that is not there, a 404. */
+  /** A post that waits for its themes says so to who posted it (the command prints the note). */
+  const waiting = (item: ForYouItem | null) => (item ? { item } : { item: null, held: true, note: tr(M).heldThemes })
   const run = async (res: http.ServerResponse, known: boolean, fn: () => Promise<unknown> | unknown) => {
     if (!known) return json(res, 404, { error: tr(M).notFound })
     try {
@@ -2030,13 +2118,13 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/post$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, { from: b?.from }), b?.evidence, b?.title, b?.session, b?.link, jailedPeer(req.socket)) }))
+      await run(res, true, () => waiting(fy.post(b?.text, b?.actions, trustedFrom(req, { from: b?.from }), b?.evidence, b?.title, b?.session, b?.link, jailedPeer(req.socket))))
     }],
     // weevils link <post> <url> [label]: this machine only, like post and show.
     ['POST', /^\/api\/foryou\/([^/]+)\/link$/, async (req, res, _u, [raw]) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, exists(id(raw)), () => ({ item: fy.setLink(id(raw), { url: b?.url, label: b?.label }) }))
+      await run(res, exists(id(raw)), () => waiting(fy.setLink(id(raw), { url: b?.url, label: b?.label })))
     }],
     ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)), examples: fy.formatExamples() })],
     ['POST', /^\/api\/foryou\/composition$/, async (req, res) => {
@@ -2052,7 +2140,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/media$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, mockup: b?.mockup, cwd: b?.cwd, from: trustedFrom(req, { from: b?.from }), evidence: b?.evidence, source: b?.session, link: b?.link }) }))
+      await run(res, true, () => waiting(fy.addMedia({ path: b?.path, caption: b?.caption, mockup: b?.mockup, cwd: b?.cwd, from: trustedFrom(req, { from: b?.from }), evidence: b?.evidence, source: b?.session, link: b?.link })))
     }],
     // A clip's first frame: shown while it loads, and when the phone does not play it by itself.
     ['GET', /^\/api\/foryou\/media\/([\w-]+)\/poster$/, async (_req, res, _u, [mid]) => {

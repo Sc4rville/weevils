@@ -170,6 +170,8 @@ export interface ForYouItem {
   /** Where what the post shows lives (a site, a preview, a page): a coloured link under the title, and a tap on the
    *  media opens it (shared/post-link.ts). */
   link?: PostLink
+  /** The themes this post offers to try, one tap each (shared/theme-link.ts); only themes the running app has. */
+  themes?: string[]
   /** The words of the item, short (a result, a thought, a summary). Plain text. */
   text: string
   /** A question card: its short title, in bold above the question (the question itself is the text). */

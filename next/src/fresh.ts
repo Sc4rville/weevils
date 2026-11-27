@@ -28,6 +28,11 @@ export function busy(): boolean {
   return [...document.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>('textarea, input[type="text"], input:not([type])')].some((el) => el.value.trim() !== '')
 }
 
+/** Asks now, without waiting for the next return to the screen: something just showed this page is older than the
+ *  server's build (a theme it does not know, src/ui/theme-try.tsx). Nothing out of a build. */
+export const freshNow = (): void => void checkNow?.()
+let checkNow: (() => Promise<void>) | null = null
+
 export function keepFresh(): void {
   const mine = ownBuild()
   if (!mine) return
@@ -51,6 +56,7 @@ export function keepFresh(): void {
       checking = false
     }
   }
+  checkNow = check
   document.addEventListener('visibilitychange', () => { void check() })
   addEventListener('pageshow', (e) => { if (e.persisted) void check() })
   setInterval(() => { void check() }, EVERY)

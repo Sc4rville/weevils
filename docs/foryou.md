@@ -215,6 +215,10 @@ loopback, private networks, `.local` / `.internal` names and bare machine names 
 Sessions and weevboss are told to pass it whenever their visual result has an address (`server/i18n/agent-tools.ts`,
 `server/orchestrator.*.md`).
 
+A theme to try is a link too: `--link '#theme=<id>'` (several: `#theme=a,b`). The post then offers « Try this theme »
+under its title, keeps its own link, and is shown only once the running app has the theme (docs/themes.md, « Trying a
+theme »).
+
 **Before/after** (`server/compare.mjs`). A change shown as two states is one picture or one clip, made by
 `weevils compare <before> <after> <out.compare.png|.mp4> [--crop x,y,w,h] [--crop-before …] [--crop-after …]
 [--layout auto|stack|side]`: a neutral ground (#e9e6df) that stands apart from every theme's band, two frames with a

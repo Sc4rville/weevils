@@ -23,7 +23,11 @@ export function nowLine(now: number, tz = Intl.DateTimeFormat().resolvedOptions(
  * The live part of a turn's hidden block. `skip` drops weevboss's own turns, scratch folders and test sessions.
  * Same columns as `weevils sessions`, so the ids work with every weevils command.
  */
-export function liveDigest(snap: Pick<Snapshot, 'sessions' | 'projects' | 'machines'>, now: number, skip: (s: Snapshot['sessions'][number]) => boolean = () => false, tz?: string): string {
+export function liveDigest(snap: Pick<Snapshot, 'sessions' | 'projects' | 'machines' | 'pageBand'>, now: number, skip: (s: Snapshot['sessions'][number]) => boolean = () => false, tz?: string, links: Map<string, { url: string; label?: string }> = new Map()): string {
+  // Where each session's result lives: its newest post's link, else the page it builds. Named in a reply, the thing
+  // links to that address; the session link only when the session itself is the point.
+  const where = new Map(links)
+  for (const p of snap.pageBand ?? []) if (p.session && !where.has(p.session)) where.set(p.session, { url: p.path, label: p.title })
   const names = new Map(snap.projects.map((p) => [p.id, p.name]))
   const here = snap.machines[0]?.id
   const machines = snap.machines.map((m) => `${m.name || m.id}${m.id === here ? ' (this one)' : m.off ? ' (off)' : m.online === false ? ' (offline)' : ''}`).join(', ') // i18n-ignore: model context
@@ -35,6 +39,8 @@ export function liveDigest(snap: Pick<Snapshot, 'sessions' | 'projects' | 'machi
     if (s.now) bits.push(s.now)
     if (s.background) bits.push(`${s.background} in background`) // i18n-ignore: model context
     if (s.interrupted) bits.push(`cut (${s.interrupted.reason})`) // i18n-ignore: model context
+    const at = where.get(s.id)
+    if (at) bits.push(`its result lives at [${(at.label || at.url).replace(/[[\]]/g, '')}](${at.url})`) // i18n-ignore: model context
     bits.push(ago(now - s.lastActivityAt))
     return `- ${bits.join(' · ')}`
   })

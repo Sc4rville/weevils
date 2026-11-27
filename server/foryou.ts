@@ -1105,6 +1105,14 @@ export class ForYou {
     return l
   }
 
+  /** The newest address each session's posts point to (weevils show / post --link, weevils link): weevboss reads it
+   *  every turn (server/boss-live.ts), so the words naming a thing link to the thing, not to the session. */
+  sessionLinks(): Map<string, PostLink> {
+    const out = new Map<string, PostLink>()
+    for (const i of [...this.s.items].sort((a, b) => b.at - a.at)) if (i.sessionId && i.link && !i.gone && !out.has(i.sessionId)) out.set(i.sessionId, i.link)
+    return out
+  }
+
   /** « weevils link <post> <url> »: give a post its direct link afterwards, or change it. */
   setLink(id: string, raw: unknown): ForYouItem | null {
     const item = this.get(id)

@@ -3120,7 +3120,7 @@ export class Weevils {
   private bossLive(now: number): string {
     try {
       const turns = this.bossTurns
-      return liveDigest(this.snapshot(), now, (s) => !!turns?.isTurn(s.id) || s.id === this.orchestratorId || isScratchDir(s.cwd) || isTestBrief(this.store.get(s.id)?.firstPrompt))
+      return liveDigest(this.snapshot(), now, (s) => !!turns?.isTurn(s.id) || s.id === this.orchestratorId || isScratchDir(s.cwd) || isTestBrief(this.store.get(s.id)?.firstPrompt), undefined, this.foryou?.sessionLinks())
     } catch (e) {
       console.error(`[weevboss] live digest: ${(e as Error).message}`)
       return ''

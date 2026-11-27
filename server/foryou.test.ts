@@ -846,6 +846,9 @@ describe('media', () => {
     expect(find(fy, b.id)?.link?.label).toBe('The site')
     expect(() => fy.setLink(b.id, { url: 'http://127.0.0.1:4179/' })).toThrow(M.en.linkLocal)
     expect(() => fy.setLink('nope', { url: 'https://x.dev' })).toThrow(M.en.notFound)
+    // weevboss reads where each session's result lives: the session's newest post with a link.
+    expect(fy.sessionLinks().get('s1')).toEqual({ url: 'https://new-site.example.com/' })
+    expect(fy.sessionLinks().size).toBe(1)
   })
 
   it('a theme link makes the post offer the theme, beside its own link; a theme the running app lacks keeps the post unseen until it is live', () => {

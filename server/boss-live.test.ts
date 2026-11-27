@@ -43,6 +43,15 @@ describe("the live part of weevboss's turn", () => {
     expect(d).toContain('keep0000')
   })
 
+  it("says where a session's result lives, so the words naming it link to it: its newest post's link, else its page", () => {
+    const d = liveDigest({ ...snap([session('land0000'), session('page0000'), session('none0000')]), pageBand: [{ slug: 'notes', title: 'My notes', kind: 'preview', path: '/p/preview/notes', session: 'page0000' }] } as unknown as Parameters<typeof liveDigest>[0],
+      NOW, undefined, undefined, new Map([['land0000', { url: 'https://landing.example.com/c', label: 'the [new] landing' }]]))
+    const row = (id: string) => d.split('\n').find((l) => l.includes(id)) ?? ''
+    expect(row('land0000')).toContain('its result lives at [the new landing](https://landing.example.com/c)')
+    expect(row('page0000')).toContain('its result lives at [My notes](/p/preview/notes)')
+    expect(row('none0000')).not.toContain('lives at')
+  })
+
   it('caps the list and says how to see the rest', () => {
     const d = liveDigest(snap(Array.from({ length: 30 }, (_, i) => session(`s${String(i).padStart(7, '0')}`, { status: 'working' }))), NOW)
     expect(d.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(24)

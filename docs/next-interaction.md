@@ -32,10 +32,14 @@ once, and the code follows. Behaviour is never flipped back and forth.
   the « w » like every other band's; the gap between an icon and its name stays as it is (not tightened).
   Every folded band (weevils, each repo, Autonomous, settings) has one and the same height. The side bar ends with
   its last band: under it, what is behind shows through, never a filler band (2026-11-23).
-- **An automation row always opens the automation** (2026-11-21). Once accepted, it opens on its overview: its
-  name in the middle in bold, what it does in one line, a big living link to what it produced (the page its newest run
-  published, else that run's results), then its next run, its schedule, its last run and how it went, its count, where
-  it works. A small « Conversation » in its header (no box) flips, with the app's fade, to the conversation it runs in
+- **An automation row always opens the automation** (2026-11-21). Once accepted, it opens on its page
+  (2026-11-27, replacing the centred overview), in Autonomous's own colour and rows, answering four things at a
+  glance: its name with its **switch** (on, or paused; a recurring one stopped after failed runs switches back on), one
+  line of state (« On · next run 04:52, in 15 min », « Paused until you switch it back on »), what it does in one
+  sentence, then two rows of the side bar's staircase: when it runs, and what its last run said with a link to what it
+  made (a tap opens it). Its earlier runs wait in a closed fold; « Delete this automation » at the bottom asks once, in
+  place. Nothing else: no prompt, no ids, no counts, no « works in ». Paused or stopped, the page and its side bar row
+  rest calmly dimmed, never a warning colour; a switch or a delete shows in both at once. A small « Conversation » in its header (no box) flips, with the app's fade, to the conversation it runs in
   (to read it or take it over); there it is exactly a session's screen (the same head, thread and box), and the automation's own icon, the last item of that one-row head, flips back to « Overview » (2026-11-23: never drawn over the title or the model). A draft or a proposal opens on the app's own talk page.
 - **Your factory** (2026-11-23; drawn « your factory », lowercase: briefly « factory » the same day, back to « your factory »): one band right under Autonomous, the same height, the same staircase, folded until
   opened (and remembered). Open, it holds four bands, each one tone step below the last: **Machines**, **Intelligence**,

@@ -188,7 +188,7 @@ export function factoryProjects(snap: Snapshot): Row[] {
 // ---------------------------------------------------------------- small parts
 
 /** The switch: a plain rectangle and its square knob, in the band's own ink. */
-function Switch({ on, label, onChange, small = false }: { on: boolean; label: string; onChange: (on: boolean) => void; small?: boolean }) {
+export function Switch({ on, label, onChange, small = false }: { on: boolean; label: string; onChange: (on: boolean) => void; small?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} className={`nx-switch ${small ? 'small' : ''} ${on ? 'on' : ''}`}
       onClick={(e) => { e.stopPropagation(); navigator.vibrate?.(6); onChange(!on) }}>

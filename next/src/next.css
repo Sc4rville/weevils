@@ -291,21 +291,32 @@ body { overflow: hidden; }
 /* On its conversation, the flip is one more item of the session's own one-row head: never over the title or model. */
 .nx-auto-talk .page-head > .in:has(> .session-header-row) > .nx-flip.nx-flip { position: static; order: 4; flex: none; flex-basis: auto; min-width: 40px; justify-content: center; }
 .nx-auto-talk .page-head:not(:has(.session-header-row)) > .in { padding-bottom: 44px; }
-.nx-auto-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 28px var(--pad) 8px; }
-.nx-auto-icon { font-size: 2rem; line-height: 1; }
-.nx-auto-icon .icon { width: 36px; height: 36px; }
-.nx-auto-name { font-size: 1.875rem; font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; }
-.nx-auto-what { margin: 0; max-width: 32ch; font-size: 1.0625rem; line-height: 1.4; opacity: 0.85; }
-.nx-auto-result { margin-top: 10px; font-size: 1.5rem; font-weight: 800; }
-.nx-auto-facts { margin: 18px 0 0; padding: 0 var(--pad); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
-.nx-auto-fact dt { font-size: 0.8125rem; opacity: 0.7; }
-.nx-auto-fact dd { margin: 2px 0 0; font-size: 1.0625rem; font-weight: 700; display: flex; flex-direction: column; align-items: center; }
-.nx-auto-fact dd .icon { width: 16px; height: 16px; vertical-align: -2px; }
-.nx-auto-fact.go { cursor: pointer; }
-/* What the last run said: one sentence, shown whole (it is already one sentence, capped in auto.tsx), never clamped
-   to two lines with its end lost. As wide as the line above the facts (.nx-auto-what), so the page stays one column;
-   a long unbroken word (an address, a path) wraps instead of leaving the phone. */
-.nx-auto-note { display: block; max-width: 36ch; margin-top: 2px; font-weight: 400; font-size: 0.9375rem; line-height: 1.4; overflow-wrap: anywhere; text-wrap: balance; opacity: 0.8; }
+/* Its page: the name with its switch, one line of state, one sentence of what it does; then the side bar's own rows
+   (its colour, its staircase): when it runs, what its last run made, a quiet fold of earlier runs; a quiet delete. */
+.nx-ao { padding: 26px var(--pad) 20px; }
+.nx-ao-top { display: flex; align-items: center; gap: 12px; }
+.nx-ao-name { flex: 1; min-width: 0; font-size: 1.75rem; font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.nx-ao-state { margin: 8px 0 0; display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; font-weight: 650; line-height: 1.35; }
+.nx-ao-state .auto-mark { flex: none; width: 18px; height: 18px; }
+.nx-ao-what { margin: 14px 0 0; max-width: 40ch; font-size: 1.0625rem; line-height: 1.45; opacity: 0.85; }
+.nx-ao-failed { margin: 10px 0 0; font-size: 0.9375rem; font-weight: 650; }
+/* Paused or stopped: it rests, calmly dimmed, as its row in the side bar; its switch stays plain to reach. */
+.nx-ao-paused .nx-ao-name, .nx-ao-paused .nx-ao-what, .nx-ao-stopped .nx-ao-name, .nx-ao-stopped .nx-ao-what,
+.nx-ao-paused ~ .nx-ao-rows, .nx-ao-stopped ~ .nx-ao-rows { opacity: 0.55; }
+.nx-ao-rows .nx-ao-row { width: 100%; background: oklch(from var(--c) calc(l + var(--dl) * var(--step, 0) * 0.22) c h); text-align: left; }
+.nx-ao-rows .nx-ao-row .nx-row-title { white-space: normal; overflow-wrap: anywhere; }
+.nx-ao-rows .nx-ao-row.go { cursor: pointer; }
+.nx-ao-said { font-weight: 600; line-height: 1.35; }
+.nx-ao-rows .nx-row-sub { white-space: normal; display: flex; flex-wrap: wrap; column-gap: 10px; }
+.nx-ao-made .living { font-weight: 700; }
+.nx-ao-more .nx-row-title { opacity: 0.75; }
+.nx-ao-run .nx-row-title { white-space: normal; font-weight: 400; }
+.nx-ao-foot { padding: 30px var(--pad) 48px; }
+.nx-ao-ask { margin: 0; line-height: 1.6; }
+.nx-ao-link { padding: 8px 0; margin-right: 18px; background: none; border: 0; color: inherit; font: inherit; opacity: 0.6; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.nx-ao-link.strong { opacity: 1; font-weight: 700; }
+/* In the side bar: a paused or stopped automation's row rests, dimmed, never a warning colour. */
+.nx-autos .nx-row.nx-auto-off .nx-mark, .nx-autos .nx-row.nx-auto-off .nx-row-text { opacity: 0.45; }
 
 /* The settings band in the narrow side bar (bands.tsx FootBand): a line's name is never cut, its value gives way. */
 .nx-settings .row .stack-text { flex: 1 0 auto; }

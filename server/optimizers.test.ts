@@ -1591,6 +1591,22 @@ describe('auto — runs, their outputs, the automation page', () => {
     expect(o.pause('nope', true)).toBe(false)
   })
 
+  it('a recurring task stopped after failed runs: switched on again, it waits for its next slot; switched off, nothing changes', () => {
+    const o = seed({ state: 'failed', every: DAY, slotAt: T0 - DAY, startedAt: T0 - DAY, endedAt: T0 - DAY + 60 * MIN, tries: 2 })
+    expect(o.pause('a1b2c3', true)).toBe(true)
+    expect(o.list()[0].state).toBe('failed')
+    expect(o.pause('a1b2c3', false)).toBe(true)
+    const back = o.list()[0]
+    expect(back).toMatchObject({ state: 'queued' })
+    expect(back.paused).toBeUndefined()
+    expect(back.notBefore).toBeGreaterThanOrEqual(T0)
+    // Kept across a restart: a new runner reads it queued.
+    expect(make().list()[0].state).toBe('queued')
+    // A one-off that failed stays as it ended: there is no next run to switch on.
+    const once = seed({ state: 'failed' })
+    expect(once.pause('a1b2c3', false)).toBe(false)
+  })
+
   it('a recurring task paused while it runs ends its run, then waits paused', async () => {
     const o = seed({ every: DAY, notBefore: T0 })
     o.tick(T0 + IDLE_MS)

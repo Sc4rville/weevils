@@ -43,6 +43,7 @@ import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
+import { droppedNow, onOffNow, useAutoFlips } from './auto-state.ts'
 import { drawerOn, drawerPinned, FactorySection, looseSessions, NextMachinePage, pinnedProject, pinSession, sessionPinned, showDrawer, showProject, shownNow, slotOf, useFlips } from './factory.tsx'
 import { PinMark } from './pin.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
@@ -325,7 +326,9 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
   const self = snap.projects.find((p) => selfProject(p))
   const [autosFolded, setAutosFolded] = useState(() => !!foldPrefs().__automations)
   const foldAutos = () => setAutosFolded((v) => (saveFold('__automations', !v), !v))
-  const autos = (snap.optimizers ?? []).filter((o) => o.state !== 'proposed' && o.state !== 'refused')
+  // A switch just flipped or a delete just confirmed on an automation's page shows here at once (auto-state.ts).
+  useAutoFlips(snap)
+  const autos = (snap.optimizers ?? []).filter((o) => o.state !== 'proposed' && o.state !== 'refused' && !droppedNow(o.id))
   const autosOn = drawerOn(snap, 'autonomous')
   const autoRank = (o: Optimizer) => (o.state === 'running' ? 0 : o.state === 'queued' ? 1 : 2)
   autos.sort((a, b) => autoRank(a) - autoRank(b))
@@ -400,7 +403,7 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
               </div>
               <Collapse open={!autosFolded}>
               {autos.map((o, i) => (
-                <button key={o.id} className={`nx-row nx-sub ${o.state === 'running' ? 'nx-active' : ''}`} style={{ '--step': Math.min(i, 8) } as React.CSSProperties}
+                <button key={o.id} className={`nx-row nx-sub ${o.state === 'running' ? 'nx-active' : ''} ${offNow(o) ? 'nx-auto-off' : ''}`} style={{ '--step': Math.min(i, 8) } as React.CSSProperties}
                   onClick={() => page({ kind: 'auto', id: o.id })}>
                   <span className="nx-mark">{o.state === 'running' ? <AutoMark /> : <Icon name="cycle" />}</span>
                   <span className="nx-row-text"><span className="nx-row-title">{o.title}</span></span>
@@ -422,6 +425,9 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
     </>
   )
 }
+
+/** Paused, or stopped after failed runs: its row rests, calmly dimmed (never a warning colour). */
+const offNow = (o: Optimizer) => { const s = onOffNow(o); return s === 'paused' || s === 'stopped' }
 
 // ---------------------------------------------------------------- screens
 

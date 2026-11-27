@@ -1425,7 +1425,23 @@ export class Optimizers {
    */
   pause(id: string, paused: boolean): boolean {
     const o = this.get(id)
-    if (!o || (o.state !== 'queued' && o.state !== 'running')) return false
+    if (!o) return false
+    // A recurring task stopped after its failed runs in a row (finish()): switched on again, it takes its next slot,
+    // as if its last run had gone well. Switched off, it already is: nothing to change.
+    if (o.state === 'failed' && (o.every || o.onSleep)) {
+      if (paused) return true
+      const now = Date.now()
+      o.state = 'queued'
+      if (o.every) o.notBefore = Math.max(nextRun(o.slotAt ?? o.startedAt ?? now, o.every, now), o.notBefore ?? 0)
+      delete o.paused
+      delete o.waiting
+      delete o.retryAt
+      delete o.tries
+      this.changed()
+      if (this.auto) setTimeout(() => this.tick(), 1000).unref?.()
+      return true
+    }
+    if (o.state !== 'queued' && o.state !== 'running') return false
     if (paused) {
       o.paused = true
       delete o.runNow

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// An automation's overview in next, its « Last run » fact: under the check, how the run went in the first whole
+// An automation's page in next, its « Last run » row: under the check, how the run went in the first whole
 // sentence of what it told the person, as plain words. Never the stored note raw (stars around « Done », a folded
 // list, a word cut in the middle), never the technical report's heading while the run said something.
 import fs from 'node:fs'
@@ -54,16 +54,18 @@ async function show(runs: AutoRun[], d: AutoRunDetail | null = null) {
   await act(async () => root.render(<Ctx.Provider key={shown++} value={ctx as never}><NextAutoPage id="a1" /></Ctx.Provider>))
   await act(async () => new Promise((r) => setTimeout(r, 30)))
 }
-const fact = () => [...host.querySelectorAll<HTMLElement>('.nx-auto-fact')].find((f) => f.classList.contains('go'))!
-const said = () => host.querySelector('.nx-auto-note')?.textContent
-const mark = () => fact().querySelector('dd svg path:last-child')!.getAttribute('d')
+/** The « Last run » row: its sentence (what the run said), when it ended, its mark. */
+const fact = () => host.querySelector<HTMLElement>('.nx-ao-row.go')!
+const said = () => host.querySelector('.nx-ao-said')?.textContent
+const ago = () => fact().querySelector('.nx-ao-ago')!.textContent!.trim()
+const mark = () => fact().querySelector('.nx-mark svg path:last-child')!.getAttribute('d')
 
 it('a run that went well: the first whole sentence of its note, without its « Done: » label, its stars or its folded list', async () => {
   const r = run({ note: '**Done:** I checked one new price list, which holds 4 items. - Nothing blocked..' })
   await show([r])
-  expect(fact().querySelector('dt')!.textContent).toBe('Last run')
+  expect(fact().getAttribute('aria-label')).toBe('Last run')
   expect(said()).toBe('I checked one new price list, which holds 4 items.')
-  expect(fact().querySelector('dd > span:first-child')!.textContent!.trim()).toBe('2h ago')
+  expect(ago()).toBe('2h ago')
   // The whole fact still opens the run in full.
   await act(async () => fact().click())
   expect(pushed).toEqual([{ kind: 'autorun', id: 'a1', at: r.at }])
@@ -74,7 +76,7 @@ it('a run that stopped keeps its label as plain words: it is the news, beside th
   const check = mark()
   await show([run({ ok: false, note: '**Stopped:** the check failed on its first step, so no price was read. - **Why:** the price tool was not instal…' })])
   expect(said()).toBe('Stopped: the check failed on its first step, so no price was read.')
-  expect(fact().querySelector('dd > span:first-child')!.textContent!.trim()).toBe('2h ago, stopped early')
+  expect(ago()).toBe('2h ago, stopped early')
   expect(check).toBeTruthy()
   expect(mark()).not.toBe(check)
   // A stopped run that says « Done » is not believed on its word: nothing is taken away from what it said.
@@ -97,7 +99,7 @@ it('a run that did not go well shows the reason the server noted, before what it
   const r = run({ ok: false, note: 'no progress for 52 min' })
   await show([r], detail(r, { message: '**Done:** the check is saved.', report: '# Price watch run 0a1b2c3d4e (2026-11-26): stopped\n\nqueue: 0' }))
   expect(said()).toBe('no progress for 52 min')
-  expect(fact().querySelector('dd > span:first-child')!.textContent!.trim()).toBe('2h ago, stopped early')
+  expect(ago()).toBe('2h ago, stopped early')
   // No note at all: what the session said is all there is, its label kept (the run is not believed on its word).
   const bare = run({ ok: false })
   await show([bare], detail(bare, { message: '**Done:** the check is saved.' }))
@@ -115,8 +117,8 @@ it("the report's first line is the last resort, for a run that said nothing", as
   expect(said()).toBe('Price watch run 0a1b2c3d4e (2026-11-26): skipped, no price checked')
   // Nothing said and nothing written: the mark and the time alone, no empty line under them.
   await show([r])
-  expect(host.querySelector('.nx-auto-note')).toBeNull()
-  expect(fact().querySelector('dd')!.textContent!.trim()).toBe('2h ago')
+  expect(host.querySelector('.nx-ao-said')).toBeNull()
+  expect(ago()).toBe('2h ago')
 })
 
 it("another run's detail says nothing about this one", async () => {
@@ -146,21 +148,23 @@ it('a very long sentence is shown whole up to about 220 characters, then stops o
 it('the words of the fact follow the language', async () => {
   setLang('fr')
   await show([run({ ok: false, note: '**Arrêté :** le build a échoué. - **Pourquoi :** un outil manque.' })])
-  expect(fact().querySelector('dt')!.textContent).toBe('Dernier passage')
-  expect(fact().querySelector('dd > span:first-child')!.textContent!.trim()).toBe('il y a 2h, arrêté avant la fin')
+  expect(fact().getAttribute('aria-label')).toBe('Dernier passage')
+  expect(ago()).toBe('il y a 2h, arrêté avant la fin')
   expect(said()).toBe('Arrêté : le build a échoué.')
   await show([run({ note: '**Fait :** les prix sont dans le tableau. - Rien de bloqué.' })])
-  expect(fact().querySelector('dd > span:first-child')!.textContent!.trim()).toBe('il y a 2h')
+  expect(ago()).toBe('il y a 2h')
   expect(said()).toBe('Les prix sont dans le tableau.')
 })
 
-it('the sentence is shown whole: no two-line clamp, no cut by the stylesheet, and a long word wraps', () => {
+it('the sentence is shown whole: no two-line clamp, no ellipsis, and a long word wraps', () => {
   const css = fs.readFileSync(path.join(import.meta.dirname, '../next/src/next.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].includes('.nx-auto-note'))
-  expect(rules.map((m) => m[1].trim())).toEqual(['.nx-auto-note'])
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].trim() === '.nx-ao-rows .nx-ao-row .nx-row-title')
+  expect(rules).toHaveLength(1)
   const body = rules[0][2]
-  expect(body).not.toMatch(/line-clamp|overflow:\s*hidden|text-overflow|white-space:\s*nowrap|max-height/)
+  expect(body).toMatch(/white-space:\s*normal/)
   expect(body).toMatch(/overflow-wrap:\s*anywhere/)
-  // Calm, in every theme: the page's own colour, only lighter. No colour of its own.
-  expect(body).not.toMatch(/(?:^|[;\s])(?:color|background)[^;]*:/)
+  expect(body).not.toMatch(/line-clamp|max-height/)
+  // Calm, in every theme: the page's own colour. No colour of its own on what a run said.
+  const said = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].includes('.nx-ao-said'))
+  for (const m of said) expect(m[2]).not.toMatch(/(?:^|[;\s])(?:color|background)[^;]*:/)
 })

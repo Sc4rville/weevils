@@ -448,7 +448,8 @@ a.nx-fx-main { text-decoration: none; }
 .pick-freeze { position: fixed; inset: 0; z-index: 999; pointer-events: none; }
 .pick-freeze .pick-close { position: fixed; pointer-events: auto; z-index: 1003; }
 .pick-hint {
-  position: fixed; left: 12px; right: 64px; top: calc(var(--safe-t) + 18px); font-size: 14px; font-weight: 700; color: var(--ink);
+  position: fixed; left: 12px; max-width: calc(100vw - 84px); top: calc(var(--safe-t) + 10px); padding: 12px 14px; font-size: 15px;
+  font-weight: 700; color: var(--ink); background: Canvas; box-shadow: 2px 2px 0 var(--ink);
   opacity: 0; animation: pick-hint 3.2s ease-out forwards; pointer-events: none;
 }
 @keyframes pick-hint { 0% { opacity: 0 } 8% { opacity: .85 } 80% { opacity: .85 } 100% { opacity: 0 } }

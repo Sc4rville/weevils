@@ -1,6 +1,6 @@
-// weevboss handing work to a session, seen on its screen: its little weevil (the working mark at the foot of the thread)
-// turns around and sends a short glowing streak along a curve to the menu (the three bars), which takes the colour of
-// the session's project for a moment, then settles back. docs/next-interaction.md « weevboss hands work over ».
+// weevboss handing work to a session, seen on its screen: a short flat line of the session's project colour runs from
+// its little weevil (the working mark at the foot of the thread) to the menu (the three bars), which takes that colour
+// for a moment, then settles back. docs/next-interaction.md « weevboss hands work over ».
 //
 // The signal is real state, never wording: the request ledger's reaction on your message (server/reactions.ts) moves
 // from nothing or 👀 to 📤, 🛠️ or ❓, which it only does once the ask has been sent to a session. Seen live only: the
@@ -79,9 +79,8 @@ export function useDispatchTrail(snap: Snapshot, colors: Record<string, string>,
   }, [snap]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-const FLIGHT = 640
-const TURN = 170
-const EASE = 'cubic-bezier(.55,0,.2,1)'
+const FLIGHT = 560
+const EASE = 'cubic-bezier(.5,0,.2,1)'
 const SVG = 'http://www.w3.org/2000/svg'
 
 /** Is this element on the screen, and the topmost thing at its centre (no page, side bar or session over it)? */
@@ -95,7 +94,8 @@ function onTop(el: Element): DOMRect | null {
   return hit && (hit === el || el.contains(hit) || hit.contains(el)) ? r : null
 }
 
-/** The trail itself: the weevil turns, a short glowing streak flies from it to the menu, the menu takes its colour. */
+/** The trail itself, in the app's own flat style: one short line of the project's colour with the hard ink shadow of
+ *  the app's marks (no glow, no sparkle), runs from the weevil to the menu, and the menu takes its colour. */
 export function playTrail(menu: HTMLElement, root: HTMLElement | null, slot: string) {
   const end = onTop(menu)
   if (!end) return
@@ -103,19 +103,9 @@ export function playTrail(menu: HTMLElement, root: HTMLElement | null, slot: str
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
   const weevil = root?.querySelector<HTMLElement>('.nx-working .working-logo')
   const start = !reduced && weevil ? onTop(weevil) : null
-  if (!start || !weevil) return void pulse(menu, color, 0, reduced)
+  if (!start) return void pulse(menu, color, 0)
 
-  // The weevil turns around (a small hop as it does), holds while the streak flies, and turns back.
-  const total = TURN + FLIGHT + 180
-  weevil.animate([
-    { transform: 'scaleX(1)' },
-    { transform: 'scaleX(-1) translateY(-10%)', offset: TURN / total / 2 },
-    { transform: 'scaleX(-1)', offset: TURN / total },
-    { transform: 'scaleX(-1)', offset: (TURN + FLIGHT) / total },
-    { transform: 'scaleX(1)' },
-  ], { duration: total, easing: 'ease-in-out' })
-
-  // The path: from the weevil to the menu, bowed into the screen (to the right of the line between them).
+  // The path: from the weevil to the menu, gently bowed into the screen (to the right of the line between them).
   const sx = start.left + start.width / 2
   const sy = start.top + start.height * 0.35
   const ex = end.left + end.width / 2
@@ -123,60 +113,43 @@ export function playTrail(menu: HTMLElement, root: HTMLElement | null, slot: str
   const dx = ex - sx
   const dy = ey - sy
   const len = Math.hypot(dx, dy) || 1
-  const bow = Math.min(len * 0.5, innerWidth * 0.55)
+  const bow = Math.min(len * 0.3, innerWidth * 0.35)
   const nx = (-dy / len) * bow
   const ny = (dx / len) * bow
-  const d = `M${sx},${sy} C${sx + dx * 0.1 + nx},${sy + dy * 0.1 + ny} ${sx + dx * 0.7 + nx * 0.8},${sy + dy * 0.7 + ny * 0.8} ${ex},${ey}`
+  const d = `M${sx},${sy} C${sx + dx * 0.15 + nx},${sy + dy * 0.15 + ny} ${sx + dx * 0.75 + nx * 0.7},${sy + dy * 0.75 + ny * 0.7} ${ex},${ey}`
 
   const svg = document.createElementNS(SVG, 'svg')
   svg.setAttribute('class', 'nx-trail')
   svg.setAttribute('aria-hidden', 'true')
-  // Three strokes of one curve make the streak, their heads moving together: a wide soft glow, the body, a bright head.
-  const layers: [number, number, number, string][] = [
-    [9, 0.24, 0.34, color],
-    [3.2, 1, 0.2, color],
-    [2.4, 1, 0.07, `color-mix(in oklch, ${color}, white 70%)`],
-  ]
-  const reach = 1 + layers[0][2]
-  for (const [w, o, dash, c] of layers) {
+  // One segment of the curve travels along it, square-ended, over its ink shadow offset 2px (the app's flat shadow).
+  const dash = 0.22
+  const reach = 1 + dash
+  let run: Animation | undefined
+  for (const [c, shift] of [['var(--ink)', 2], [color, 0]] as const) {
     const p = document.createElementNS(SVG, 'path')
     p.setAttribute('d', d)
     p.setAttribute('pathLength', '1')
-    p.style.cssText = `fill:none;stroke:${c};stroke-width:${w};stroke-opacity:${o};stroke-linecap:round;stroke-dasharray:${dash} 3;stroke-dashoffset:${dash}`
+    if (shift) p.setAttribute('transform', `translate(${shift} ${shift})`)
+    p.style.cssText = `fill:none;stroke:${c};stroke-width:3;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:${dash} 3;stroke-dashoffset:${dash}`
     svg.appendChild(p)
-    p.animate([{ strokeDashoffset: dash }, { strokeDashoffset: dash - reach }], { duration: FLIGHT, delay: TURN * 0.8, easing: EASE, fill: 'forwards' })
+    run = p.animate([{ strokeDashoffset: dash }, { strokeDashoffset: dash - reach }], { duration: FLIGHT, easing: EASE, fill: 'forwards' })
   }
   document.body.appendChild(svg)
-  svg.animate([{ opacity: 0 }, { opacity: 1, offset: 0.12 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: FLIGHT, delay: TURN * 0.8, fill: 'both' })
-    .finished.catch(() => {}).finally(() => svg.remove())
-  // The tail is still coming in as the head lands: the menu lights up as the head reaches it.
-  pulse(menu, color, TURN * 0.8 + FLIGHT * 0.78, false)
+  run?.finished.catch(() => {}).finally(() => svg.remove())
+  // The menu takes the colour as the line reaches it.
+  pulse(menu, color, FLIGHT * 0.8)
 }
 
-/** The menu takes the colour for a moment (with a small pop and a ring, unless motion is reduced), then settles. */
-function pulse(menu: HTMLElement, color: string, delay: number, reduced: boolean) {
+/** The menu takes the colour for a moment, then settles: colour only, nothing pops. */
+function pulse(menu: HTMLElement, color: string, delay: number) {
   const ink = getComputedStyle(menu).color
   const lit = resolved(menu, color)
   menu.animate([
     { color: ink },
-    { color: lit, offset: 0.12 },
+    { color: lit, offset: 0.1 },
     { color: lit, offset: 0.6 },
     { color: ink },
-  ], { duration: reduced ? 1400 : 1200, delay, easing: 'ease-out' })
-  if (reduced) return
-  menu.querySelector('svg')?.animate([
-    { transform: 'scale(1)' },
-    { transform: 'scale(1.22)', offset: 0.35 },
-    { transform: 'scale(1)' },
-  ], { duration: 420, delay, easing: 'cubic-bezier(.3,1.4,.5,1)' })
-  const ring = document.createElement('span')
-  ring.className = 'nx-trail-ring'
-  ring.style.setProperty('--c', color)
-  menu.appendChild(ring)
-  ring.animate([
-    { transform: 'scale(.45)', opacity: 0.7 },
-    { transform: 'scale(1.35)', opacity: 0 },
-  ], { duration: 520, delay, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).finished.catch(() => {}).finally(() => ring.remove())
+  ], { duration: 1200, delay, easing: 'ease-out' })
 }
 
 /** The project's colour made to read as a line: its slots are pale backgrounds (lightness 0.8), so on a light theme

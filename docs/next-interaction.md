@@ -309,9 +309,11 @@ once, and the code follows. Behaviour is never flipped back and forth.
 
 ## weevboss hands work over (2026-11-27)
 
-- **When weevboss hands an ask to a session**, its little weevil at the foot of the thread turns around and sends a
-  short glowing streak along a curve to the menu (the three bars), which takes the colour of that session's project for
-  a moment, with a small ring, then settles back. Under a second, transform and opacity only (next/src/dispatch.ts).
+- **When weevboss hands an ask to a session**, a short flat line of that session's project colour runs from its little
+  weevil at the foot of the thread to the menu (the three bars), which takes that colour for a moment, then settles
+  back. In the app's own style: square ends, the hard ink shadow of its marks, no glow, no ring, nothing pops, and the
+  weevil does not turn around (2026-11-27, replaces the glowing streak of the same day). Under a second, transform and
+  opacity only (next/src/dispatch.ts).
 - **The signal is real state**: the reaction of your message moving from nothing or 👀 to 📤, 🛠️ or ❓ (the request
   ledger's, server/reactions.ts). Once per message; never on load, on a return to the screen, or for an older message.
 - **Only when both ends are on screen**: a session, a page or the side bar over the menu, or no weevil at work, and the

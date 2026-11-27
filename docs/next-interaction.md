@@ -188,6 +188,12 @@ once, and the code follows. Behaviour is never flipped back and forth.
     against the left edge, in that author's colour (weevboss's own, an automation's band colour under its name: it signs
     its own brief, 2026-11-23; or the author's stable colour, readable in every theme), its name small at the top (2026-11-22: only your own words sit on the right; this replaces « on the right
     exactly like your own words » of 2026-11-21).
+  - the brief weevils itself writes to start an automation's run (rules for the agent, its worktree, what the command
+    may do) is plumbing, never a message to read: one calm folded line in its place, « Night lens started · automatic
+    night task » (« automatic task » when it is not a night one), in the app's language; the whole text opens only on
+    a deliberate tap on that line, as quiet detail (small, no band), like a tool's details. Past and future runs alike,
+    on any machine (shared/auto-brief.ts reads the brief's own opening words, on signed messages only: a message the
+    person wrote is never folded) (2026-11-27).
 - **Order**: messages are always shown in the server's order, each reply under its message. A stand-in only ever
   sits at the end and never stays once the real message is there.
 - **Motion in a thread** is the classic app's own (`Appear`): a new message opens in place at the bottom. The scroll

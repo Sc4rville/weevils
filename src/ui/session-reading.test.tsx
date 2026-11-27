@@ -7,14 +7,14 @@ import type { Message, Session } from '../../shared/api'
 import { Composer, Messages } from './bits'
 import { useThreadAsk } from './askthread'
 import { setLang } from '../i18n'
-const state = vi.hoisted(() => ({ word: true, sessions: [] as Session[], push: (() => {}) as (p: unknown) => void }))
-vi.mock('./app-context', () => ({ useApp: () => ({ snap: { config: { authors: [], userName: 'Scarville' }, projects: [], machines: [], sessions: state.sessions }, push: (p: unknown) => state.push(p) }) }))
+const state = vi.hoisted(() => ({ word: true, sessions: [] as Session[], optimizers: [] as { id: string; title: string; onSleep?: boolean }[], push: (() => {}) as (p: unknown) => void }))
+vi.mock('./app-context', () => ({ useApp: () => ({ snap: { config: { authors: [], userName: 'Scarville' }, projects: [], machines: [], sessions: state.sessions, optimizers: state.optimizers }, push: (p: unknown) => state.push(p) }) }))
 vi.mock('./ask', () => ({ useAsk: () => ({ reset() {} }), AskVoice: () => null, AskPanel: () => <div data-actions /> }))
 vi.mock('./textpick', async original => ({ ...await original<typeof import('./textpick')>(), wordUnder: () => state.word ? { col: 0, word: [0, 5] } : null, anchorRow: () => () => {} }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
 const message = (id: string, role: Message['role'], text: string, extra: Partial<Message> = {}): Message => ({ id, role, text, at: 1, ...extra })
-beforeEach(() => { state.sessions = []; setLang('en'); MotionGlobalConfig.skipAnimations = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
+beforeEach(() => { state.sessions = []; state.optimizers = []; setLang('en'); MotionGlobalConfig.skipAnimations = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null) })
 it('keeps human messages and answers fully readable, folding only bridge coordination', async () => {
  const long = 'A complete paragraph. '.repeat(35)
@@ -232,4 +232,46 @@ it('several photos in one message sit side by side in one row, and a tap opens t
  expect(host.querySelector('[data-mid="one"] .user-photos')!.classList.contains('row')).toBe(false)
  await act(async () => row.querySelectorAll<HTMLAnchorElement>('a.user-photo')[1].click())
  expect(pushed).toEqual([{ kind: 'media', type: 'image', url: '/api/attachments?path=%2Ftmp%2Fb.png', name: 'b.png', set: ['a', 'b', 'c'].map((n) => ({ url: `/api/attachments?path=%2Ftmp%2F${n}.png`, name: `${n}.png` })) }])
+})
+
+const autoBrief = 'Background task started by weevils while the machine is free: "Night lens". Nobody answers you live: carry on alone to the end.\n\nRules, no exception:\n- you are in your own git worktree, on the local branch auto/night-lens made for you;\n- never push yourself.\n\nThe brief:\nWalk the app as a builder.'
+it('shows the brief that starts an automation run as one calm line, the whole text only on a deliberate tap', async () => {
+ state.optimizers = [{ id: 'e1c5be02a0', title: 'Night lens', onSleep: true }]
+ const msgs = [message('brief', 'orchestrator', autoBrief, { author: 'e1c5be02a0', say: 'Work on Night lens alone.' }), message('answer', 'assistant', 'The walk is running.')]
+ await act(async () => root.render(<Messages session plain messages={msgs} author="claude" />))
+ const fold = host.querySelector<HTMLDetailsElement>('details.session-auto-start')!
+ expect(fold.open).toBe(false)
+ expect(fold.querySelector('summary')!.textContent).toBe('Night lens started · automatic night task')
+ expect(fold.querySelector('summary')!.textContent).not.toContain('—')
+ // No spoken line, no « full message » link beside it: the fold is the only way in.
+ expect(host.textContent).not.toContain('Work on Night lens alone.')
+ expect(host.textContent).not.toContain('full message')
+ expect(host.querySelector('[data-mid="brief"]')!.closest('details')).toBe(fold)
+ await act(async () => { fold.open = true })
+ expect(fold.textContent).toContain('Rules, no exception')
+ expect(fold.textContent).toContain('Walk the app as a builder.')
+ setLang('fr')
+ await act(async () => root.render(<Messages session plain messages={msgs} author="claude" />))
+ expect(fold.querySelector('summary')!.textContent).toBe('Night lens a démarré · tâche de nuit automatique')
+})
+it('an automation no longer listed still gets its calm line, named from its brief, and a day task is not a night one', async () => {
+ const msgs = [message('brief', 'orchestrator', autoBrief.replace('Night lens', 'Tidy the tests'), { author: 'gone000000' })]
+ await act(async () => root.render(<Messages session plain messages={msgs} author="claude" />))
+ expect(host.querySelector('details.session-auto-start summary')!.textContent).toBe('Tidy the tests started · automatic task')
+ expect(host.textContent).not.toContain('gone000000')
+})
+it('never folds what the person wrote, even word for word an automation brief, nor a brief from weevboss', async () => {
+ const msgs = [message('mine', 'user', autoBrief), message('boss', 'orchestrator', 'Please look at how a background task started by weevils reads.', { author: 'weevboss' })]
+ await act(async () => root.render(<Messages session plain messages={msgs} author="claude" />))
+ expect(host.querySelector('details')).toBeNull()
+ expect(host.querySelector('[data-mid="mine"]')!.textContent).toContain('Rules, no exception')
+ expect(host.querySelector('[data-mid="boss"]')!.textContent).toContain('Please look at')
+})
+it('past the window, the pinned request of an automation run is the same calm line', async () => {
+ const msgs = [message('brief', 'orchestrator', autoBrief, { author: 'e1c5be02a0' }), ...Array.from({ length: 70 }, (_, i) => message(`a${i}`, 'assistant', `Step ${i} is done.`))]
+ await act(async () => root.render(<Messages session plain messages={msgs} author="claude" />))
+ const fold = host.querySelector<HTMLDetailsElement>('details.session-auto-start')!
+ expect(fold.open).toBe(false)
+ expect(fold.querySelector('summary')!.textContent).toBe('Night lens started · automatic task')
+ expect(host.querySelector('.session-asked')).toBeNull()
 })

@@ -4,6 +4,7 @@ import { interceptModelControl } from '../model-controls'
 import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { sessionNoticeKey } from '../../shared/notices.ts'
 import { firstSentence, isLongBrief } from '../../shared/brief-say.ts'
+import { autoBriefTitle, nightTask } from '../../shared/auto-brief.ts'
 import { flowLines, flowParagraph, mermaidFlow } from './diagram'
 import { DiagramView } from './diagram-view'
 import { dismissNotice } from './notice-store'
@@ -1096,9 +1097,10 @@ function RawSteps({ steps, live }: { steps: Message[]; live: boolean }) {
 }
 
 /** Provenance from the bridge, never inferred from the content of a human message. */
-function Coordination({ folded, author, sourceThreadId, children }: { folded: boolean; author: string; sourceThreadId?: string; children: ReactNode }) {
+function Coordination({ folded, author, sourceThreadId, label, children }: { folded: boolean; author: string; sourceThreadId?: string; /** Its own line (an automation's start), in place of « message from … ». */ label?: string; children: ReactNode }) {
   const t = useT(M)
   const { snap } = useApp()
+  if (label) return <details className="session-coordination session-auto-start"><summary className="in">{label}</summary>{children}</details>
   if (!folded) return children
   // A source without a known title is omitted: never a raw id.
   const source = sourceThreadId ? snap.sessions?.find(s => s.id === sourceThreadId)?.title?.trim() || null : null
@@ -1204,11 +1206,31 @@ export function Messages({
     })
   }
   const authorOf = useAuthors()
+  const { snap } = useApp()
+  // The brief weevils wrote to start an automation's run is plumbing (rules, worktree, commands): one calm line says
+  // the run started, the whole text opens on a deliberate tap. Signed messages only: never one the person wrote.
+  const autoOf = (m: Message) => {
+    if (m.role !== 'orchestrator') return undefined
+    const title = autoBriefTitle(briefText(m.text))
+    if (title === null) return undefined
+    const o = snap.optimizers?.find((x) => x.id === m.author)
+    // Its name as the brief wrote it: an automation since removed is never shown as a bare id.
+    const name = title || o?.title || authorOf(m.author).name
+    return { name, line: t.autoStarted(name, !!o && nightTask(o)) }
+  }
+  const autoLine = (m: Message) => autoOf(m)?.line
   return (
     <AnimatePresence initial={false}>
       {pinned.map((m) => (
         <Appear key={`ask-${m.id}`}>
+          {autoLine(m) ? (
+            <details className="session-coordination session-auto-start">
+              <summary className="in">{autoLine(m)}</summary>
+              <div className="in session-asked-full"><Rich text={briefText(m.text)} code={false} /></div>
+            </details>
+          ) : (
           <AskedLine text={m.role === 'user' ? userCaption(m.text) : briefText(m.text)} line={m.role === 'orchestrator' ? m.say : undefined} who={m.role === 'user' ? t.you : authorOf(m.author).name} tone={m.role === 'user' ? 'tone' : authorTone(authorOf(m.author)).className} style={m.role === 'orchestrator' ? authorTone(authorOf(m.author)).style : undefined} />
+          )}
         </Appear>
       ))}
       {hidden > 0 && (
@@ -1226,11 +1248,11 @@ export function Messages({
           <Appear key={g.m.id}>
             {openSteps.has(g.m.id) && stepsBefore.get(g.m.id) && <Steps steps={stepsBefore.get(g.m.id)!} live={false} plain />}
             <div onClick={(e) => toggleSteps(g.m.id, e)}>
-            <Coordination folded={session && g.m.role === 'orchestrator' && !!g.m.coordination && authorOf(g.m.author).id !== 'weevboss'} author={authorOf(g.m.author).name} sourceThreadId={g.m.sourceThreadId}>
+            <Coordination folded={session && g.m.role === 'orchestrator' && !!g.m.coordination && authorOf(g.m.author).id !== 'weevboss'} author={authorOf(g.m.author).name} sourceThreadId={g.m.sourceThreadId} label={autoLine(g.m)}>
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.reaction ? 'has-reaction' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
-              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session && !threadLook.authorsInSessions ? '' : author}`}
+              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? autoOf(g.m)?.name ?? authorOf(g.m.author).name : g.m.devil ? td.devil : session && !threadLook.authorsInSessions ? '' : author}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.role === 'orchestrator' ? briefText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
               win={g.m.win}
@@ -1241,7 +1263,7 @@ export function Messages({
                   <UserPhotos files={userPhotos(g.m.text)} />
                 </>
               ) : g.m.role === 'orchestrator' ? (
-                session ? <Brief text={briefText(g.m.text)} say={g.m.say} full /> : <Clamp text={briefText(g.m.text)} />
+                autoLine(g.m) ? <Clamp text={briefText(g.m.text)} full /> : session ? <Brief text={briefText(g.m.text)} say={g.m.say} full /> : <Clamp text={briefText(g.m.text)} />
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
                   <Prose text={withoutMachinePrefix(g.m.text)} />

@@ -3801,6 +3801,11 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-coordination > summary { cursor: pointer; font-size: .875rem; opacity: .75; padding-block: 12px; }
 .session-coordination > summary::marker { font-size: .75em; }
 .session-coordination[open] { border-inline-start: 2px solid color-mix(in oklab, currentColor 22%, transparent); }
+/* The brief that starts an automation's run, unfolded: detail to consult, like a tool's, never a message that shouts. */
+.session-auto-start > .msg.band { background: none !important; border: 0 !important; margin-inline: 0 !important; color: inherit; }
+.session-auto-start > .msg.band > .in { padding-block: 0 12px; }
+.session-auto-start > .msg.band .who { display: none; }
+.page-body .session-thread .session-auto-start > .msg.band .text, .session-auto-start > .session-asked-full { font-size: .875rem; line-height: 1.45; opacity: .8; }
 .session-context { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .875rem; min-height: 32px; opacity: .8; }
 /* Reserve a real row for voice and the latest-message control: neither covers text. */
 .session-header-row { display: flex; align-items: center; gap: 8px; min-width: 0; }

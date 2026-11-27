@@ -6,6 +6,8 @@ export default defineMessages({
     /** Message replié qu'un autre agent a passé à la session. */
     coordination: (author: string) => `message de ${author}`,
     coordinationSource: (author: string, source: string) => `message de ${author} · ${source}`,
+    /** Une ligne calme à la place de la consigne qu'une automatisation reçoit à son lancement. */
+    autoStarted: (name: string, night: boolean) => `${name} a démarré · ${night ? 'tâche de nuit automatique' : 'tâche automatique'}`,
     showLess: 'replier',
     readAll: 'tout lire',
     fullBrief: 'message entier',
@@ -56,6 +58,7 @@ export default defineMessages({
   en: {
     coordination: (author: string) => `message from ${author}`,
     coordinationSource: (author: string, source: string) => `message from ${author} · ${source}`,
+    autoStarted: (name: string, night: boolean) => `${name} started · ${night ? 'automatic night task' : 'automatic task'}`,
     showLess: 'show less',
     readAll: 'read all',
     fullBrief: 'full message',

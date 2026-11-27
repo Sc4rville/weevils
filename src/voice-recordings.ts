@@ -10,6 +10,8 @@ export interface VoiceRecording {
   startedAt: number
   stoppedAt?: number
   count: number
+  /** When its last slice was kept (src/ui/dictation.ts): a recording quiet for a while was left by a page that died. */
+  heardAt?: number
   text?: string
   insertedAt?: number
 }
@@ -83,4 +85,14 @@ export function splitVoiceChunk(blob: Blob): Blob[] {
   const parts: Blob[] = []
   for (let at = 0; at < blob.size; at += 512 * 1024) parts.push(blob.slice(at, at + 512 * 1024, blob.type))
   return parts
+}
+
+/** Every recording kept in this browser, all scopes. */
+export async function allVoiceRecordings(): Promise<VoiceRecording[]> {
+  const db = await database()
+  return new Promise<VoiceRecording[]>((resolve, reject) => {
+    const r = db.transaction('recordings').objectStore('recordings').getAll()
+    r.onsuccess = () => resolve(r.result)
+    r.onerror = () => reject(r.error)
+  })
 }

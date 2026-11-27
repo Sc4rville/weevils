@@ -23,7 +23,7 @@ import { copyText, useLongPress } from './copy'
 import { markSeen } from './hints'
 import { flash, reveal } from './follow'
 import C from '../i18n/copy'
-import { getLang, tr, useT } from '../i18n'
+import { tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import CM from '../i18n/camera'
 import { hold, heldNow, useHeld, withHeld, type CaptureTo } from './held-capture'
@@ -35,6 +35,7 @@ import { threadsOn } from './threads-on'
 import { isUnread, useSeen } from './seen'
 import { AutoMark, G, Icon } from './icons'
 import { WeevbossLogo } from './logo'
+import { mountBox, startDictation, stopDictation, useDictation } from './dictation'
 import { AppLink, LivingLink, appLink, livingLink } from './living-link'
 import { autoOfSession, slotOf } from './auto-model'
 
@@ -355,14 +356,6 @@ async function shrink(file: File): Promise<Attachment> {
   }
 }
 
-const blobToB64 = (b: Blob) =>
-  new Promise<string>((resolve, reject) => {
-    const r = new FileReader()
-    r.onerror = () => reject(new Error(tr(M).audioRead))
-    r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
-    r.readAsDataURL(b)
-  })
-
 /** A computer's keyboard sends with Enter and adds a line with Shift+Enter, in every box to write a message in. A
  * phone or a tablet (a finger as its main pointer) keeps its own way: the on-screen Return adds a line, the send button
  * sends. A computer is anything whose main pointer is not a finger: a mouse, a trackpad, or none reported (some
@@ -476,10 +469,8 @@ export function Composer({
   useEffect(() => { if (autoFocus) field.current?.focus({ preventScroll: true }) }, [autoFocus])
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<Attachment[]>([])
-  const [rec, setRec] = useState<'off' | 'on' | 'wait'>('off')
+  const rec = useDictation()
   const [err, setErr] = useState<string | null>(null)
-  const recorder = useRef<MediaRecorder | null>(null)
-  const chunks = useRef<Blob[]>([])
   const picker = useRef<HTMLInputElement>(null)
   const capture = useCaptureSuggestion(captureSuggestions && !!onAttach && !disabled)
   const canVoice = voice && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
@@ -585,43 +576,22 @@ export function Composer({
   const formEl = useRef<HTMLFormElement | null>(null)
   useDropTarget(formEl, take, canTake)
 
+  // The recording belongs to the page (./dictation.ts): it goes on when this box unmounts or shows another
+  // conversation, and the words land in the box that stops it.
+  useEffect(() => mountBox(key, { put: (heard) => setText((cur) => (cur ? `${cur.replace(/\s+$/, '')} ${heard}` : heard)) }), [key])
   const toggleRec = async () => {
     if (rec === 'wait') return
-    if (rec === 'on') {
-      recorder.current?.stop()
-      return
-    }
+    if (rec === 'on') return stopDictation(key, (m) => {
+      // A failed dictation is said briefly, then fades: it never stays on screen. Its audio is kept and tried again.
+      if (!alive.current) return
+      setErr(m)
+      setTimeout(() => setErr((cur) => (cur === m ? null : cur)), 4000)
+    })
     setErr(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'].find((t) => MediaRecorder.isTypeSupported(t))
-      const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
-      chunks.current = []
-      r.ondataavailable = (ev) => ev.data.size && chunks.current.push(ev.data)
-      r.onstop = async () => {
-        stream.getTracks().forEach((tr) => tr.stop())
-        setRec('wait')
-        try {
-          const blob = new Blob(chunks.current, { type: r.mimeType || type || 'audio/mp4' })
-          // Too short or empty: not a failure, say nothing.
-          if (blob.size < 800) return
-          const { text: heard } = await api.transcribe(blob.type, await blobToB64(blob), getLang())
-          if (heard) setText((cur) => (cur ? `${cur.replace(/\s+$/, '')} ${heard}` : heard))
-        } catch (e) {
-          // A failed dictation is said briefly, then fades: it never stays on screen.
-          const m = (e as Error).message
-          setErr(m)
-          setTimeout(() => setErr((cur) => (cur === m ? null : cur)), 4000)
-        } finally {
-          setRec('off')
-        }
-      }
-      r.start()
-      recorder.current = r
-      setRec('on')
+      await startDictation(key)
     } catch (e) {
       setErr(/denied|permission|NotAllowed/i.test((e as Error).message + (e as Error).name) ? tr(M).micDenied : (e as Error).message)
-      setRec('off')
     }
   }
 

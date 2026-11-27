@@ -775,7 +775,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
     const on = r.self || (flipped.get(r.id) ?? (r.project ? inSideBar(snap, r.project) : r.repos.some((x) => snap.pinnedRepos.includes(x)) && !snap.hiddenProjects?.includes(r.id)))
     const openPage = () => page({ kind: 'project', projectId: r.id })
     return (
-      <Band key={r.id} step={at} depth={depth} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
+      <Band key={r.id} step={at} depth={depth} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--pc': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
         <button className="nx-fx-main" onClick={openPage}>
           <span className="nx-mark"><i className="nx-fx-swatch" /></span>
           <span className="nx-fx-product">

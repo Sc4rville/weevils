@@ -146,3 +146,40 @@ it('a made page reads it; a machine that does not answer never shows it as waiti
   expect(d.sessions[0].asksYou).toBe('Tap Yes to resume, or Keep it stopped.')
   expect(offlineRow(s).asksYou).toBeUndefined()
 })
+
+it('told settled from outside (answered elsewhere): the mark goes without a word to the agent, until its next message asks again', async () => {
+  const t = over(transcript({ messages: said(STOPPED) }))
+  expect(await w.question('s1', 'settled')).toEqual({ ok: true })
+  expect(one()).toMatchObject({ status: 'done' })
+  expect(one()).not.toHaveProperty('asksYou')
+  expect(mux.sendText).not.toHaveBeenCalled()
+  expect(mux.spawnWv).not.toHaveBeenCalled()
+  // Kept across a restart.
+  w = new Weevils()
+  over(t)
+  expect(one()).not.toHaveProperty('asksYou')
+  // Its own words again.
+  expect(await w.question('s1', 'reset')).toEqual({ ok: true, asksYou: 'Tap Yes to resume, or Keep it stopped.' })
+  expect(one()).toMatchObject({ asksYou: 'Tap Yes to resume, or Keep it stopped.' })
+  // Settled, then it speaks again and asks something new: that question is its own.
+  await w.question('s1', 'settled')
+  t.messages = [...t.messages, { id: 'u2', role: 'user', text: 'yes', at: NOW }, { id: 'a2', role: 'assistant', text: '**Done:** resumed.\n\n**Needs you:** pick the next shop to check.', at: NOW }]
+  expect(one()).toMatchObject({ asksYou: 'Pick the next shop to check.' })
+})
+
+it('told in one plain sentence: the row shows it instead, cut like every question', async () => {
+  over(transcript({ messages: said('**Verdict:** the code is short.\n\n**Needs you:** generating a new access code is the quickest fix.') }))
+  expect(one()).toMatchObject({ asksYou: 'Generating a new access code is the quickest fix.' })
+  expect(await w.question('s1', { text: '  Make a new access code?\nIt signs every device out. ' })).toEqual({ ok: true, asksYou: 'Make a new access code? It signs every device out.' })
+  expect(one()).toMatchObject({ status: 'done', asksYou: 'Make a new access code? It signs every device out.' })
+  await w.question('s1', { text: `Read ${'the long report '.repeat(40)}` })
+  expect(one()!.asksYou!.length).toBeLessThanOrEqual(ASK_MAX)
+})
+
+it('nothing to tell of a session that asks nothing, or that is not known', async () => {
+  over(transcript({ messages: said('**Done:** the prices are in the table.') }))
+  await expect(w.question('s1', 'settled')).rejects.toMatchObject({ status: 409 })
+  await expect(w.question('s1', { text: 'A question of my own?' })).rejects.toMatchObject({ status: 409 })
+  await expect(w.question('nobody', 'settled')).rejects.toMatchObject({ status: 404 })
+  expect(one()).not.toHaveProperty('asksYou')
+})

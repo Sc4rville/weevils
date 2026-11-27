@@ -149,6 +149,12 @@ interface ManagedPane extends WvSession {
 /** How long an unchanged screen with no input box, no progress and no known dialog waits before it becomes a question. */
 const STUCK_AFTER_MS = 90_000
 
+/** A question told from outside: the message that asked (the session's next one speaks for itself), and the plain
+ *  sentence to show in its place; no text: settled. */
+interface ToldAsk { message: string; text?: string }
+/** Told questions kept: the newest ones. Each dies with the next message of its session anyway. */
+const TOLD_MAX = 400
+
 interface Persisted {
   directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   hooks?: [string, HookState][]
@@ -164,6 +170,8 @@ interface Persisted {
   cleared?: [string, number][]
   announced?: (string | [string, number])[]
   archived?: string[]
+  /** Questions told from outside (question()): session id to the asking message and what is said of it. */
+  told?: [string, ToldAsk][]
   closedByUs?: [string, number][]
   /** Your factory (docs/next-interaction.md): machine names given in the app, machines and intelligence turned off,
    *  projects taken out of the side bar, each machine's own conversation. */
@@ -634,6 +642,9 @@ export class Weevils {
   private announced = new Map<string, number>()
   /** Fermées par weevils (bouton fermer, ménage des panes) : leur fin n'est pas une coupure. */
   private archived = new Set<string>()
+  /** A finished session's question, told from outside (question()): settled (the mark goes), or said again in one plain
+   *  sentence. Kept under the message that asked, so the session's next message speaks for itself again. */
+  private told = new Map<string, ToldAsk>()
   /** Each session's own permission choice (server/agent-modes.ts), set from its page. */
   modes = new SessionModes()
   /** How each pane was launched, asking or not (in memory: after a restart it is not known, and the pane takes the
@@ -689,6 +700,7 @@ export class Weevils {
       // Premier format (« id@quand ») : relu tel quel.
       this.announced = new Map((p.announced ?? []).map((a): [string, number] => (typeof a === 'string' ? [a.split('@')[0], Number(a.split('@')[1]) || 0] : a)))
       this.archived = new Set(p.archived ?? [])
+      this.told = new Map(p.told ?? [])
       this.closedByUs = new Map(p.closedByUs ?? [])
       setCartesiaVoice(this.voiceId)
       warmCues(this.voiceId)
@@ -825,6 +837,7 @@ export class Weevils {
         cleared: [...this.cleared].filter(([, at]) => recent(at)),
         announced: [...this.announced].filter(([, at]) => recent(at)),
         archived: [...this.archived],
+        told: [...this.told].slice(-TOLD_MAX),
         closedByUs: [...this.closedByUs].filter(([, at]) => recent(at)),
         factory: this.factory,
       }
@@ -1324,7 +1337,9 @@ export class Weevils {
     if ((status === 'done' || status === 'idle') && !(pane && this.isOrchestratorPane(pane))) {
       const last = t.messages.findLast((m) => m.role !== 'event')
       const said = last?.role === 'assistant' ? needsLine(last.text) : null
-      if (said) asksYou = clip(said, ASK_MAX)
+      // Told from outside for this very message (question()): settled, the mark goes; reworded, the plain sentence shows.
+      const told = said && last ? this.told.get(t.id) : undefined
+      if (said) asksYou = told?.message === last?.id ? (told?.text ? clip(told.text, ASK_MAX) : undefined) : clip(said, ASK_MAX)
     }
 
     // Ouverte dans un terminal que weevils ne pilote pas : on ne peut ni lui écrire ni la reprendre sans risque.
@@ -1954,6 +1969,36 @@ export class Weevils {
     this.persist()
     this.bump()
     return { ok: true }
+  }
+
+  /**
+   * What a finished session's last message asks, told from outside: `settled` (it was answered elsewhere: a restart
+   * done, a card tapped, another session did it), a plain sentence that says it better, or `reset` (its own words
+   * again). Nothing is sent to the agent and nothing wakes: the row changes, that is all. It holds for the message that
+   * asked; the session's next message speaks for itself. For a run of an automation too, which only the person can
+   * write to. A session of another machine: told there.
+   */
+  async question(id: string, how: 'settled' | 'reset' | { text: string }): Promise<{ ok: true; asksYou?: string }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/question`, typeof how === 'string' ? { [how]: true } : how)
+    const real = this.resolveId(id)
+    const t = this.store.get(real)
+    if (!t) throw new OutboxError(404, tr(M).sessionNotFound)
+    const last = t.messages.findLast((m) => m.role !== 'event')
+    const asks = last?.role === 'assistant' ? needsLine(last.text) : null
+    if (how === 'reset') this.told.delete(real)
+    else {
+      if (!last || !asks) throw new OutboxError(409, tr(M).asksNothing)
+      const text = how === 'settled' ? '' : how.text.replace(/\s+/g, ' ').trim()
+      if (how !== 'settled' && !text) throw new Error(tr(M).emptyMessage)
+      // Told again: moved to the end, so the oldest ones are the ones let go.
+      this.told.delete(real)
+      this.told.set(real, { message: last.id, ...(text ? { text } : {}) })
+    }
+    this.persist()
+    this.bump()
+    const now = this.sessions(Date.now()).find((s) => s.id === real)?.asksYou
+    return { ok: true, ...(now ? { asksYou: now } : {}) }
   }
 
   /** A session's own permission choice (null: back to the global one), from its page. Applied to its next turns: its

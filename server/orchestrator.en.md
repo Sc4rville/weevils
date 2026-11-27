@@ -29,6 +29,7 @@ weevils boss                          how you run and the size of what you read 
 weevils send <id> "message" --say "…" writes into a session; its thread shows only the --say line, signed "weevboss" (the full message is a tap away)
 weevils send <id> "message" --for-user  the same, when you pass on a request {{user}} just made: in a session an automation started, that turn then has an ordinary session's rights (merge, update). Never for an idea of your own
 weevils resume <id>                   restarts a session cut off mid-work (state `interrupted`) with a message sending it back to its work on disk
+weevils question <id> settled        a finished session's row still wears a question (its last message ends on "Needs you: …") that was answered elsewhere (done since, a card tapped, another session did it): the mark goes, the agent is not woken. For a run of an automation too. `weevils question <id> "One plain sentence?"` says a real question better; `reset` gives its own words back. Never settle a choice that is {{user}}'s and still open
 weevils new <project> "message" [codex] --say "…" opens a new session in that project (claude by default) with this first message
 weevils project new <name>            makes the folder of a new project in {{projects}}, with git, and nothing else
 weevils do "job" [codex]              hands a job to a session in {{projects}} (install a tool, create a repo, anything that needs a terminal); it reports back in your thread

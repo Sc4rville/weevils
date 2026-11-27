@@ -1388,6 +1388,13 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     json(res, 200, w.archive(decodeURIComponent(id), body.archived !== false))
   }],
+  // What a finished session still asks, told from outside: settled, said in one plain sentence, or its own words again.
+  ['POST', /^\/api\/sessions\/([^/]+)\/question$/, async (req, res, _u, [id]) => {
+    const body = await readBody(req)
+    const text = typeof body.text === 'string' ? body.text : ''
+    if (!body.settled && !body.reset && !text.trim()) return json(res, 400, { error: 'settled, reset or text' }) // i18n-ignore: an agent's command gone wrong, never shown in the app
+    json(res, 200, await w.question(decodeURIComponent(id), body.settled ? 'settled' : body.reset ? 'reset' : { text }))
+  }],
   ['POST', /^\/api\/sessions\/([^/]+)\/close$/, async (_req, res, _u, [id]) => json(res, 200, await w.close(decodeURIComponent(id)))],
   // Session coupée en plein travail : la reprendre (--resume + message de reprise) ou la laisser.
   ['POST', /^\/api\/sessions\/([^/]+)\/resume$/, async (_req, res, _u, [id]) => json(res, 200, await w.resume(decodeURIComponent(id)))],

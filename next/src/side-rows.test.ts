@@ -75,6 +75,29 @@ it('a fold whose newest run asks is « asks you », with its question; one whose
   expect(runRows(answered.done[0], NOW).map((r) => r.state)).toEqual(['done', 'asks'])
 })
 
+it('the person answered the newest run (it is theirs now): the older runs left in the fold do not ask in its place', () => {
+  const job = (handedOver?: number) => [auto('a1', 'Price watch', [run('new', handedOver ? { handedOver } : {}), run('old'), run('older')])]
+  const sessions = [s('new', 60, { cwd: '/home/user/projects/.auto/shop-app/a1' }), s('old', 240, { asksYou: 'Pause me, or build the new setup.' }), s('older', 420, { asksYou: 'Pause me, or build the new setup.' })]
+  // Taken over: out of the fold, and the fold is plainly done.
+  const answered = rows(sessions, job(NOW - 10 * MIN))
+  expect(answered.active).toEqual([])
+  expect(answered.done.map(look)).toEqual([['title of new', 1, 'done'], ['Price watch', 2, 'done']])
+  // Unfolded, each old run still says what it asked.
+  expect(runRows(answered.done[1], NOW).map((r) => r.state)).toEqual(['asks', 'asks'])
+  // The run taken over still asks itself: its own row says so.
+  const still = rows([{ ...sessions[0], asksYou: 'Which shop next?' }, ...sessions.slice(1)], job(NOW - 10 * MIN))
+  expect(still.active.map(look)).toEqual([['title of new', 1, 'asks']])
+  // Known only by the automation's own list of take-overs (its line left the list of runs): the same.
+  expect(rows(sessions, [auto('a1', 'Price watch', [run('old'), run('older')], { handedOver: ['new'] })]).active).toEqual([])
+  // A run that started after the one taken over asks for itself.
+  const later = rows([...sessions, s('latest', 20, { asksYou: 'A new question.' })], [auto('a1', 'Price watch', [run('latest'), run('new', { handedOver: NOW - 30 * MIN }), run('old'), run('older')])])
+  expect(later.active.map(look)).toEqual([['Price watch', 3, 'asks']])
+  expect(later.active[0].sub).toBe('A new question.')
+  // And an older run taken over answers nothing of a newer one.
+  const older = rows([s('new', 60, { asksYou: 'A new question.' }), s('old', 240)], [auto('a1', 'Price watch', [run('new'), run('old', { handedOver: NOW - 10 * MIN })])])
+  expect(older.active.map(look)).toEqual([['Price watch', 1, 'asks']])
+})
+
 it('a run the person took over stays an ordinary row of theirs', () => {
   const { done } = rows(
     [s('s1', 60), s('taken', 120, { title: 'Prices, then my own questions', cwd: '/home/user/projects/.auto/shop-app/a1' }), s('s3', 300)],

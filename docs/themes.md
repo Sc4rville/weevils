@@ -345,9 +345,9 @@ browser has none and falls back to the system sans) and Times New Roman (it fall
 metrics). Dark yellows and dark cyans leave the sRGB gamut early: departures' slots stay at chroma 0.065 (0.075
 clipped five of them).
 
-Note for the person: newsprint belongs in the `.nx-fx-busy` list of `next/src/next.css` (a light theme), left to
-the person like carbon and atlas were. This run's worktree was on the branch `feat/theme-textures`, level with main,
-not on the `auto/…` branch named in its brief: the work is committed there, without switching branch.
+newsprint is in the `.nx-fx-busy` list of `next/src/next.css` (a light theme), added the same day. This run's
+worktree was on the branch `feat/theme-textures`, level with main, not on the `auto/…` branch named in its brief:
+the work is committed there, without switching branch.
 
 Tooling note for next runs: `weevils post --help` does not print a usage, it posts « --help » in For you (it happened
 in this run, and a run has no command to take a post back): the usage is the header of `server/weevils-cli`. The

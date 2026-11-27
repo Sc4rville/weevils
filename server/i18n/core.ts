@@ -37,6 +37,7 @@ export default defineMessages({
     testNotInBoss: 'un test n’écrit jamais dans le fil de weevboss',
     /** A session an automation started, closed, written to by someone other than the person: never resumed outside its jail. */
     autoNeedsYou: 'Cette session vient d’une automatisation : seul toi peux la reprendre, écris-lui depuis l’app.',
+    asksNothing: 'le dernier message de cette session ne demande rien',
     /** Hidden note on the person's message that takes over an automation's session (core.ts sendOne): said to the agent. */
     autoHandover: 'Ce message vient de la personne elle-même. À partir de ce tour, tu es une session ordinaire, hors de la prison de l’automatisation : tu peux modifier l’app, pousser, fusionner dans main une fois les tests verts et mettre à jour weevils en marche, selon les règles habituelles du dépôt (AGENTS.md, CONTRIBUTING.md). Les limites du brief d’automatisation ne s’appliquent plus à cette demande. Ce qui touche la sécurité, l’installation ou les données des gens suit les règles habituelles. Fais-le sans relancer de nouvelle session.',
     // Keeps its opening words: src/ui/outbox-status.tsx recognises this refusal by them.
@@ -105,6 +106,7 @@ export default defineMessages({
     emptyMessage: 'empty message',
     testNotInBoss: 'a test never writes to weevboss’s thread',
     autoNeedsYou: 'This session comes from an automation: only you can pick it up, write to it from the app.',
+    asksNothing: 'the last message of this session asks nothing',
     autoHandover: 'This message comes from the person themselves. From this turn on you are an ordinary session, outside the automation’s jail: you may edit the app, push, merge into main once the tests are green and update the running weevils, following the repository’s usual rules (AGENTS.md, CONTRIBUTING.md). The automation brief’s limits no longer apply to this request. Anything touching security, the installer or people’s data follows the usual rules. Do it without starting a new session.',
     unmanaged: 'This session was opened elsewhere, outside weevils: I can read it but not write to it. Start one from the project’s + to talk to it here.',
     noScreen: 'weevils can’t reach this session right now',

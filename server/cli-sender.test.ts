@@ -66,3 +66,21 @@ it('keeps the actual runtime author and source when safe resumption is requested
  expect(seen.at(-1)?.body).toMatchObject({safeResume:true,sourceThread:'project-codex',from:'agent'})
  expect(parseSigned(seen.at(-1)!.signed)).toEqual({author:'codex',sourceThreadId:'project-codex',text:'Continue authorized work'})
 })
+
+it('tells what a finished session still asks (settled, a plain sentence, its own words) without sending it a message', async () => {
+ await cli(['question','target','settled'],{})
+ expect(seen.at(-1)?.body).toEqual({settled:true})
+ await cli(['question','target','Make a new access code?'],{})
+ expect(seen.at(-1)?.body).toEqual({text:'Make a new access code?'})
+ await cli(['question','target','reset'],{})
+ expect(seen.at(-1)?.body).toEqual({reset:true})
+ await expect(cli(['question','target'],{})).rejects.toBeTruthy()
+})
+
+it('« --help » after post or show prints the usage and posts nothing', async () => {
+ const before=seen.length
+ await expect(cli(['post','--help'],{})).rejects.toBeTruthy()
+ await expect(cli(['show','--help'],{})).rejects.toBeTruthy()
+ await expect(cli(['post','A real word','-h'],{})).rejects.toBeTruthy()
+ expect(seen.length).toBe(before)
+})

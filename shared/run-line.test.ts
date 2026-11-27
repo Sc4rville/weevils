@@ -85,6 +85,12 @@ describe('needsLine', () => {
       expect(needsLine(asking(none)), none).toBeNull()
   })
 
+  it('« nothing awaits … », « nothing is waiting … »: nothing is asked, whatever the next sentence adds', () => {
+    for (const none of ['nothing awaits validation. If you want Hacker News covered in future runs, curl to its API has to be allowed.', 'Nothing is waiting on you.', 'nothing waits for you this run.', 'Nothing pending.', 'rien n’attend ta validation.', 'rien en attente.'])
+      expect(needsLine(asking(none)), none).toBeNull()
+    expect(needsLine(asking('Nothing awaits validation, but the token expires tomorrow.'))).toBe('Nothing awaits validation, but the token expires tomorrow.')
+  })
+
   it('« nothing …, but … » and « nothing to do except … » still ask something', () => {
     expect(needsLine(asking('Nothing for now, but the merge conflict needs a look.'))).toBe('Nothing for now, but the merge conflict needs a look.')
     expect(needsLine(asking('Nothing to do except approve PR 12.'))).toBe('Nothing to do except approve PR 12.')

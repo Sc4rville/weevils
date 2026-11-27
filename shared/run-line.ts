@@ -86,7 +86,7 @@ const NEEDS_LABEL = new RegExp(
 // Anywhere in a line (a sentence before it, or a note with its line breaks folded): only the bold label with its colon.
 const NEEDS_INLINE = new RegExp(String.raw`${B}${G}${W}${G}(?::${G}${B}|${B}${G}:)[ \t]*([^\n]*)`, 'giu')
 /** « Needs you: nothing. », « À toi : rien pour l’instant. »: the line is there, and it asks nothing. */
-const NOTHING_TAIL = String.raw`(?:right now|for now|now|today|tonight|yet|else|more|new|at (?:the moment|this time)|this (?:run|time|round|week)|(?:is |are )?(?:needed|required)|from you|on your (?:side|end)|to \p{L}+(?:\s[^.!?]*)?|pour l['’]instant|pour le moment|du tout|cette fois|de ton côté|d['’]autre|de plus|à \p{L}+(?:\s[^.!?]*)?|requise?|nécessaire)` // i18n-ignore: words read in an agent's message, never shown
+const NOTHING_TAIL = String.raw`(?:right now|for now|now|today|tonight|yet|else|more|new|at (?:the moment|this time)|this (?:run|time|round|week)|(?:is |are )?(?:needed|required)|(?:a?waits?|(?:is |are )?(?:waiting|pending))(?:\s[^.!?]*)?|from you|on your (?:side|end)|to \p{L}+(?:\s[^.!?]*)?|pour l['’]instant|pour le moment|du tout|cette fois|de ton côté|d['’]autre|de plus|à \p{L}+(?:\s[^.!?]*)?|requise?|nécessaire|n['’]attend(?:\s[^.!?]*)?|en attente(?:\s[^.!?]*)?)` // i18n-ignore: words read in an agent's message, never shown
 const NOTHING = new RegExp( // i18n-ignore: words read in an agent's message, never shown
   String.raw`^(?:(?:nothing|none|nope|n\/a|na|rien|aucune?(?: action)?|no(?: actions?| decisions?)?|non|ras|all good|pas besoin de toi)(?![-\p{L}])((?:\s+${NOTHING_TAIL})*)\s*([.!,;:—–-]|$)\s*|[^\p{L}\p{N}]*$)`,
   'iu',

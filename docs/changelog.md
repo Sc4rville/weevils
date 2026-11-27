@@ -2,6 +2,21 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-27
+
+### A question that was answered stops asking
+- A finished session whose last message ends on « Needs you: … » wears the question mark in the side bar. When the
+  answer came from elsewhere (a restart done since, a card tapped, another session did it), weevboss or any agent
+  can now say so: `weevils question <id> settled` (`POST /api/sessions/:id/question`). The mark goes, the agent is
+  not woken, and the session's next message speaks for itself again. `weevils question <id> "One plain sentence?"`
+  shows a clearer question in its place; `reset` gives its own words back. It works on a run of an automation, which
+  only the person can write to.
+- An automation's row: once the person has answered its newest run (that run is theirs from then on), the older
+  runs left under the row no longer ask the same thing in its place.
+- « Needs you: nothing awaits validation. » asks nothing, like the other ways to say nothing.
+- `weevils post --help` and `weevils show --help` print the usage instead of posting a card that reads « --help ».
+- The newsprint theme joins the light themes whose busy mark is darkened in the new interface.
+
 ## 2026-11-26
 
 ### Installing, in plain words

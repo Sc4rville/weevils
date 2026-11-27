@@ -137,7 +137,7 @@ const TERMS = ['est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'onSl
  */
 export const AUTO_WEEVILS = ['sessions', 'read', 'asks', 'projects', 'new', 'send', 'post', 'show', 'page', 'pages'] as const
 /** Every other subcommand of server/weevils-cli, denied by name (and refused by the CLI under WEEVILS_SCOPE). */
-export const WEEVILS_DENIED = ['ask', 'goal', 'goals', 'trace', 'mem', 'memory', 'resume', 'recall', 'boss', 'setup', 'config', 'tour'] as const
+export const WEEVILS_DENIED = ['ask', 'goal', 'goals', 'trace', 'mem', 'memory', 'resume', 'question', 'recall', 'boss', 'setup', 'config', 'tour'] as const
 function weevilsDeny(): string[] {
   return ['Bash(weevils)', ...WEEVILS_DENIED.flatMap((c) => [`Bash(weevils ${c})`, `Bash(weevils ${c} *)`, `Bash(*/weevils ${c})`, `Bash(*/weevils ${c} *)`])]
 }

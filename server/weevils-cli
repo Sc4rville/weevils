@@ -8,6 +8,8 @@
 #   weevils recall <id>                  rouvre mot pour mot une ligne du journal de weevboss (message, groupe g…, jour d…)
 #   weevils boss                         comment tourne weevboss et la taille de ce qu'il lit à chaque message
 #   weevils resume <id>                  relance une session coupée en plein travail (état « interrupted »)
+#   weevils question <id> settled|reset|"phrase"   ce qu'une session finie demande encore (le « ? » de sa ligne) : réglé
+#                                        ailleurs, redit en une phrase claire, ou ses propres mots ; rien n'est envoyé à l'agent
 #   weevils new <projet> "message" [codex]   weevils projects
 #   weevils project new <nom>            le dossier d'un nouveau projet (avec git), dans le dossier des projets
 #   weevils do "travail" [codex]         une session qui s'en charge (installer, créer un repo…), et demande d'abord si besoin
@@ -86,6 +88,7 @@ weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library
 weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."] [--mockup phone|browser|tablet|print|cinema|board]' # i18n-ignore
   usage+=$'\n''  post et show : --link <https://…> [--link-label "libellé"] quand le résultat vit à une adresse (site, aperçu, page), jamais localhost   weevils link <id du post> <https://…>' # i18n-ignore
   usage+=$'\n''weevils diagram <schéma.mmd> [sortie.diagram.png]   weevils compare <avant> <après> <sortie.compare.png>' # i18n-ignore
+  usage+=$'\n''weevils question <id> settled|reset|"phrase claire"   ce qu’une session finie demande encore : réglé, ou redit (sans réveiller l’agent)' # i18n-ignore
   usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
   usage+=$'\n''weevils react <emoji> [<message>|last] [--session <id>]   une réaction sur un message de la personne' # i18n-ignore
   usage+=$'\n''weevils ask add "demande" [--goal <id>]   weevils ask link <id> <session> ["retour attendu"]   weevils ask goal <id> <objectif>' # i18n-ignore
@@ -107,6 +110,7 @@ weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   we
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
   export WVM_ERROR='erreur' WVM_NEW='nouvelle session ' WVM_BACKGROUND='en arrière-plan' # i18n-ignore
   m_sent='accepté pour livraison à %s (peut être en file)' m_not_sent='NON reçu par %s : %s' m_resumed='%s relancée' # i18n-ignore
+  m_question_usage='weevils question <id> settled|reset|"phrase claire"' m_question_settled='%s ne demande plus rien' m_question_now='%s demande : %s' m_question_no='%s : %s' m_help_not_posted='rien n’a été posté : --help n’est pas un texte' # i18n-ignore
   export WVM_CUT='coupée en plein travail' # i18n-ignore
   export WVM_MORE='(résumé court : weevils read {} 20 pour plus ; une lecture lourde passe par un sous-agent léger)' WVM_NO_LINE='ligne introuvable dans le journal : ' # i18n-ignore
   export WVM_NO_MEMORY='(rien en mémoire)' WVM_NO_MEMORY_HERE='pas de mémoire sur cette machine (elle vit sur la machine principale)' # i18n-ignore
@@ -137,6 +141,7 @@ weevils post "text" [--title "title"] [--action "label::what to do"]…      wee
   post and show: --link <https://…> [--link-label "label"] when the result lives at an address (a site, a preview, a page), never localhost   weevils link <post id> <https://…>
 weevils diagram <flow.mmd> [out.diagram.png]   weevils compare <before> <after> <out.compare.png>
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
+weevils question <id> settled|reset|"plain sentence"   what a finished session still asks: settled, or said again (the agent is not woken)
 weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
 weevils react <emoji> [<message>|last] [--session <id>]   a reaction on one of the person’s messages
 weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expected report"]   weevils ask goal <id> <goal>
@@ -158,6 +163,7 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
   export WVM_ERROR='error' WVM_NEW='new session ' WVM_BACKGROUND='in background'
   m_sent='accepted for delivery to %s (may be queued)' m_not_sent='NOT received by %s: %s' m_resumed='%s restarted'
+  m_question_usage='weevils question <id> settled|reset|"plain sentence"' m_question_settled='%s no longer asks anything' m_question_now='%s asks: %s' m_question_no='%s: %s' m_help_not_posted='nothing was posted: --help is not a text'
   export WVM_CUT='cut off mid-work'
   export WVM_MORE='(short summary: weevils read {} 20 for more; a heavy read goes through a light subagent)' WVM_NO_LINE='no such line in the log: '
   export WVM_NO_MEMORY='(nothing remembered yet)' WVM_NO_MEMORY_HERE='no memory on this machine (it lives on the main machine)'
@@ -494,6 +500,18 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     code=${out##*$'\n'}
     if [ "$code" = 200 ]; then printf "$m_sent\n" "${id:0:8}"
     else printf "$m_not_sent\n" "${id:0:8}" "$(printf '%s' "${out%$'\n'*}" | "$py" -c 'import json,sys,os; print(json.load(sys.stdin).get("error",os.environ["WVM_ERROR"]))' 2>/dev/null || echo "$WVM_ERROR $code")" >&2; exit 1; fi ;;
+  question)
+    # What a finished session's last message still asks (the « ? » on its row), told from outside: settled elsewhere,
+    # said again in one plain sentence, or its own words again. Nothing is sent to the agent (server/core.ts question).
+    id=$(resolve "${2:?$a_id}")
+    say=${3:?$m_question_usage}
+    out=$("$py" -c 'import json,sys; w=sys.argv[1]; print(json.dumps({"settled":True} if w in ("settled","done") else {"reset":True} if w=="reset" else {"text":w}))' "$say" \
+      | curl -s -m 20 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/question")
+    code=${out##*$'\n'}
+    if [ "$code" = 200 ]; then
+      now=$(printf '%s' "${out%$'\n'*}" | "$py" -c 'import json,sys; print(json.load(sys.stdin).get("asksYou",""))' 2>/dev/null || true)
+      if [ -n "$now" ]; then printf "$m_question_now\n" "${id:0:8}" "$now"; else printf "$m_question_settled\n" "${id:0:8}"; fi
+    else printf "$m_question_no\n" "${id:0:8}" "$(printf '%s' "${out%$'\n'*}" | "$py" -c 'import json,sys,os; print(json.load(sys.stdin).get("error",os.environ["WVM_ERROR"]))' 2>/dev/null || echo "$WVM_ERROR $code")" >&2; exit 1; fi ;;
   resume)
     id=$(resolve "${2:?$a_id}")
     out=$(curl -s -m 40 -w '\n%{http_code}' -X POST -H 'content-type: application/json' --data-binary '{}' "$base/api/sessions/$id/resume")
@@ -607,6 +625,8 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
           case "$a" in ?*::?*) ;; *) echo "$m_action_bad" >&2; exit 1 ;; esac
           actions+=("$a"); shift; [ $# -gt 0 ] && shift ;;
         --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
+        # Asked for help, never a card reading « --help » in the person's stream.
+        --help|-h) echo "$usage"; echo "$m_help_not_posted" >&2; exit 1 ;;
         *) [ -n "$text" ] || text=$1; shift ;;
       esac
     done
@@ -633,6 +653,7 @@ print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" "$caller_sessi
         --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
         # The device or support the media is shown in (shared/mockup.ts); without it, the app picks one.
         --mockup) mockup=${2-}; shift; [ $# -gt 0 ] && shift ;;
+        --help|-h) echo "$usage"; echo "$m_help_not_posted" >&2; exit 1 ;;
         *) n=$((n + 1)); [ $n = 1 ] && file=$1; [ $n = 2 ] && caption=$1; shift ;;
       esac
     done

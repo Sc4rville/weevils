@@ -56,20 +56,21 @@ interface Jobs {
   byId: Map<string, Optimizer>
   /** Session id to the automation that ran it, and the line that run left in its list. */
   bySession: Map<string, { auto: Optimizer; run?: AutoRun }>
-  /** Runs the person took over: ordinary sessions of theirs from then on, never folded. */
-  handedOver: Set<string>
+  /** Runs the person took over: ordinary sessions of theirs from then on, never folded. Each with the automation it
+   *  was a run of: what the person wrote there answered that job, as a run of it. */
+  handedOver: Map<string, string>
 }
 
 function jobsOf(snap: Pick<Snapshot, 'optimizers'>): Jobs {
-  const jobs: Jobs = { byId: new Map(), bySession: new Map(), handedOver: new Set() }
+  const jobs: Jobs = { byId: new Map(), bySession: new Map(), handedOver: new Map() }
   for (const auto of snap.optimizers ?? []) {
     // Not accepted, or refused: nothing of it ever ran under its name.
     if (auto.state === 'proposed' || auto.state === 'refused') continue
     jobs.byId.set(auto.id, auto)
-    for (const id of auto.handedOver ?? []) jobs.handedOver.add(id)
+    for (const id of auto.handedOver ?? []) jobs.handedOver.set(id, auto.id)
     for (const run of auto.runs ?? []) {
       if (!run.sessionId) continue
-      if (run.handedOver) jobs.handedOver.add(run.sessionId)
+      if (run.handedOver) jobs.handedOver.set(run.sessionId, auto.id)
       // Newest first: the first line met for a session is the one that tells how it ended.
       else if (!jobs.bySession.has(run.sessionId)) jobs.bySession.set(run.sessionId, { auto, run })
     }
@@ -99,16 +100,19 @@ function sessionRow(s: Session): SideRow {
 }
 
 /** One automation's row over its runs in this band (newest first). Only its newest run can make it ask: a newer run
- *  of the same job replaces what the older ones asked, so they never light the row. */
-function autoRow(auto: Optimizer, runs: Session[], lines: Map<string, AutoRun | undefined>, now: number): SideRow {
+ *  of the same job replaces what the older ones asked, so they never light the row. A run the person took over is
+ *  out of the fold and still a run of the job: when it is newer than every run left (`takenAt`: when it opened), the
+ *  person answered the job there, and the older runs under it do not ask again in its place. */
+function autoRow(auto: Optimizer, runs: Session[], lines: Map<string, AutoRun | undefined>, now: number, takenAt = 0): SideRow {
   const newest = runs[0]
   const waits = runs.find((s) => s.status === 'needs_user')
   const works = runs.find((s) => s.status === 'working')
-  const state: RowState = waits ? 'needs_user' : works ? 'working' : asksYou(newest) ? 'asks' : newest.status === 'interrupted' ? 'interrupted' : 'done'
+  const asked = takenAt > newest.openedAt ? undefined : asksYou(newest)
+  const state: RowState = waits ? 'needs_user' : works ? 'working' : asked ? 'asks' : newest.status === 'interrupted' ? 'interrupted' : 'done'
   let sub: string | undefined
   if (waits) sub = waits.attention
   else if (works) sub = works.now
-  else if (state === 'asks') sub = asksYou(newest)
+  else if (state === 'asks') sub = asked
   else {
     // What came out: the line its run left (the list's note says how it ended), else the session's last words.
     const line = lines.get(newest.id)
@@ -127,7 +131,11 @@ export function bandRows(snap: Pick<Snapshot, 'sessions' | 'optimizers'>, projec
   const rows: SideRow[] = []
   const folds = new Map<string, { auto: Optimizer; runs: Session[] }>()
   const lines = new Map<string, AutoRun | undefined>()
+  // The newest run the person took over, per automation: when it opened.
+  const taken = new Map<string, number>()
   for (const s of snap.sessions) {
+    const of = jobs.handedOver.get(s.id)
+    if (of) taken.set(of, Math.max(taken.get(of) ?? 0, s.openedAt))
     if (s.archived || s.projectId !== projectId) continue
     const job = jobOf(jobs, s)
     if (!job) {
@@ -139,7 +147,7 @@ export function bandRows(snap: Pick<Snapshot, 'sessions' | 'optimizers'>, projec
     if (fold) fold.runs.push(s)
     else folds.set(job.auto.id, { auto: job.auto, runs: [s] })
   }
-  for (const { auto, runs } of folds.values()) rows.push(autoRow(auto, runs.sort(newestFirst), lines, now))
+  for (const { auto, runs } of folds.values()) rows.push(autoRow(auto, runs.sort(newestFirst), lines, now, taken.get(auto.id)))
   const active = rows.filter((r) => r.state !== 'done').sort((a, b) => RANK[a.state] - RANK[b.state] || newestFirst(a.runs[0], b.runs[0]))
   const done = rows.filter((r) => r.state === 'done').sort((a, b) => lastMoved(b) - lastMoved(a)).slice(0, DONE_SHOWN)
   return { active, done }

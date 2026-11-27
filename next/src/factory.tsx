@@ -177,8 +177,8 @@ export function useFlips(snap: Snapshot) {
 }
 
 type Row = { id: string; name: string; repos: string[]; project: Project | null }
-/** How many of the person's other GitHub repos Projects lists before « + ». */
-const GITHUB_SHOWN = 8
+/** How many products Projects lists before « + ». */
+const PRODUCTS_SHOWN = 12
 /** Your factory's Projects, in a fixed order (a switch never moves its band): every project weevils knows but its own
  *  block at the top, and those switched off whose project left with their last pin, so they can be switched back on. */
 export function factoryProjects(snap: Snapshot): Row[] {
@@ -188,6 +188,37 @@ export function factoryProjects(snap: Snapshot): Row[] {
     ...projects.map((p): Row => ({ id: p.id, name: p.name, repos: p.repos, project: p })),
     ...gone.map((id): Row => ({ id, name: id, repos: [id], project: null })),
   ].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** A product as Your factory's Projects lists it: its mother (the repo named after it, else its first one), the other
+ *  repos of the same product folded inside it (« shop-api », « shop-web » under « shop »), and when it was last active. */
+export type ProductRow = Row & { parts: string[]; at: number; self: boolean }
+const familyOf = (name: string) => (name.split(/[-_.]/)[0] || name).toLowerCase()
+/** weevils' own storage on GitHub (the weevbook vault and its raw copies): never a project of the person's. */
+export const storageRepo = (r: { name: string; description?: string }) => /^weevbook-/.test(r.name) || r.description === 'Encrypted copy kept by weevils'
+/** One row per product, the most recently active first: what weevils knows (projects, those switched off) and the
+ *  person's GitHub repos, grouped by their product name, never weevils' own storage. */
+export function productGroups(snap: Snapshot, rows: Row[], github: { name: string; pushedAt: number; description?: string }[]): ProductRow[] {
+  const by = new Map<string, ProductRow>()
+  const add = (fam: string, base: Omit<ProductRow, 'parts' | 'at' | 'self'> | null, repos: string[], at: number, self = false) => {
+    const g = by.get(fam) ?? { id: fam, name: fam, repos: [], project: null, parts: [], at: 0, self: false }
+    if (base) Object.assign(g, { id: base.id, name: base.name, project: base.project ?? g.project })
+    for (const r of repos) if (!g.repos.includes(r) && !storageRepo({ name: r })) g.repos.push(r)
+    g.at = Math.max(g.at, at)
+    g.self ||= self
+    by.set(fam, g)
+  }
+  const self = snap.projects.find((p) => selfProject(p))
+  if (self) add(familyOf(self.repos[0] ?? self.id), { id: self.id, name: self.name, repos: [], project: self }, self.repos, self.lastActivityAt ?? 0, true)
+  for (const r of rows) add(familyOf(r.id), r, r.repos, r.project?.lastActivityAt ?? 0)
+  for (const g of github) if (!storageRepo(g)) add(familyOf(g.name), null, [g.name], g.pushedAt)
+  return [...by.values()].filter((g) => g.repos.length || g.project).map((g) => {
+    // The mother first (the repo named after the product), so a switch pins it; the others are its parts.
+    const mother = g.repos.find((r) => r.toLowerCase() === familyOf(r) && familyOf(r) === g.id) ?? g.repos[0]
+    const repos = mother ? [mother, ...g.repos.filter((r) => r !== mother)] : g.repos
+    const pre = new RegExp(`^${g.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[-_.]`, 'i')
+    return { ...g, repos, parts: repos.filter((r) => r.toLowerCase() !== g.id.toLowerCase()).map((r) => r.replace(pre, '')) }
+  }).sort((a, b) => b.at - a.at || a.name.localeCompare(b.name))
 }
 
 // ---------------------------------------------------------------- small parts
@@ -579,7 +610,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
   const [github, setGithub] = useState<{ name: string; pushedAt: number; description?: string }[] | null>(null)
   useEffect(() => {
     if (!pOpen) return
-    void call<{ repos: { name: string; pushedAt: number; description?: string }[] }>('GET', '/api/github/repos').then((r) => setGithub(r.repos.filter((x) => !/^weevbook-/.test(x.name) && x.description !== 'Encrypted copy kept by weevils')), () => setGithub([]))
+    void call<{ repos: { name: string; pushedAt: number; description?: string }[] }>('GET', '/api/github/repos').then((r) => setGithub(r.repos), () => setGithub([]))
   }, [pOpen])
   useEffect(() => {
     if (!more || !here) return
@@ -615,10 +646,11 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
   const rows = factoryProjects(snap)
   // Already there: every row, and every project weevils knows (its own block at the top included).
   const known = new Set([...rows, ...snap.projects].flatMap((r) => [r.id, ...r.repos]))
-  // What can be added: one band per product (its mother repo, server/projects.ts motherRepos), never one per folder.
-  const fromGithub: Row[] = (github ?? []).filter((g) => !known.has(g.name)).sort((a, b) => b.pushedAt - a.pushedAt).map((g) => ({ id: g.name, name: g.name, repos: [g.name], project: null }))
-  for (const g of fromGithub) known.add(g.id)
-  const others: Row[] = [...fromGithub.slice(GITHUB_SHOWN), ...(mothers ?? []).filter((m) => !known.has(m.id) && !m.repos.some((r) => known.has(r))).map((m) => ({ id: m.id, name: m.name, repos: m.repos, project: null }))]
+  // One row per product, the most recently active first: what weevils knows and the person's GitHub repos, each
+  // product's other repos folded inside it. The first ones listed, the rest behind « + » with this machine's folders.
+  const groups = productGroups(snap, rows, github ?? [])
+  for (const g of groups) for (const r of g.repos) known.add(r)
+  const others: ProductRow[] = [...groups.slice(PRODUCTS_SHOWN), ...(mothers ?? []).filter((m) => !known.has(m.id) && !m.repos.some((r) => known.has(r)) && !storageRepo({ name: m.id })).map((m) => ({ id: m.id, name: m.name, repos: m.repos, project: null, parts: m.repos.filter((r) => r !== m.id), at: 0, self: false }))]
   const sessions = sOpen ? sessionRuns(snap.sessions) : []
 
   // The staircase: every band one small step from the one above it, counting only what is unfolded (as Autonomous).
@@ -683,9 +715,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
         </Collapse>
         <LevelHead step={step()} name="Projects" mark="github" open={pOpen} onFold={pFold} />
         <Collapse open={pOpen}>
-          {rows.map((r) => projectBand(r, step(pOpen), 2))}
-          {/* Then the person's other GitHub repos, the most recently pushed first; the rest behind « + ». */}
-          {fromGithub.slice(0, GITHUB_SHOWN).map((r) => projectBand(r, step(pOpen), 2))}
+          {groups.slice(0, PRODUCTS_SHOWN).map((r) => projectBand(r, step(pOpen), 2))}
           <PlusBand step={step(pOpen)} label="Add a project" open={more} onClick={() => setMore((m) => !m)} />
           <Collapse open={more}>
             {others.map((r) => projectBand(r, step(pOpen && more), 3))}
@@ -737,18 +767,21 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
     )
   }
 
-  /** A project's band: its repo colour and mark, a tap to its page, its switch for the side bar. */
-  function projectBand(r: Row, at: number, depth: number) {
-    const on = flipped.get(r.id) ?? (r.project ? inSideBar(snap, r.project) : snap.pinnedRepos.includes(r.id) && !snap.hiddenProjects?.includes(r.id))
+  /** A product's row, compact: a small square of its colour, its name, its other repos after it in a quieter line, its
+   *  switch for the side bar (weevils itself is always there: none), then « / » and « > ». */
+  function projectBand(r: ProductRow, at: number, depth: number) {
+    const on = r.self || (flipped.get(r.id) ?? (r.project ? inSideBar(snap, r.project) : r.repos.some((x) => snap.pinnedRepos.includes(x)) && !snap.hiddenProjects?.includes(r.id)))
     const openPage = () => page({ kind: 'project', projectId: r.id })
     return (
       <Band key={r.id} step={at} depth={depth} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
         <button className="nx-fx-main" onClick={openPage}>
-          <span className="nx-mark"><Icon name="repo" /></span>
-          <span className="nx-row-title">{r.name}</span>
+          <span className="nx-mark"><i className="nx-fx-swatch" /></span>
+          <span className="nx-fx-product">
+            <span className="nx-row-title">{r.name}</span>
+            {r.parts.length > 0 && <span className="nx-fx-parts">{r.parts.join(' · ')}</span>}
+          </span>
         </button>
-        {/* A small switch, then the side bar's own « / » (its files) and « > » (its page), in the same places. */}
-        <Switch small on={on} label={`${r.name} in the side bar`} onChange={(v2) => showProject(r, v2)} />
+        {r.self ? <span className="nx-fx-room-switch" aria-hidden /> : <Switch small on={on} label={`${r.name} in the side bar`} onChange={(v2) => showProject(r, v2)} />}
         <div className="chars">
           <button className="ch" aria-label={`Files of ${r.name}`} onClick={() => page({ kind: 'files', projectId: r.id, ...(r.project ? {} : { repo: r.repos[0] ?? r.id }) })}>
             <Icon name="slash" />

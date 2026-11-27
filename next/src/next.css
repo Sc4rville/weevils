@@ -399,8 +399,15 @@ body { overflow: hidden; }
 .nx-fx-choice .nx-fx-word:disabled { cursor: default; }
 .nx-fx-agents .nx-fx-hint { padding-bottom: 10px; }
 
-/* A project's band wears its repo's colour, as in the side bar, with the repo mark. */
-.nx-fx-band.nx-fx-project { background: var(--c) !important; }
+/* A product's row in Projects (2026-11-27): compact, on Your factory's own tone, its repo's colour as a small square
+   only; its other repos after its name in a quieter line. Never a full band of colour per repo. */
+.nx-row.nx-sub.nx-fx-project { min-height: 40px; padding-top: 2px; padding-bottom: 2px; }
+.nx-fx-project .nx-fx-main { min-height: 36px; }
+.nx-fx-swatch { display: block; width: 12px; height: 12px; background: var(--c); box-shadow: 0 0 0 1px color-mix(in oklab, var(--ink) 35%, transparent); }
+.nx-fx-product { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; white-space: nowrap; }
+.nx-fx-product .nx-row-title { flex: none; }
+.nx-fx-parts { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; opacity: .55; }
+.nx-fx-room-switch { flex: none; width: 34px; }
 .nx-fx-project .nx-mark .ic path { stroke-width: 1.5; }
 /* Sessions (factory.tsx): each band in its repo's colour; a run of the same repo steps its tone band after band, the
    Autonomous staircase (--run), never a line or a strip between them. */

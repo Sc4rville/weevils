@@ -26,6 +26,7 @@ describe('explain', () => {
   })
   it('garde le genre memory, refuse un genre inconnu', () => {
     expect(readExplain({ kind: 'memory', path: 'abc' })).toMatchObject({ kind: 'memory', path: 'abc' })
+    expect(readExplain({ kind: 'ui', title: 'For you' })).toMatchObject({ kind: 'ui', title: 'For you' })
     expect(readExplain({ kind: 'shell' }).kind).toBe('file')
   })
 })

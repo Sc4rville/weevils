@@ -285,6 +285,18 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **About the interface**: what is sent to weevboss, or to a session working on weevils itself, carries the tag « ui »
   for the improvement loop (Night lens reads it).
 
+## Explain any text (2026-11-27)
+
+- **Phone: a select mark under the camera's** (over it when the camera sits low). A tap freezes the app the way the
+  camera does (its veil, its cross) but the screen stays text: a tap takes a word, or a button's whole label; a held
+  finger uses the phone's own selector, on any text, buttons included. The explain bar opens under it (explain, ask,
+  copy: the bar of threads and files), answered with the text around it. Nothing under the finger acts while frozen:
+  no tap, no link, no swipe. The mark again, or the cross, lets go.
+- **Outside that mode the phone's long press and selector are never touched**: an explain that fired on every
+  selection fought the system's selector and made the app hard to use.
+- **Computer: text selected with the mouse anywhere opens the bar**; a button or a link (text that can't be selected)
+  opens it when held half a second, and that release is not a click. Threads and files keep their own bar.
+
 ## From the classic app
 
 next takes the classic app's light features as they are, never as copies, so they follow by themselves

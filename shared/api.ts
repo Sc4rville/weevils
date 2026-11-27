@@ -662,8 +662,9 @@ export interface SessionDetail {
 /** Une question posée depuis la vue d'un fichier ou un fil de conversation : le mot ou la sélection tapés, et ce qui les entoure. */
 export interface ExplainRequest {
   mode: 'explain' | 'usage' | 'ask'
-  /** file : vue d'un fichier (défaut) ; conv : fil d'une session ou de weevboss ; memory : page mémoire (path = id du souvenir, vide : toute la mémoire ; le serveur la relit lui-même). */
-  kind?: 'file' | 'conv' | 'memory'
+  /** file : vue d'un fichier (défaut) ; conv : fil d'une session ou de weevboss ; memory : page mémoire (path = id du souvenir, vide : toute la mémoire ; le serveur la relit lui-même) ;
+   *  ui : n'importe quel texte de l'interface (title = l'endroit, around = le texte du bloc autour). */
+  kind?: 'file' | 'conv' | 'memory' | 'ui'
   /** Repo du fichier ou de la session (vide pour le fil de weevboss). */
   repo: string
   /** file : chemin du fichier ; conv : vide. */

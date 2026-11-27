@@ -86,12 +86,15 @@ export async function explain(w: Weevils, req: ExplainRequest): Promise<ExplainR
   const sel = clip(req.selection.trim(), 1500)
   const conv = req.kind === 'conv'
   const mem = req.kind === 'memory'
+  const ui = req.kind === 'ui'
   const head = mem
     ? memoryHead(w.memory, req, sel)
-    : conv
+    : ui
+      ? t.headUi(user(), req.title ?? '', clip(req.around, 4000), sel)
+      : conv
       ? t.headConv(user(), req.title ?? '', req.tool ?? '', req.project ?? '', req.repo, clip(req.around, 7000), sel)
       : t.head(user(), req.repo, req.path, clip(req.around, 6000), sel, req.from, req.to)
-  if (req.mode === 'usage' && !mem) {
+  if (req.mode === 'usage' && !mem && !ui) {
     const term = usageTerm(req.selection)
     const hits = term && req.repo ? await hitsFor(w, req, term).catch(() => []) : []
     const list = hits.slice(0, 30).map((h) => `${h.path}:${h.line}: ${h.text}`).join('\n')
@@ -106,7 +109,9 @@ export async function explain(w: Weevils, req: ExplainRequest): Promise<ExplainR
       await w.sendMain(
         mem
           ? t.forwardMemory(item ? clip(item.text, 300) : '', item?.id ?? '', clip(sel, 300), q)
-          : conv
+          : ui
+            ? t.forwardUi(req.title ?? '', clip(sel, 300), q)
+            : conv
             ? t.forwardConv(req.title ?? '', clip(sel, 300), q)
             : t.forward(req.repo, req.path, req.from, req.to, clip(sel, 300), q),
       )
@@ -114,7 +119,7 @@ export async function explain(w: Weevils, req: ExplainRequest): Promise<ExplainR
     }
     return { text: tidy(out.replace(ACTION, '')) }
   }
-  return { text: tidy(await quick(head + (mem ? t.explainMemory : t.explain))) }
+  return { text: tidy(await quick(head + (mem ? t.explainMemory : ui ? t.explainUi : t.explain))) }
 }
 
 /** Corps reçu de l'app, rendu sûr (types, tailles). */
@@ -123,7 +128,7 @@ export function readExplain(b: any): ExplainRequest {
   const str = (v: unknown, n = 200) => (v ? String(v).slice(0, n) : undefined)
   return {
     mode,
-    kind: b?.kind === 'conv' || b?.kind === 'memory' ? b.kind : 'file',
+    kind: b?.kind === 'conv' || b?.kind === 'memory' || b?.kind === 'ui' ? b.kind : 'file',
     title: str(b?.title),
     tool: str(b?.tool, 40),
     project: str(b?.project),

@@ -12,6 +12,13 @@ export default defineMessages({
     headConv: (user: string, title: string, tool: string, project: string, repo: string, around: string, sel: string) =>
       `Tu es weevboss, l'assistant de ${user}. Il lit sur son téléphone la conversation « ${title} » avec ${tool}${project ? `, projet ${project}` : ''}${repo ? `, repo ${repo}` : ''}.\n\nMessages autour :\n${around}\n\n` +
       (sel ? `Il a sélectionné : « ${sel} »\n\n` : `Rien n'est sélectionné : il regarde ces messages.\n\n`),
+    /** Head for any text of the interface (a label, a button, a For you post…): where it is, the text around it, the selection. */
+    headUi: (user: string, where: string, around: string, sel: string) =>
+      `Tu es weevboss, l'assistant de ${user}. Il regarde l'app weevils sur son téléphone${where ? `, à l'endroit « ${where} »` : ''}. weevils lui sert à suivre et piloter ses agents (Claude Code, Codex) depuis son téléphone.\n\nTexte autour, tel qu'il est affiché :\n${around}\n\n` +
+      `Il a sélectionné : « ${sel} »\n\n`,
+    explainUi:
+      'Explique ce que ça veut dire ici, dans weevils, et ce qui se passe s’il touche ou utilise ça, en langage humain, en une à trois phrases courtes en français. Pas de titre, pas de liste, pas de markdown, pas de reformulation de la question.',
+    forwardUi: (where: string, sel: string, q: string) => `[depuis l'app${where ? `, « ${where} »` : ''}${sel ? `, sélection « ${sel} »` : ''}]\n${q}`,
     forwardConv: (title: string, sel: string, q: string) => `[depuis la conversation « ${title} »${sel ? `, sélection « ${sel} »` : ''}]\n${q}`,
     /** Head for the memory page: one memory item (where it came from), a few others, the selection. */
     headMemory: (user: string, text: string, q: string, a: string, others: string, sel: string) =>
@@ -45,6 +52,12 @@ export default defineMessages({
     headConv: (user: string, title: string, tool: string, project: string, repo: string, around: string, sel: string) =>
       `You are weevboss, ${user}'s assistant. They are reading, on their phone, the conversation "${title}" with ${tool}${project ? `, project ${project}` : ''}${repo ? `, repo ${repo}` : ''}.\n\nMessages around:\n${around}\n\n` +
       (sel ? `They selected: "${sel}"\n\n` : `Nothing is selected: they are looking at these messages.\n\n`),
+    headUi: (user: string, where: string, around: string, sel: string) =>
+      `You are weevboss, ${user}'s assistant. They are looking at the weevils app on their phone${where ? `, at "${where}"` : ''}. weevils lets them follow and drive their agents (Claude Code, Codex) from their phone.\n\nText around it, as shown:\n${around}\n\n` +
+      `They selected: "${sel}"\n\n`,
+    explainUi:
+      'Explain what it means here, in weevils, and what happens if they tap or use it, in plain human language, in one to three short sentences in English. No heading, no list, no markdown, don’t restate the question.',
+    forwardUi: (where: string, sel: string, q: string) => `[from the app${where ? `, "${where}"` : ''}${sel ? `, selection "${sel}"` : ''}]\n${q}`,
     forwardConv: (title: string, sel: string, q: string) => `[from the conversation "${title}"${sel ? `, selection "${sel}"` : ''}]\n${q}`,
     headMemory: (user: string, text: string, q: string, a: string, others: string, sel: string) =>
       `You are weevboss, ${user}'s assistant. weevils keeps a small memory of ${user} (their goals, wishes, projects, tastes), drawn from what they tell weevboss or written down by hand. It is used to suggest background tasks while their agents are idle (the automations band), and by you, to know them. It stays on their machine and only ever goes to the model.\n\n` +

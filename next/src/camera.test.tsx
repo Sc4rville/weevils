@@ -12,6 +12,8 @@ vi.mock('./camera-shoot.ts', () => ({
   crop: (c: { toDataURL: () => string }, box: unknown) => (box ? { toDataURL: () => 'data:image/png;base64,UEFSVA==' } : c),
 }))
 vi.mock('../../src/api.ts', () => ({ api: {} }))
+// The select mark lives beside the camera's (select.test.tsx tests it): not here.
+vi.mock('./select.tsx', () => ({ Select: () => null }))
 import { Camera } from './camera.tsx'
 import { heldNow, hold } from '../../src/ui/held-capture.ts'
 import { TAP_MS } from './camera-geometry.ts'

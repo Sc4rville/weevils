@@ -297,6 +297,16 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **Computer: text selected with the mouse anywhere opens the bar**; a button or a link (text that can't be selected)
   opens it when held half a second, and that release is not a click. Threads and files keep their own bar.
 
+## weevboss hands work over (2026-11-27)
+
+- **When weevboss hands an ask to a session**, its little weevil at the foot of the thread turns around and sends a
+  short glowing streak along a curve to the menu (the three bars), which takes the colour of that session's project for
+  a moment, with a small ring, then settles back. Under a second, transform and opacity only (next/src/dispatch.ts).
+- **The signal is real state**: the reaction of your message moving from nothing or 👀 to 📤, 🛠️ or ❓ (the request
+  ledger's, server/reactions.ts). Once per message; never on load, on a return to the screen, or for an older message.
+- **Only when both ends are on screen**: a session, a page or the side bar over the menu, or no weevil at work, and the
+  menu alone takes the colour (or nothing, when the menu is covered). Reduced motion: the colour alone.
+
 ## From the classic app
 
 next takes the classic app's light features as they are, never as copies, so they follow by themselves

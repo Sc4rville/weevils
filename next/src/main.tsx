@@ -30,6 +30,7 @@ import { api } from '../../src/api.ts'
 import { call, useAuth, useSnapshot } from './data.ts'
 import { Sky } from './sky.tsx'
 import { Chat } from './chat.tsx'
+import { useDispatchTrail } from './dispatch.ts'
 import { slide } from './moves.ts'
 import { foldPrefs, saveFold } from './fold.ts'
 import { bandRows, holds, runRows, sessionState, sessionSub, type RowState } from './side-rows.ts'
@@ -433,6 +434,10 @@ function BossInner({ snap, stars, theme, safeT, openSide, ctx, placeholder, labe
   reach: Omit<Reach, 'showThread'>
 }) {
   const [top, setTop] = useTop()
+  // weevboss hands work to a session: its weevil sends a streak to the menu (dispatch.ts).
+  const menu = useRef<HTMLButtonElement>(null)
+  const panes = useRef<HTMLDivElement>(null)
+  useDispatchTrail(snap, ctx.colors, menu, panes)
   // « Open weevboss's thread » (a For you post's step, an action answered there): the app says it with this event
   // (src/ui/follow.ts focusBoss); in next it brings weevboss's screen, on its thread.
   const reachRef = useRef(reach)
@@ -460,12 +465,12 @@ function BossInner({ snap, stars, theme, safeT, openSide, ctx, placeholder, labe
     <>
       <div className="nx-top" style={{ height: SKY + safeT, paddingTop: safeT }}>
         <Sky ids={stars} theme={theme} onTap={openSide} reserve={snap.foryou ? 92 : 0} />
-        <button className="nx-menu" style={{ top: safeT + 4 }} aria-label="Open the side bar" onClick={openSide}>
+        <button ref={menu} className="nx-menu" style={{ top: safeT + 4 }} aria-label="Open the side bar" onClick={openSide}>
           <Icon name="agents" />
         </button>
         {snap.foryou && <div className="nx-words" style={{ top: safeT }}><TopWords active={top} onPick={setTop} /></div>}
       </div>
-      <div className="nx-panes" onPointerDown={swipe}>
+      <div className="nx-panes" ref={panes} onPointerDown={swipe}>
         <AnimatePresence initial={false} custom={dir}>
           {top === 'foryou' && snap.foryou ? (
             <motion.div key="fy" className="nx-pane nx-fy" custom={dir} variants={PANE} initial="enter" animate="shown" exit="leave" transition={PANEL}>

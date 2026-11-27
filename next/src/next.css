@@ -594,3 +594,10 @@ html.wv-picking a, html.wv-picking img { -webkit-touch-callout: none !important;
 .nx-tour-steps .ic { width: 16px; height: 16px; }
 .nx-tour-steps button:focus-visible { outline: var(--focus-halo); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .nx-tour-halo { transition: none; animation: none; } }
+
+/* weevboss hands work over (dispatch.ts): the streak to the menu, and the ring as it lands. */
+.nx-trail { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 80; overflow: visible; }
+.nx-trail-ring {
+  position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+  border: 2px solid var(--c); opacity: 0; pointer-events: none;
+}

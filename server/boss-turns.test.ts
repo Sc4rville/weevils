@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { claudeCommand } from './agent-launch.ts'
-import { BOSS_WEEVILS, BossTurns, bossPermissions, modeSections } from './boss-turns.ts'
+import { BOSS_WEEVILS, BossTurns, bossPermissions, modeSections, queuedCids } from './boss-turns.ts'
 import { HOME, ORCH_DIR } from './config.ts'
 import { denyList } from './optimizers.ts'
 
@@ -193,5 +193,37 @@ describe("weevboss's turns in ask mode, for what needs a terminal", () => {
       const blocks = ask.split('```').filter((_, i) => i % 2)
       for (const line of blocks.join('\n').split('\n')) expect(line, `${l}: ${line}`).not.toMatch(/^(gh repo (create|edit)|mkdir|git |mv |sudo )/)
     }
+  })
+})
+
+describe("weevboss's turns, a burst of messages", () => {
+  const fresh = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boss-burst-'))
+    return new BossTurns(async () => '{}', path.join(dir, 'boss'), path.join(dir, 't'), 20_000)
+  }
+
+  it('messages that arrive while the previous one waits are read by one turn, answered once', async () => {
+    const turns = fresh()
+    turns.enqueue('did we decide that? ⟦weevils — app locale fr⟧', 'c1')
+    turns.enqueue('since when is it there ⟦weevils — app locale fr⟧', 'c2')
+    turns.enqueue("that's my question", 'c3')
+    expect(turns.queue).toHaveLength(1)
+    expect(queuedCids(turns.queue[0])).toEqual(['c1', 'c2', 'c3'])
+    const t = await turns.prepare({ id: 'burst', claude: ['claude'], memory: '', instructions: '# weevboss' })
+    expect(t.prompt).toMatch(/^did we decide that\?\nsince when is it there\nthat's my question ⟦weevils — app locale fr/)
+    expect(t.prompt.match(/app locale fr/g)).toHaveLength(1)
+  })
+
+  it('never joins a message whose turn is already being prepared, nor a wake-up', async () => {
+    const turns = fresh()
+    turns.enqueue('first', 'c1')
+    const t = await turns.prepare({ id: 'one', claude: ['claude'], memory: '', instructions: '# weevboss' })
+    turns.enqueue('second', 'c2')
+    expect(turns.queue.map((q) => q.text)).toEqual(['first', 'second'])
+    expect(queuedCids(turns.started(t))).toEqual(['c1'])
+    const w = fresh()
+    w.enqueue('', undefined, [{ key: 'selfcheck:1', at: 1, summary: 'x' } as never], true)
+    w.enqueue('hello', 'c3')
+    expect(w.queue).toHaveLength(2)
   })
 })

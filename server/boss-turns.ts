@@ -88,7 +88,12 @@ export interface Queued {
   events?: WakeEvent[]
   /** Capture id of the message in the request ledger (server/boss-ledger.ts). */
   cid?: string
+  /** Capture ids of the messages that joined it while it waited (a burst answered by one turn). */
+  more?: string[]
 }
+
+/** Every capture id a queued turn answers. */
+export const queuedCids = (q: Queued | undefined): string[] => (q ? [q.cid, ...(q.more ?? [])].filter((c): c is string => !!c) : [])
 
 interface TurnsState {
   view: ViewState
@@ -130,6 +135,8 @@ export class BossTurns {
   private s: TurnsState = { view: {}, turns: [], queue: [] }
   private readonly file: string
   private warming = false
+  /** The head a turn is being prepared for: its text is already read, so nothing joins it any more. */
+  private sealed?: Queued
 
   readonly dir: string
   readonly transcripts: string
@@ -156,6 +163,18 @@ export class BossTurns {
   lastTurn(): string | undefined { return this.s.turns.at(-1) }
 
   enqueue(text: string, cid?: string, events?: WakeEvent[], proactive = false) {
+    // A burst (dictated in pieces, a precision, « that's my question »): a message that arrives while the previous one
+    // still waits joins it, so one turn reads them together and answers once, instead of one reply per piece.
+    const last = this.s.queue.at(-1)
+    if (!proactive && !events?.length && last && !last.proactive && last !== this.sealed) {
+      const a = peelContext(last.text)
+      const b = peelContext(text)
+      const parts = [...new Set([...a.parts, ...b.parts])]
+      last.text = [a.text, b.text].filter(Boolean).join('\n') + (parts.length ? ` ⟦weevils — ${parts.join(' — ')}⟧` : '')
+      if (cid) last.more = [...(last.more ?? []), cid]
+      this.save()
+      return
+    }
     this.s.queue.push({ text, at: Date.now(), ...(cid ? { cid } : {}), ...(events?.length ? { events, proactive } : {}) })
     this.save()
   }
@@ -187,6 +206,7 @@ export class BossTurns {
     q.tries = (q.tries ?? 0) + 1
     console.error(`[weevboss] tour refusé (${q.tries}/3) : ${e.message}`)
     if (q.proactive || q.tries >= 3) this.s.queue.shift()
+    this.sealed = undefined
     this.save()
   }
 
@@ -284,6 +304,7 @@ export class BossTurns {
   async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; live?: string; instructions?: string; summaryMs?: number; now?: number; waiting?: readonly Waiting[] }): Promise<PreparedTurn> {
     const q = this.s.queue[0]
     if (!q) throw new Error('empty queue') // i18n-ignore : internal guard, never shown
+    this.sealed = q
     const view = await this.view(o)
     const { text, parts } = peelContext(q.text)
     const recent = view.recent ? `the latest exchanges of your thread before this message, word for word, oldest first (ids work with weevils recall):\n${view.recent}` : ''
@@ -316,6 +337,7 @@ export class BossTurns {
   /** The head turn is running: it leaves the queue (returned), its id joins the turns. */
   started(t: PreparedTurn): Queued | undefined {
     const q = this.s.queue.shift()
+    this.sealed = undefined
     this.s.turns = [...this.s.turns, t.id].slice(-2000)
     this.save()
     fs.appendFileSync(path.join(this.dir, 'metrics.jsonl'), JSON.stringify({ id: t.id, at: Date.now(), stable: t.stableTokens, recent: t.recentTokens, ledger: t.ledgerTokens ?? 0, live: t.liveTokens ?? 0, ...(t.fast ? { fast: true } : {}), ...(t.start ? { start: t.start } : {}), proactive: !!q?.proactive, events: q?.events?.map((e) => e.key), rebuilt: t.rebuilt }) + '\n')

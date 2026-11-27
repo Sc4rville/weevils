@@ -50,7 +50,7 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeHere, claudeLogged, withoutContext, type Setup } from './setup.ts'
-import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir, type PreparedTurn } from './boss-turns.ts'
+import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir, queuedCids, type PreparedTurn } from './boss-turns.ts'
 import { liveDigest } from './boss-live.ts'
 import { aheadCommand, BOSS_WARM, SPARE_MAX_AGE_MS, spareWaiting, type Spare } from './boss-warm.ts'
 import { commitChanges, LandedCache } from './ledger-evidence.ts'
@@ -2996,7 +2996,7 @@ export class Weevils {
       turns.preferUser()
       const head = turns.queue[0]
       if (head?.proactive && !canWake()) return
-      const turn = await turns.prepare({ id, claude: bossClaude(), memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', live: this.bossLive(now), ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
+      const turn = await turns.prepare({ id, claude: bossClaude(), memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, queuedCids(head)) ?? '', live: this.bossLive(now), ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
       // Preparation can await summaries. A user who spoke in the meantime takes the next turn.
       if (head?.proactive && (turns.preferUser() || !canWake() || !wakeups!.canLaunch(Date.now(), id))) return
       // The previous turn is over: its message can be read into the ledger.
@@ -3008,7 +3008,7 @@ export class Weevils {
       reserved = !!claimed
       if (!(spare && await this.takeSpare(spare, turn))) await this.spawn('claude', ORCH_DIR, 'weevboss', turn.command, id)
       const q = reserved ? claimed : turns.started(turn)
-      if (q?.cid) this.ledger?.attach(q.cid, id)
+      for (const c of queuedCids(q)) this.ledger?.attach(c, id)
       this.persist()
       console.log(`[weevboss] tour ${id.slice(0, 8)} · vue ${turn.stableTokens} + ${turn.recentTokens} + registre ${turn.ledgerTokens ?? 0} tokens${turn.rebuilt ? ' · paliers reconstruits' : ''} · ${turn.start ?? 'fresh'}`)
       void turns.prewarm(5 * 60_000).catch(() => undefined)

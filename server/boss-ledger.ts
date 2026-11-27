@@ -676,7 +676,7 @@ export class Ledger {
   // ------------------------------------------------ the digest each turn reads
 
   /** Open requests (stale first), goals and the user's rules, within a fixed budget of tokens. */
-  digest(budget = this.budget, except?: string): string {
+  digest(budget = this.budget, except?: string | readonly string[]): string {
     const t = this.now()
     const chars = Math.floor(budget * 3.2)
     const out: string[] = []
@@ -703,7 +703,8 @@ export class Ledger {
     const ruleShare = Math.floor(chars * 0.17)
     const reqChars = chars - goalShare - ruleShare
     put(`## Open requests (${live.length} open${stale.length ? `, ${stale.length} stale` : ''}) — never drop one silently: weevils asks · weevils ask done|drop <id> · weevils ask link <id> <session> · speed mode ${speedMode()}: the user's own timing wins (now → send, later → keep queued), else pause/veille queue · cruise keeps ongoing work going · turbo/max send at once`)
-    const pending = this.s.inbox.filter((m) => m.cid !== except)
+    const skip = new Set(typeof except === 'string' ? [except] : except ?? [])
+    const pending = this.s.inbox.filter((m) => !skip.has(m.cid))
     let shown = 0
     for (const a of [...stale.map((x) => ({ x, s: true })), ...fresh.map((x) => ({ x, s: false }))]) {
       const l = (a.s ? `- STALE ${age(t - a.x.progressAt)} no progress:` + line(a.x).slice(1) : line(a.x))

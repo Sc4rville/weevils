@@ -37,4 +37,9 @@ describe('stand-ins of sent messages', () => {
     const p = [stand('k', 'hello', before)]
     expect(stillPending(p, before)).toEqual(p)
   })
+
+  it('ends when weevboss got it together with the messages sent around it, as one message', () => {
+    const p = [stand('k1', 'on avait décidé ça ?', before), stand('k2', 'depuis quand elle existe', before), stand('k3', 'c ma question', before)]
+    expect(stillPending(p, [...before, u('u1', 'on avait décidé ça ?\ndepuis quand elle existe\nc ma question ⟦weevils ctx⟧')])).toEqual([])
+  })
 })

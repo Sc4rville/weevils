@@ -229,6 +229,7 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_DATA` | where the stats, the install register and the records are kept (default `~/.local/share/weevils-get`) |
 | `GET_STATS_KEY` | the private stats page, `/stats/<key>` (off without it) |
 | `GET_STATS_REPO` | a private repository of yours the install register is backed up to every day (`get/backup-stats.sh`; no backup without it) |
+| `GET_STATS_BRANCH` | optional: the branch of `GET_STATS_REPO` that holds the backup, so it can live in a repository you already have (e.g. your private one) instead of a repository of its own |
 | `GET_NOTIFY` | the weevils on this machine (`http://127.0.0.1:4179`): a word in its « for you » at each install and each day |
 | `GET_PUBLIC_COUNT` | `1`: « N people already run weevils » on the page (off by default) |
 | `GET_CODE_URL` | the public repository the page links to once GitHub says it is public (default `github.com/Sc4rville/weevils`) |

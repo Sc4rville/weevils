@@ -151,11 +151,16 @@ body { overflow: hidden; }
 /* Colour alone delimits the side bar's bands (2026-11-22): a band whose last row wears its own tone (the Autonomous
    staircase, a toned session row) ends on that row, never on a strip of its darker base, the look of a separator. */
 .nx-project.nx-autos, .nx-project.nx-autos:has(.nx-row.nx-sub), .nx-project:has(.nx-row.nx-sub.tone:last-child) { padding-bottom: 0; }
+/* Your factory ends on its own last level (Tempo): no strip of its pale ground under it, settings meets it flush. */
+.nx-project.nx-factory, .nx-project.nx-factory:has(.nx-row.nx-sub) { padding-bottom: 0; }
 .nx-project-head { min-height: var(--band-h); padding-top: 0; padding-bottom: 0; gap: 8px; }
 /* Every folded band is one height (--band-h): weevils, each repo, Autonomous, settings — a regular staircase. */
 .nx-settings .settings-band { padding-bottom: 0; }
 .nx-settings .settings-band > .in.head { min-height: var(--band-h); padding-top: 0; padding-bottom: 0; display: flex; align-items: center; box-sizing: border-box; gap: var(--mark-gap); }
 .nx-settings .settings-band > .in.head > .h2 { flex: 1; min-width: 0; }
+/* Its icon and its name in the columns of Your factory's rows right above it (Sessions, Tempo): the same mark width. */
+.nx-settings .settings-band > .in.head .nx-repo-mark { width: 22px; flex: none; }
+.nx-settings .settings-band > .in.head .nx-repo-mark .ic { width: 20px; height: 20px; }
 .nx-project-name { font-size: 20px; letter-spacing: -0.01em; }
 /* The working star of a project sits in one column, just left of its « / », whatever the name's length: the name
    takes the room, the star ends the row's tap area (2026-11-23). */

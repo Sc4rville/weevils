@@ -479,6 +479,12 @@ a.nx-fx-main { text-decoration: none; }
   background: Canvas; color: var(--ink); box-shadow: 3px 3px 0 var(--ink);
 }
 .pick-bar .qa { padding-bottom: 10px; }
+/* The swipe of a page and of the side bar (motion's drag) turns text selection off on all they hold, inline. On a phone
+   the selection is a held finger, never a swipe: For you and the side bar are text again, so every word there can be
+   selected and explained. A computer keeps them off (a mouse drag there moves the page). */
+@media (pointer: coarse) {
+  .nx-fy .fy-page, .nx-side { -webkit-user-select: text !important; user-select: text !important; }
+}
 @media (hover: hover) and (pointer: fine) { .pick-bar { left: auto; right: 16px; width: min(440px, calc(100vw - 32px)); } }
 .cam-mark.cam-on { opacity: .9; z-index: 1002; }
 /* A capture waits and this screen has no box to show it: the mark is its small square until it is sent. */

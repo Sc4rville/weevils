@@ -163,7 +163,7 @@ describe('what weevboss is told in its first days', () => {
 function make(deps: Partial<SetupDeps> = {}, s = state()) {
   const handoff = vi.fn(async () => {})
   const delegate = vi.fn(async () => {})
-  const it = new Setup({ bump() {}, feed: () => ({ machines: [], projects: 0 }), remoteFacts: async () => [], devices: () => 0, push: () => 0, shortcut: () => false, seen: () => [], hasHistory: () => false, startMail() {}, handoff, delegate, ...deps } as SetupDeps)
+  const it = new Setup({ bump() {}, feed: () => ({ machines: [], projects: 0 }), remoteFacts: async () => [], devices: () => 0, push: () => 0, shortcut: () => false, seen: () => [], hasHistory: () => false, startMail() {}, handoff, delegate, checkKey: async () => 'unknown', ...deps } as SetupDeps)
   vi.spyOn(it, 'detect').mockImplementation(async () => {
     ;(it as unknown as { cache: unknown }).cache = { at: Date.now(), v: s }
     return s
@@ -386,29 +386,30 @@ describe('another computer, by talking', () => {
   })
 })
 
-describe('GitHub, by talking (the vault needs it once)', () => {
-  // A stand-in for gh: its device sign-in prints the code and the address the way gh 2.x does, waits for the code to
-  // be « typed » (a file), then answers as signed in.
-  function fakeGh() {
-    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-gh-'))
-    const typed = path.join(bin, 'typed')
-    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
+// A stand-in for gh: its device sign-in prints the code and the address the way gh 2.x does, waits for the code to
+// be « typed » (a file), then answers as signed in.
+function fakeGh() {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-gh-'))
+  const typed = path.join(bin, 'typed')
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$1 $2" in
-  "auth login")
-    echo "$*" >"${bin}/login-args"
-    echo "! First copy your one-time code: AB12-CD34" >&2
-    echo "Open this URL to continue in your web browser: https://github.com/login/device" >&2
-    while [ ! -f "${typed}" ]; do sleep 0.05; done
-    [ "$(cat "${typed}")" = ok ] ;;
-  "api user") [ -f "${typed}" ] && echo alex ;;
-  "auth setup-git") touch "${bin}/setup-git" ;;
-  *) exit 1 ;;
+"auth login")
+  echo "$*" >"${bin}/login-args"
+  echo "! First copy your one-time code: AB12-CD34" >&2
+  echo "Open this URL to continue in your web browser: https://github.com/login/device" >&2
+  while [ ! -f "${typed}" ]; do sleep 0.05; done
+  [ "$(cat "${typed}")" = ok ] ;;
+"api user") [ -f "${typed}" ] && echo alex ;;
+"auth token") [ -f "${typed}" ] && echo gho_fromGhItself0123456789 ;;
+"auth setup-git") touch "${bin}/setup-git" ;;
+*) exit 1 ;;
 esac
 `, { mode: 0o755 })
-    const before = process.env.PATH
-    process.env.PATH = `${bin}${path.delimiter}${before}`
-    return { bin, typed, restore: () => (process.env.PATH = before) }
-  }
+  const before = process.env.PATH
+  process.env.PATH = `${bin}${path.delimiter}${before}`
+  return { bin, typed, restore: () => (process.env.PATH = before) }
+}
+describe('GitHub, by talking (the vault needs it once)', () => {
   const until = async (ok: () => boolean) => {
     for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 50))
     expect(ok()).toBe(true)
@@ -420,7 +421,8 @@ esac
     try {
       const { it: s, handoff, texts } = make()
       expect(await s.githubDevice()).toBe('posted')
-      expect(texts()).toEqual(['Sign in to your GitHub, just once: open [github.com/login/device](https://github.com/login/device) and type this code: **AB12-CD34** (valid 15 minutes). I’ll carry on as soon as it’s done.'])
+      // One link: its tap copies the code and opens GitHub's page (src/ui/living-link.tsx). The code stays readable.
+      expect(texts()).toEqual(['Sign in to your GitHub, just once: [open GitHub’s page](/#open=https%3A%2F%2Fgithub.com%2Flogin%2Fdevice&copy=AB12-CD34) and paste the code, already copied by that tap: **AB12-CD34** (valid 15 minutes). I’ll carry on as soon as it’s done.'])
       expect(fs.readFileSync(path.join(gh.bin, 'login-args'), 'utf8').trim()).toBe('auth login --hostname github.com --git-protocol https --web --scopes workflow')
       // Asked again while it waits: the same sentence, not a second code.
       expect(await s.githubDevice()).toBe('posted')
@@ -455,6 +457,110 @@ esac
       const done = make({}, state({ github: { installed: true, logged: true, login: 'alex' } }))
       expect(await done.it.githubDevice()).toBe('signed-in')
       expect(done.texts()).toHaveLength(2)
+    } finally {
+      gh.restore()
+    }
+  })
+})
+
+describe('nothing typed that weevils can get: GitHub and npm sign in by a link', () => {
+  const until = async (ok: () => boolean) => {
+    for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 50))
+    expect(ok()).toBe(true)
+  }
+  // A stand-in for npm: its web sign-in prints the address the way npm 10 does, waits for the page to be approved (a
+  // file), then leaves its token where npm keeps it.
+  function fakeNpm() {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-npm-'))
+    const done = path.join(bin, 'approved')
+    fs.writeFileSync(path.join(bin, 'npm'), `#!/bin/sh
+case "$1" in
+  whoami) [ "$(cat "${done}" 2>/dev/null)" = ok ] && echo alex ;;
+  login)
+    echo "$*" >"${bin}/login-args"
+    echo "npm notice Log in on https://registry.npmjs.org/"
+    echo "Login at:"
+    echo "https://www.npmjs.com/login?next=/login/cli/0a1b2c3d-0000-4000-8000-000000000000"
+    echo "Press ENTER to open in the browser..."
+    while [ ! -f "${done}" ]; do sleep 0.05; done
+    if [ "$(cat "${done}")" = ok ]; then echo "//registry.npmjs.org/:_authToken=npm_fromTheSignIn0123" >>"$HOME/.npmrc"; else echo "npm error the sign-in link expired" >&2; exit 1; fi ;; # gitleaks:allow a fake for the test
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 })
+    const before = process.env.PATH
+    process.env.PATH = `${bin}${path.delimiter}${before}`
+    return { bin, done, restore: () => (process.env.PATH = before) }
+  }
+
+  it('« weevils setup npm »: one link, nothing to copy back, and weevils says when it is done', async () => {
+    auth.ready = true
+    const npm = fakeNpm()
+    try {
+      const { it: s, texts } = make()
+      expect(await s.npmLogin()).toBe('posted')
+      expect(texts()).toEqual(['Sign in to npm, just once: open [npm’s sign-in page](https://www.npmjs.com/login?next=/login/cli/0a1b2c3d-0000-4000-8000-000000000000) and approve. Nothing to copy or type: I’ll tell you as soon as it’s done.'])
+      expect(fs.readFileSync(path.join(npm.bin, 'login-args'), 'utf8').trim()).toBe('login --auth-type=web --registry=https://registry.npmjs.org/')
+      // Asked again while it waits (the link in weevboss's words, /#do=npm): the same sentence, not a second sign-in.
+      expect(await s.act('npm')).toBe(true)
+      expect(texts()).toHaveLength(1)
+      // A token asked for meanwhile is not a field either: it waits for this very sign-in.
+      expect(await s.askKey('NPM_TOKEN', 'agent')).toBe('link')
+      fs.writeFileSync(npm.done, 'ok')
+      await until(() => texts().length === 3)
+      expect(texts()[1]).toBe('npm is connected (alex): I can publish your packages.')
+      expect(texts()[2]).toBe('npm token saved on this machine (never shown). The agent that asked for it can use it.')
+      expect(fs.readFileSync(process.env.WEEVILS_CONFIG!, 'utf8')).toContain('NPM_TOKEN=npm_fromTheSignIn0123\n') // gitleaks:allow a fake for the test
+      // Signed in already: nothing to open, said once.
+      expect(await s.npmLogin()).toBe('signed-in')
+    } finally {
+      npm.restore()
+      fs.rmSync(path.join(process.env.HOME!, '.npmrc'), { force: true })
+    }
+  })
+
+  it('a sign-in link that died says so, with one link to start again', async () => {
+    auth.ready = true
+    const npm = fakeNpm()
+    try {
+      const { it: s, texts } = make()
+      expect(await s.npmLogin()).toBe('posted')
+      fs.writeFileSync(npm.done, 'expired')
+      await until(() => texts().length === 2)
+      expect(texts()[1]).toBe('npm didn’t sign in (the sign-in link expired). [Try again](/#do=npm)')
+    } finally {
+      npm.restore()
+    }
+  })
+
+  it('the GitHub block is its sign-in link, never a token to create and paste', async () => {
+    auth.ready = true
+    const gh = fakeGh()
+    try {
+      const { it: s, texts } = make()
+      // No field opens (false), and what is said is the link.
+      expect(await s.ask('github')).toBe(false)
+      expect(texts()).toHaveLength(1)
+      expect(texts()[0]).toContain('[open GitHub’s page](/#open=')
+      expect(texts()[0]).not.toMatch(/token|\[\[setup:/)
+      const { FIELDS } = await import('../shared/setup.ts')
+      expect(FIELDS.github).toBeUndefined()
+    } finally {
+      fs.writeFileSync(gh.typed, 'expired')
+      gh.restore()
+    }
+  })
+
+  it('a GitHub token an agent needs: the same link, then the token gh holds is saved under its name', async () => {
+    auth.ready = true
+    const gh = fakeGh()
+    try {
+      const { it: s, texts } = make()
+      expect(await s.askKey('GITHUB_TOKEN', 'agent')).toBe('link')
+      expect(texts()).toHaveLength(1)
+      fs.writeFileSync(gh.typed, 'ok')
+      await until(() => /^GITHUB_TOKEN=gho_fromGhItself0123456789$/m.test(fs.readFileSync(process.env.WEEVILS_CONFIG!, 'utf8')))
+      expect(texts()).toContain('GitHub token saved on this machine (never shown). The agent that asked for it can use it.')
+      expect(texts().join('\n')).not.toContain('gho_')
     } finally {
       gh.restore()
     }

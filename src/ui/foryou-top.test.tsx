@@ -19,6 +19,7 @@ vi.mock('../api', () => ({
     foryouSeen: async () => ({ ok: true }),
     foryouDismiss: async () => ({ ok: true }),
     setupKey: async () => ({ ok: true, said: 'm1' }),
+    setupKeyAsk: async () => ({ ok: true, state: 'field' }),
   },
 }))
 

@@ -259,7 +259,7 @@ describe('never a command for the user to type', () => {
               texts.push(...said, t.reachMacDomain('weevils.example.com'), t.machine(m), t.welcomeClaudeInstall(m.host), t.machineAsk(s), t.voiceAsk(s), t.securityAsk(s), t.githubAsk(s), installStatus(s))
             }
       }
-      texts.push(t.welcomeClaudeLink, t.welcomeCodex, t.welcomeReady('Claude'), t.welcomeSeen(3, ['a', 'b'], ['laptop']), t.claudeLink('https://claude.com/x'), t.claudeFail('expired'), t.codexFail('x'), t.providerLater('Codex'), t.codexCode('https://auth.openai.com/codex/device', 'ABCD-EFGH'), t.machineNone, t.machineIn('root@203.0.113.7', 'Ubuntu'), t.githubNoCli('404'), t.quotaAsk([]), t.mailAsk, t.devilAsk(false, ''), t.joinKey('laptop'), t.joinOnline('laptop'), t.connectorNeedsHttps('http://127.0.0.1:4179'), t.delegated, t.githubDevice('https://github.com/login/device', 'AB12-CD34'), t.githubDeviceFail('expired_token'), t.githubDeviceDone)
+      texts.push(t.welcomeClaudeLink, t.welcomeCodex, t.welcomeReady('Claude'), t.welcomeSeen(3, ['a', 'b'], ['laptop']), t.claudeLink('https://claude.com/x'), t.claudeFail('expired'), t.codexFail('x'), t.providerLater('Codex'), t.codexCode('https://auth.openai.com/codex/device', 'ABCD-EFGH'), t.machineNone, t.machineIn('root@203.0.113.7', 'Ubuntu'), t.quotaAsk([]), t.mailAsk, t.devilAsk(false, ''), t.joinKey('laptop'), t.joinOnline('laptop'), t.connectorNeedsHttps('http://127.0.0.1:4179'), t.delegated, t.githubDevice('https://github.com/login/device', 'AB12-CD34'), t.githubDeviceFail('expired_token'), t.githubDeviceDone)
       for (const x of texts) expect(x, x).not.toMatch(COMMAND)
     })
     // The only lines the person pastes: the one for another computer, and a sign-in that only works in a terminal.
@@ -451,16 +451,18 @@ describe('[[setup:key:NOM]] : un secret demandé par un agent', async () => {
     hasHistory: () => true,
     startMail: () => undefined,
     handoff: async () => undefined,
+    // No provider is ever called from a test: one fake key is « refused », the rest cannot be checked.
+    checkKey: async (_name, value) => (value === 'sk-refused-0123456789' ? 'refused' : value.startsWith('sk-checked') ? 'ok' : 'unknown'),
   })
   it('seulement des clés et des jetons, jamais un réglage de weevils', () => {
     for (const ok of ['RUNPOD_API_KEY', 'STRIPE_API_KEY', 'HF_TOKEN', 'GITHUB_TOKEN']) expect(isSecretName(ok), ok).toBe(true)
     for (const no of ['WEEVILS_MAIL_TOKEN', 'PATH', 'runpod_api_key', 'RUNPOD_KEY', 'LD_PRELOAD', 'X_API_KEY\nY', 'A'.repeat(60) + '_TOKEN']) expect(isSecretName(no), no).toBe(false)
   })
-  it('la valeur va dans la config, jamais dans le fil ni dans le journal ; le fil confirme', () => {
+  it('la valeur va dans la config, jamais dans le fil ni dans le journal ; le fil confirme', async () => {
     const logs: string[] = []
     const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => void logs.push(a.join(' ')))
     const secret = 'rpa_S3CRETvalue0123456789'
-    setup.saveKey('RUNPOD_API_KEY', `  ${secret}  `)
+    await setup.saveKey('RUNPOD_API_KEY', `  ${secret}  `)
     spy.mockRestore()
     expect(fs.readFileSync(cfg, 'utf8')).toContain(`RUNPOD_API_KEY=${secret}\n`)
     expect(process.env.RUNPOD_API_KEY).toBe(secret)
@@ -473,11 +475,40 @@ describe('[[setup:key:NOM]] : un secret demandé par un agent', async () => {
     expect(logs.join('\n')).not.toContain(secret.slice(-4))
     expect(logs.join('\n')).toContain('RUNPOD_API_KEY')
   })
-  it('refuse un nom hors liste, une valeur vide ou sur plusieurs lignes', () => {
-    expect(() => setup.saveKey('WEEVILS_PORT_TOKEN', 'x')).toThrow()
-    expect(() => setup.saveKey('PATH', '/tmp')).toThrow()
-    expect(() => setup.saveKey('HF_TOKEN', '  ')).toThrow()
-    expect(() => setup.saveKey('HF_TOKEN', 'a\nEVIL=1')).toThrow()
+  it('refuse un nom hors liste, une valeur vide ou sur plusieurs lignes', async () => {
+    await expect(setup.saveKey('WEEVILS_PORT_TOKEN', 'x')).rejects.toThrow()
+    await expect(setup.saveKey('PATH', '/tmp')).rejects.toThrow()
+    await expect(setup.saveKey('HF_TOKEN', '  ')).rejects.toThrow()
+    await expect(setup.saveKey('HF_TOKEN', 'a\nEVIL=1')).rejects.toThrow()
     expect(fs.readFileSync(cfg, 'utf8')).not.toMatch(/^(PATH|EVIL|HF_TOKEN)=/m)
+  })
+  it('a key its provider refuses is not kept, and the field says why; an accepted one is said checked', async () => {
+    await expect(setup.saveKey('ANTHROPIC_API_KEY', 'sk-refused-0123456789')).rejects.toThrow(/Anthropic rejects this key/)
+    expect(fs.readFileSync(cfg, 'utf8')).not.toMatch(/^ANTHROPIC_API_KEY=/m)
+    await setup.saveKey('MISTRAL_API_KEY', 'sk-checked-0123456789')
+    expect(setup.messages().at(-1)!.text).toContain('Mistral key saved on this machine and checked')
+  })
+  it('a key already on the machine is taken there: nothing asked, the thread says where it was', async () => {
+    fs.writeFileSync(path.join(process.env.HOME!, '.bashrc'), '# mine\nexport GROQ_API_KEY="gsk_fromTheShell0123456789"\n') // gitleaks:allow a fake for the test
+    const before = setup.messages().length
+    expect(await setup.askKey('GROQ_API_KEY', 'agent')).toBe('found')
+    expect(fs.readFileSync(cfg, 'utf8')).toContain('GROQ_API_KEY=gsk_fromTheShell0123456789\n') // gitleaks:allow a fake for the test
+    const said = setup.messages().slice(before).map((m) => m.text).join('\n')
+    expect(said).toContain('I found your Groq key on this machine (in its terminal settings): nothing to paste')
+    expect(said).not.toMatch(/gsk_|6789|GROQ_API_KEY/)
+    // Asked again: the same one, already kept. Nothing to paste either.
+    expect(await setup.askKey('GROQ_API_KEY')).toBe('found')
+  })
+  it('one the provider refuses is not taken: the field, with the page that creates the key, as the last resort', async () => {
+    fs.writeFileSync(path.join(process.env.HOME!, '.bashrc'), 'export DEEPSEEK_API_KEY=sk-refused-0123456789\n')
+    const before = setup.messages().length
+    expect(await setup.askKey('DEEPSEEK_API_KEY', 'agent')).toBe('field')
+    expect(fs.readFileSync(cfg, 'utf8')).not.toMatch(/^DEEPSEEK_API_KEY=/m)
+    // An agent's ask posts the sentence: the exact page, then the chip that opens the field.
+    expect(setup.messages().slice(before).at(-1)!.text).toBe('I need your DeepSeek key: [create it on DeepSeek’s page](https://platform.deepseek.com/api_keys), copy it, then [[setup:key:DEEPSEEK_API_KEY]]')
+    // Tapped in the app: the field is there already, nothing more is said.
+    const n = setup.messages().length
+    expect(await setup.askKey('REPLICATE_API_TOKEN')).toBe('field')
+    expect(setup.messages().length).toBe(n)
   })
 })

@@ -4,6 +4,7 @@
 import { defineMessages } from '../i18n.ts'
 import type { MachineInfo, SetupState } from '../setup.ts'
 import { secretBrand } from '../../shared/setup.ts'
+import { copyLink, GMAIL_APP_PASSWORD } from '../../shared/key-sources.ts'
 
 /** The script behind a pasted line, readable before it runs: the curl line's address (…/api/join.sh). */
 const scriptOf = (curl: string): string => /https?:\/\/\S+\.sh/.exec(curl)?.[0] ?? ''
@@ -11,8 +12,6 @@ const scriptOf = (curl: string): string => /https?:\/\/\S+\.sh/.exec(curl)?.[0] 
 const UNINSTALL = '~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils'
 
 const gb = (n: number) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10)
-/** Créer un jeton GitHub avec les bons droits, pré-rempli. */
-const GH_TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=weevils'
 
 const kindFr = (m: MachineInfo) =>
   ({
@@ -143,7 +142,7 @@ export default defineMessages({
     codexInstalling: (m: MachineInfo): string => `J’installe Codex sur ${mineFr(m)}, l’ordinateur où tes agents travaillent…`,
     codexTerminal: (why: string, line: string): string => `Je n’arrive pas à connecter Codex d’ici (${why}). Dans un terminal sur cette machine, tape \`${line}\` : je le verrai tout seul.`,
     codexCode: (url: string, code: string): string =>
-      `Pour connecter Codex à ton compte ChatGPT : ouvre [cette page](${url}), connecte-toi et tape le code ${code} (valable 15 minutes). Je te fais signe dès que c’est bon.`,
+      `Pour connecter Codex à ton compte ChatGPT : [ouvre cette page](${copyLink(url, code)}), connecte-toi et colle le code, déjà copié par ce tap : **${code}** (valable 15 minutes). Je te fais signe dès que c’est bon.`,
     codexFail: (why: string): string => `La connexion de Codex n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
     // ---- Un autre ordinateur, d'une ligne (server/join.ts) ; le connecteur ; un travail confié à une session.
     // Ce que fait la ligne, dit avant qu'on la colle (server/join.sh puis install.sh --secondary) : quatre lignes, le
@@ -186,15 +185,14 @@ export default defineMessages({
     delegated: 'Je l’ai confié à un agent : il te demande ton accord dans l’app avant chaque étape.',
     // ---- GitHub
     githubPitch: 'Branche GitHub : je verrai tous tes repos (glisse le fil vers la gauche), j’en créerai pour tes nouvelles idées et je rangerai les sessions par projet.',
-    githubAsk: (s: SetupState): string =>
-      s.github.logged
-        ? `GitHub est branché${s.github.login ? ` (${s.github.login})` : ''}. Glisse le fil vers la gauche pour voir tes repos ; le + en met un dans le fil.`
-        : `Avec GitHub branché, je vois tous tes repos, j’en crée pour tes idées et je range les sessions par projet. Crée un jeton sur [cette page GitHub](${GH_TOKEN_URL}) (« Generate token » en bas), copie-le et colle-le en bas.`,
+    githubAsk: (s: SetupState): string => `GitHub est branché${s.github.login ? ` (${s.github.login})` : ''}. Glisse le flux vers la gauche pour voir tes repos ; le + en met un dans le flux.`,
     githubOk: (login: string): string => `GitHub branché : ${login}. Je peux créer des repos pour tes idées.`,
-    githubFail: (why: string): string => `GitHub refuse ce jeton (${why}). Vérifie qu’il a les droits repo et read:org, puis réessaie :`,
-    githubNoCli: (why: string): string => `J’ai gardé le jeton, mais l’outil GitHub ne s’installe pas sur la machine (${why}) : demande-moi de réessayer.`,
     // ---- GitHub en parlant (le coffre, docs/spec/07-vault.md) : le code de GitHub, tapé sur github.com.
-    githubDevice: (url: string, code: string): string => `Connecte ton GitHub, une seule fois : ouvre [github.com/login/device](${url}) et tape ce code : **${code}** (valable 15 minutes). Je continue dès que c’est fait.`,
+    githubDevice: (url: string, code: string): string => `Connecte ton GitHub, une seule fois : [ouvre la page de GitHub](${copyLink(url, code)}) et colle le code, déjà copié par ce tap : **${code}** (valable 15 minutes). Je continue dès que c’est fait.`,
+    npmLink: (url: string): string => `Connecte npm, une seule fois : ouvre [la page de connexion de npm](${url}) et valide. Rien à copier ni à taper : je te dis dès que c’est fait.`,
+    npmOk: (user: string): string => `npm est connecté${user ? ` (${user})` : ''} : je peux publier tes paquets.`,
+    npmFail: (why: string): string => `npm ne s’est pas connecté (${why}). [Réessayer](/#do=npm)`,
+    npmMissing: 'npm n’est pas installé sur cette machine',
     githubDeviceFail: (why: string): string => `La connexion à GitHub n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
     githubDeviceDone: 'GitHub est connecté.',
     syncStart: 'Tu es connecté à GitHub et à Claude. Je synchronise tes conversations pour que tu puisses les reprendre depuis n’importe quelle machine ou abonnement.',
@@ -238,7 +236,7 @@ export default defineMessages({
     // ---- e-mail
     agentKeysPitch: 'Pour qu’un autre agent m’écrive, le plus simple est une clé d’agent : dans les réglages, « ChatGPT et agents », donne-lui un nom et colle la clé dans l’agent. Ses messages arrivent signés à son nom, et il lit mes réponses. ChatGPT ou Claude.ai passent plutôt par le connecteur (demande-le-moi).',
     mailPitch: 'Ton agent ne sait qu’envoyer des mails ? Le pont e-mail reste possible en secours, éteint par défaut : chaque expéditeur que tu autorises m’écrit, signé à son nom, et je lui réponds dans le même fil.',
-    mailAsk: 'Il faut une boîte Gmail avec la validation en deux étapes (myaccount.google.com/signinoptions/twosv). Crée un mot de passe d’application nommé « weevils » sur myaccount.google.com/apppasswords et garde-le sous la main : je te demande ton adresse Gmail, puis ce mot de passe. Je m’occupe de l’alias +weevils, sans filtre à créer.',
+    mailAsk: `Il faut une boîte Gmail avec la [validation en deux étapes](https://myaccount.google.com/signinoptions/twosv). Je te demande ton adresse Gmail, puis un mot de passe d’application nommé « weevils » : [crée-le sur cette page Google](${GMAIL_APP_PASSWORD}), copie-le et colle-le en bas. Je m’occupe de l’alias +weevils, sans filtre à créer.`,
     mailOk: (alias: string): string =>
       `Pont branché : ${alias}. Rien à régler dans Gmail : les mails envoyés à cette adresse m’arrivent directement, et je ne lis jamais le reste de ta boîte. Dis-moi maintenant qui a le droit de m’écrire :`,
     mailFail: (why: string): string => `Gmail refuse la connexion (${why}). Vérifie l’adresse et le mot de passe d’application (16 lettres), puis réessaie :`,
@@ -292,6 +290,30 @@ export default defineMessages({
       const { brand, token } = secretBrand(name)
       return `${token ? `mon jeton ${brand}` : `ma clé ${brand}`} : ••••`
     },
+    keyChecked: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return token
+        ? `Jeton ${brand} enregistré sur cette machine et vérifié : ${brand} l’accepte. L’agent qui l’a demandé peut s’en servir.`
+        : `Clé ${brand} enregistrée sur cette machine et vérifiée : ${brand} l’accepte. L’agent qui l’a demandée peut s’en servir.`
+    },
+    /** Trouvé sur la machine : rien n'a été demandé. */
+    keyFound: (name: string, from: 'shell' | 'tool') => {
+      const { brand, token } = secretBrand(name)
+      const where = from === 'shell' ? 'dans les réglages de son terminal' : `là où l’outil ${brand} ${token ? 'le' : 'la'} garde`
+      return token
+        ? `J’ai trouvé ton jeton ${brand} sur cette machine (${where}) : rien à coller, il est prêt à servir.`
+        : `J’ai trouvé ta clé ${brand} sur cette machine (${where}) : rien à coller, elle est prête à servir.`
+    },
+    keyRefused: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return token ? `${brand} refuse ce jeton : vérifie que tu as copié le bon` : `${brand} refuse cette clé : vérifie que tu as copié la bonne`
+    },
+    /** Un agent a besoin d'un secret introuvable sur la machine : la page qui le crée, puis le champ masqué. */
+    keyAsk: (name: string, link?: string) => {
+      const { brand, token } = secretBrand(name)
+      const what = token ? `ton jeton ${brand}` : `ta clé ${brand}`
+      return link ? `Il me faut ${what} : [crée-${token ? 'le' : 'la'} sur la page ${brand}](${link}), copie-${token ? 'le' : 'la'}, puis [[setup:key:${name}]]` : `Il me faut ${what} : [[setup:key:${name}]]`
+    },
     badSecret: 'clé ou valeur refusée',
     installNoSudo: 'Pas de sudo ici : ces commandes s’installent dans le dossier de l’utilisateur.',
     installNoBrew: (clone: string): string =>
@@ -315,7 +337,6 @@ export default defineMessages({
     field_key: 'clé',
     field_cartesia: 'clé Cartesia',
     field_openai: 'clé OpenAI',
-    field_token: 'jeton',
     field_gmail: 'Gmail',
     field_password: 'mot de passe',
     field_name: 'nom',
@@ -423,7 +444,7 @@ export default defineMessages({
     codexInstalling: (m: MachineInfo): string => `Installing Codex on ${mineEn(m)}, the computer where your agents work…`,
     codexTerminal: (why: string, line: string): string => `I can’t sign Codex in from here (${why}). In a terminal on this machine, type \`${line}\`: I’ll notice on my own.`,
     codexCode: (url: string, code: string): string =>
-      `To sign Codex in to your ChatGPT account: open [this page](${url}), sign in and type the code ${code} (valid 15 minutes). I’ll let you know as soon as it’s done.`,
+      `To sign Codex in to your ChatGPT account: [open this page](${copyLink(url, code)}), sign in and paste the code, already copied by that tap: **${code}** (valid 15 minutes). I’ll let you know as soon as it’s done.`,
     codexFail: (why: string): string => `Codex didn’t sign in (${why}). Tell me when you want to try again.`,
     // What the line does, said before it is pasted (server/join.sh, then install.sh --secondary): four lines, the script
     // to read, everything removed in one line; the rest folded. True of the npx line as of the curl one.
@@ -463,14 +484,13 @@ export default defineMessages({
       `Add this address to your chat app: \`${url}\`\n\n- Claude.ai: Settings → Connectors → Add custom connector, paste it, then Connect.\n- ChatGPT: Settings → Apps & Connectors → Advanced settings, turn on developer mode, then Create and paste it.\n\nIt asks once for your weevils access code.${tunnel ? ' This address still changes when the machine restarts: weevils moves to a permanent one as soon as it can, and I’ll give it to you.' : ''}`,
     delegated: 'I’ve handed it to an agent: it asks for your OK in the app before each step.',
     githubPitch: 'Plug in GitHub: I’ll see all your repos (swipe the feed left), create new ones for your ideas, and sort sessions by project.',
-    githubAsk: (s: SetupState): string =>
-      s.github.logged
-        ? `GitHub is plugged in${s.github.login ? ` (${s.github.login})` : ''}. Swipe the feed left to see your repos; the + puts one in the feed.`
-        : `With GitHub plugged in, I see all your repos, create new ones for your ideas, and sort sessions by project. Create a token on [this GitHub page](${GH_TOKEN_URL}) (“Generate token” at the bottom), copy it, and paste it below.`,
+    githubAsk: (s: SetupState): string => `GitHub is plugged in${s.github.login ? ` (${s.github.login})` : ''}. Swipe the feed left to see your repos; the + puts one in the feed.`,
     githubOk: (login: string): string => `GitHub plugged in: ${login}. I can create repos for your ideas.`,
-    githubFail: (why: string): string => `GitHub rejects this token (${why}). Check it has the repo and read:org scopes, then try again:`,
-    githubNoCli: (why: string): string => `I kept the token, but the GitHub tool won’t install on the machine (${why}): ask me to try again.`,
-    githubDevice: (url: string, code: string): string => `Sign in to your GitHub, just once: open [github.com/login/device](${url}) and type this code: **${code}** (valid 15 minutes). I’ll carry on as soon as it’s done.`,
+    githubDevice: (url: string, code: string): string => `Sign in to your GitHub, just once: [open GitHub’s page](${copyLink(url, code)}) and paste the code, already copied by that tap: **${code}** (valid 15 minutes). I’ll carry on as soon as it’s done.`,
+    npmLink: (url: string): string => `Sign in to npm, just once: open [npm’s sign-in page](${url}) and approve. Nothing to copy or type: I’ll tell you as soon as it’s done.`,
+    npmOk: (user: string): string => `npm is connected${user ? ` (${user})` : ''}: I can publish your packages.`,
+    npmFail: (why: string): string => `npm didn’t sign in (${why}). [Try again](/#do=npm)`,
+    npmMissing: 'npm is not installed on this machine',
     githubDeviceFail: (why: string): string => `GitHub didn’t sign in (${why}). Tell me when you want to try again.`,
     githubDeviceDone: 'GitHub is connected.',
     syncStart: 'You’re connected to GitHub and Claude. I’m syncing your conversations so you can pick them up from any machine or subscription.',
@@ -510,7 +530,7 @@ export default defineMessages({
     devilFail: (why: string): string => `I can’t reach the model (${why}). Check the address (it often ends in /v1) and that its machine is on, then try again:`,
     agentKeysPitch: 'For another agent to write to me, the simplest way is an agent key: in settings, “ChatGPT and agents”, give it a name and paste the key into the agent. Its messages come signed with its name, and it reads my replies. ChatGPT or Claude.ai rather go through the connector (ask me).',
     mailPitch: 'Your agent can only send e-mail? The e-mail bridge is still there as a fallback, off by default: every sender you allow writes to me, signed with their name, and I answer them in the same thread.',
-    mailAsk: 'You need a Gmail inbox with 2-step verification (myaccount.google.com/signinoptions/twosv). Create an app password named “weevils” at myaccount.google.com/apppasswords and keep it handy: I’ll ask for your Gmail address, then that password. I take care of the +weevils alias, no filter to create.',
+    mailAsk: `You need a Gmail inbox with [2-step verification](https://myaccount.google.com/signinoptions/twosv). I’ll ask for your Gmail address, then an app password named “weevils”: [create it on this Google page](${GMAIL_APP_PASSWORD}), copy it and paste it below. I take care of the +weevils alias, no filter to create.`,
     mailOk: (alias: string): string =>
       `Bridge plugged in: ${alias}. Nothing to set up in Gmail: mail sent to this address reaches me directly, and I never read the rest of your inbox. Now tell me who may write to me:`,
     mailFail: (why: string): string => `Gmail refuses the connection (${why}). Check the address and the app password (16 letters), then try again:`,
@@ -555,6 +575,24 @@ export default defineMessages({
       const { brand, token } = secretBrand(name)
       return `my ${brand} ${token ? 'token' : 'key'}: ••••`
     },
+    keyChecked: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return `${brand} ${token ? 'token' : 'key'} saved on this machine and checked: ${brand} accepts it. The agent that asked for it can use it.`
+    },
+    keyFound: (name: string, from: 'shell' | 'tool') => {
+      const { brand, token } = secretBrand(name)
+      const where = from === 'shell' ? 'in its terminal settings' : `where the ${brand} tool keeps it`
+      return `I found your ${brand} ${token ? 'token' : 'key'} on this machine (${where}): nothing to paste, it is ready to use.`
+    },
+    keyRefused: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return `${brand} rejects this ${token ? 'token' : 'key'}: check you copied the right one`
+    },
+    keyAsk: (name: string, link?: string) => {
+      const { brand, token } = secretBrand(name)
+      const what = `your ${brand} ${token ? 'token' : 'key'}`
+      return link ? `I need ${what}: [create it on ${brand}’s page](${link}), copy it, then [[setup:key:${name}]]` : `I need ${what}: [[setup:key:${name}]]`
+    },
     badSecret: 'key or value refused',
     installNoSudo: 'No sudo here: these commands install into the user’s home folder.',
     installNoBrew: (clone: string): string =>
@@ -576,7 +614,6 @@ export default defineMessages({
     field_key: 'key',
     field_cartesia: 'Cartesia key',
     field_openai: 'OpenAI key',
-    field_token: 'token',
     field_gmail: 'Gmail',
     field_password: 'password',
     field_name: 'name',

@@ -26,5 +26,12 @@ describe('links weevboss writes to a place in the app', () => {
     expect(appLink('/#do=claude.desk-2')).toEqual({ kind: 'do', action: 'claude.desk-2' })
     expect(appLink('/#do=claude.')).toBeUndefined()
     expect(appLink('/#do=claude.a/b')).toBeUndefined()
+    // npm's sign-in by link.
+    expect(appLink('/#do=npm')).toEqual({ kind: 'do', action: 'npm' })
+  })
+  it('a sign-in page that asks for a code: the link carries both, an https page and a short code only', () => {
+    expect(appLink('/#open=https%3A%2F%2Fgithub.com%2Flogin%2Fdevice&copy=AB12-CD34')).toEqual({ kind: 'open', url: 'https://github.com/login/device', code: 'AB12-CD34' })
+    expect(appLink('/#open=javascript%3Aalert(1)&copy=AB12-CD34')).toBeUndefined()
+    expect(appLink('https://elsewhere.example/#open=https%3A%2F%2Fgithub.com%2Flogin%2Fdevice&copy=AB12-CD34')).toBeUndefined()
   })
 })

@@ -1142,6 +1142,19 @@ const routes: [string, RegExp, Handler][] = [
     if (!isLocal(req)) return json(res, 403, { error: tr(S).localOnly })
     json(res, 200, { ok: true, state: await setup.githubDevice(), said: setup.lastSaid ?? undefined })
   }],
+  // « weevils setup npm »: npm's web sign-in, its one link said in weevboss's thread. From the machine only.
+  ['POST', /^\/api\/setup\/npm$/, async (req, res) => {
+    if (!isLocal(req)) return json(res, 403, { error: tr(S).localOnly })
+    json(res, 200, { ok: true, state: await setup.npmLogin(), said: setup.lastSaid ?? undefined })
+  }],
+  // A key or a token an agent needs (the chip tapped in the app, or « weevils setup key NAME » from the machine):
+  // found on this machine, a sign-in by link, or the masked field as the last resort (shared/key-sources.ts).
+  ['POST', /^\/api\/setup\/key\/ask$/, async (req, res) => {
+    const b = await readBody(req, 4 << 10)
+    if (!isSecretName(b.name)) return json(res, 400, { error: tr(S).badKey })
+    const state = await setup.askKey(b.name, b.by === 'agent' && isLocal(req) ? 'agent' : 'app')
+    json(res, 200, { ok: true, state, said: setup.lastSaid ?? undefined })
+  }],
   ['POST', /^\/api\/setup\/apply$/, async (req, res) => {
     const b = await readBody(req, 64 << 10)
     if (!isBrick(b.brick) || typeof b.values !== 'object' || !b.values) return json(res, 400, { error: tr(S).badBrick })
@@ -1152,8 +1165,8 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/setup\/key$/, async (req, res) => {
     const b = await readBody(req, 16 << 10)
     if (!isSecretName(b.name) || typeof b.value !== 'string') return json(res, 400, { error: tr(S).badKey })
-    setup.saveKey(b.name, b.value)
-    json(res, 200, { ok: true })
+    await setup.saveKey(b.name, b.value)
+    json(res, 200, { ok: true, said: setup.lastSaid ?? undefined })
   }],
   ['POST', /^\/api\/setup\/done$/, async (req, res) => {
     const b = await readBody(req)

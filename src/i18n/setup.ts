@@ -1,5 +1,6 @@
 import { defineMessages } from './index'
 import { secretBrand as secret } from '../../shared/setup.ts'
+import { keySource } from '../../shared/key-sources.ts'
 
 // src/ui/setup.tsx: the buttons under weevboss's messages and the questions of the setup flows (bottom field).
 export default defineMessages({
@@ -62,8 +63,6 @@ export default defineMessages({
     p_voice_cartesia: 'sk_car_…',
     q_voice_openai: 'clé OpenAI pour la dictée (vide pour passer)',
     p_voice_openai: 'sk-…',
-    q_github_token: 'jeton GitHub',
-    p_github_token: 'ghp_… ou github_pat_…',
     q_mail_gmail: 'ton adresse Gmail',
     p_mail_gmail: 'toi@gmail.com',
     q_mail_password: 'mot de passe d’application (16 lettres)',
@@ -78,8 +77,13 @@ export default defineMessages({
     secretNote: 'reste sur ta machine',
     keyChip: (name: string) => {
       const { brand, token } = secret(name)
+      // A sign-in by link (GitHub, npm): nothing to paste.
+      if (keySource(name).login) return `connecter ${brand}`
       return token ? `colle ton jeton ${brand}` : `colle ta clé ${brand}`
     },
+    createKey: 'la créer ici',
+    createPassword: 'le créer ici',
+    paste: 'coller',
     q_key: (name: string) => {
       const { brand, token } = secret(name)
       return token ? `ton jeton ${brand}` : `ta clé ${brand}`
@@ -152,8 +156,6 @@ export default defineMessages({
     p_voice_cartesia: 'sk_car_…',
     q_voice_openai: 'OpenAI key for dictation (empty to skip)',
     p_voice_openai: 'sk-…',
-    q_github_token: 'GitHub token',
-    p_github_token: 'ghp_… or github_pat_…',
     q_mail_gmail: 'your Gmail address',
     p_mail_gmail: 'you@gmail.com',
     q_mail_password: 'app password (16 letters)',
@@ -166,7 +168,10 @@ export default defineMessages({
     p_author_color: '#ff6b8a',
     step: (i: number, n: number) => `${i}/${n}`,
     secretNote: 'stays on your machine',
-    keyChip: (name: string) => `paste your ${secret(name).brand} ${secret(name).token ? 'token' : 'key'}`,
+    keyChip: (name: string) => (keySource(name).login ? `connect ${secret(name).brand}` : `paste your ${secret(name).brand} ${secret(name).token ? 'token' : 'key'}`),
+    createKey: 'create it here',
+    createPassword: 'create it here',
+    paste: 'paste',
     q_key: (name: string) => `your ${secret(name).brand} ${secret(name).token ? 'token' : 'key'}`,
     p_key: 'paste the key here',
     cancel: 'cancel',

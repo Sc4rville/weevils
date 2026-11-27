@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { FIELDS, isBrick, isSecretName, type ApplyResult, type Brick, type Device, type SetupField } from '../../shared/setup.ts'
+import { keySource } from '../../shared/key-sources.ts'
 import type { Message, Snapshot } from '../../shared/api.ts'
 import { api } from '../api'
 import { ensurePush } from '../push'
@@ -26,6 +27,9 @@ import './living-link' // the living-link colours, for the chips' look
 //   l'écran (focusBoss, src/ui/follow.ts), et sa réponse est mise en avant.
 // - SetupComposer : le champ du bas pendant un parcours, une question à la fois ; les secrets sont masqués et partent
 //   droit au serveur avec les autres réponses, à la fin. Jamais au modèle.
+// - Nobody types what weevils can get by itself (shared/key-sources.ts): a key asked for is first looked for on the
+//   machine, then signed in by a link when its provider has one; the masked field is the last resort, with the
+//   provider's page that creates the key next to it and a « paste » button (one tap, nothing typed).
 
 const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
 
@@ -267,19 +271,46 @@ export function Chip({ brick, inline = false }: { brick: Brick; inline?: boolean
   )
 }
 
-/** [[setup:key:NOM]] : le champ masqué s'ouvre et prend le focus dans le geste même (clavier de l'iPhone). */
-export function openKey(name: string) {
-  if (!isSecretName(name)) return
+/** The masked field of a secret, opened and focused within the tap itself (the iPhone's keyboard needs the gesture). */
+function openKeyField(name: string) {
   if (flow?.key !== name) flushSync(() => setFlow({ brick: 'key', step: 0, values: {}, key: name }))
   document.querySelector<HTMLInputElement>('.setup-form input')?.focus({ preventScroll: true })
+}
+
+/** [[setup:key:NOM]] : weevils looks for the secret before anyone types it (shared/key-sources.ts). A provider with a
+ * sign-in by link (GitHub, npm) gets no field: its link arrives in the thread. For the others the field opens at once,
+ * within the tap, and closes by itself when the key was found on the machine. An older server (no such answer) keeps
+ * the field. */
+export function openKey(name: string): Promise<void> {
+  if (!isSecretName(name)) return Promise.resolve()
+  const link = !!keySource(name).login
+  if (!link) openKeyField(name)
+  return api.setupKeyAsk(name).then(
+    (r) => {
+      // Found on the machine, or its sign-in link is in the thread: no field, the thread shows what happened.
+      if (r.state === 'found' || r.state === 'link') {
+        if (flow?.key === name) setFlow(null)
+        focusBossSoon({ mid: r.said })
+      } else if (link) openKeyField(name)
+    },
+    () => {
+      if (link) openKeyField(name)
+    },
+  )
 }
 
 /** Le bouton d'un secret demandé, à sa place dans la phrase de weevboss. */
 export function KeyChip({ name }: { name: string }) {
   const t = useT(M)
+  const [busy, setBusy] = useState(false)
+  const go = () => {
+    if (busy) return
+    setBusy(true)
+    void openKey(name).finally(() => setBusy(false))
+  }
   return (
-    <button type="button" className="setup-chip living lk-preview inline" onClick={() => openKey(name)}>
-      <Icon name="hash" /> {t.keyChip(name)}
+    <button type="button" className={`setup-chip living lk-preview inline${busy ? ' busy' : ''}`} onClick={go} aria-busy={busy || undefined}>
+      {busy ? <span className="spin"><Icon name="star" /></span> : <Icon name={keySource(name).login ? 'arrow' : 'hash'} dir="right" />} {t.keyChip(name)}
     </button>
   )
 }
@@ -358,10 +389,32 @@ export function SetupComposer() {
     void answer(text.trim())
   }
   const label = f.key ? t.q_key(f.key) : t[`q_${key}` as `q_devil_url`]
+  // The provider's page that creates what is asked for, right next to the field.
+  const page = f.key ? keySource(f.key).create : q.link
+  /** One tap instead of a long press: what was just copied on the provider's page goes in and is sent. */
+  const paste = async () => {
+    try {
+      const v = (await navigator.clipboard.readText()).trim()
+      if (!v) return field.current?.focus()
+      setText(v)
+      // Sent at once when it looks like a key (one long word, not an address): otherwise it waits in the field.
+      if (q.secret && /^\S{16,}$/.test(v) && !/^https?:/i.test(v)) void answer(v)
+      else field.current?.focus()
+    } catch {
+      // Refused by the browser: the field takes the focus, the keyboard's own « paste » does it.
+      field.current?.focus()
+    }
+  }
+  const canPaste = typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function'
   return (
     <form ref={form} className="composer band tone setup-form" onSubmit={submit} noValidate>
       <div className="in meta attach-line">
         <span className="strong">{label}</span>
+        {page && (
+          <a className="living lk-preview setup-page" href={page} target="_blank" rel="noopener noreferrer">
+            {q.name === 'password' ? t.createPassword : t.createKey}
+          </a>
+        )}
         <span>
           {t.step(f.step + 1, fields.length)}
           {q.secret ? ` · ${t.secretNote}` : ''}
@@ -404,6 +457,11 @@ export function SetupComposer() {
           spellCheck={false}
           enterKeyHint={f.step + 1 < fields.length ? 'next' : 'send'}
         />
+        {canPaste && !text && (
+          <button type="button" className="setup-chip living lk-preview setup-paste" onClick={() => void paste()} disabled={busy}>
+            <Icon name="copy" /> {t.paste}
+          </button>
+        )}
         <button type="button" className="tool-btn" onClick={() => setFlow(null)} aria-label={t.cancel}>
           <Icon name="close" />
         </button>

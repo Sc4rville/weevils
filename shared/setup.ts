@@ -1,4 +1,5 @@
 import { withoutWinMarks } from './wins.ts'
+import { GMAIL_APP_PASSWORD, keySource } from './key-sources.ts'
 // Accueil et branchements par weevboss : le contrat entre weevilsd (server/setup.ts) et l'app (src/ui/setup.tsx).
 //
 // weevboss accueille et guide dans son propre fil. Ses messages (ceux du modèle comme ceux que weevilsd écrit en son
@@ -8,7 +9,8 @@ import { withoutWinMarks } from './wins.ts'
 // tapées vont droit au fichier de config de weevilsd (~/.config/weevils/env), jamais au modèle ni aux journaux.
 //
 // Jamais de commande à taper : ce qui s'installe, weevilsd l'installe lui-même (Claude Code, gh, la voix gratuite,
-// Codex), les connexions passent par un lien et un code collé en bas, et le reste (domaine, Tailscale, une machine à
+// Codex), les connexions passent par un lien (GitHub, npm, Codex ; pour Claude, un code collé en bas), une clé déjà
+// sur la machine y est prise sans rien demander (shared/key-sources.ts), et le reste (domaine, Tailscale, une machine à
 // installer) part chez weevboss, qui a un terminal.
 
 /** Ce que weevboss sait détecter, conseiller et brancher. */
@@ -29,6 +31,8 @@ export interface SetupField {
   options?: string[]
   /** Réponses d'un « choice » qui terminent le parcours tout de suite (« j'en ai pas »). */
   stop?: string[]
+  /** The provider's page that creates what is asked for (a key, an app password): a link next to the field. */
+  link?: string
 }
 
 /** Les hébergeurs proposés pour brancher un VPS (« none » : pas encore de VPS, weevboss aide à en choisir un). */
@@ -54,14 +58,15 @@ export const FIELDS: Partial<Record<Brick, SetupField[]>> = {
     { name: 'model' },
     { name: 'key', secret: true, optional: true },
   ],
+  // (Keys already on the machine are taken there first, server/setup.ts ask.)
   voice: [
-    { name: 'cartesia', secret: true, optional: true },
-    { name: 'openai', secret: true, optional: true },
+    { name: 'cartesia', secret: true, optional: true, link: keySource('CARTESIA_API_KEY').create },
+    { name: 'openai', secret: true, optional: true, link: keySource('OPENAI_API_KEY').create },
   ],
-  github: [{ name: 'token', secret: true }],
+  // (GitHub has no field: its sign-in is a link, « weevils setup github ».)
   mail: [
     { name: 'gmail', kind: 'email' },
-    { name: 'password', secret: true },
+    { name: 'password', secret: true, link: GMAIL_APP_PASSWORD },
   ],
   author: [
     { name: 'name' },
@@ -80,6 +85,14 @@ export interface AskResult {
   open?: string
 }
 
+/** POST /api/setup/key/ask: what weevils did for a secret an agent needs (shared/key-sources.ts). 'found': it was on
+ * this machine, saved · 'link': a sign-in by link is in the thread · 'field': the masked field, the last resort. */
+export interface KeyAsk {
+  ok: true
+  state: 'found' | 'link' | 'field'
+  said?: string
+}
+
 /** POST /api/setup/apply : `said`, le dernier message posté (ou retrouvé) par le parcours, à mettre en avant. */
 export interface ApplyResult {
   ok: true
@@ -96,7 +109,7 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set(['DEVIL_API_KEY', 'OPENA
  * droit dans ~/.config/weevils/env, jamais dans le fil, le modèle ou les journaux. */
 export const KEY_CHIP = /\[\[setup:key:([A-Z][A-Z0-9_]{1,63})\]\]/g
 // « OPENAI_API_KEY » → the brand (« OpenAI ») and whether it is a key or a token: never the raw variable name on screen.
-const BRANDS: Record<string, string> = { OPENAI: 'OpenAI', GITHUB: 'GitHub', GH: 'GitHub', HF: 'Hugging Face', HUGGINGFACE: 'Hugging Face', ANTHROPIC: 'Anthropic', CARTESIA: 'Cartesia', ELEVENLABS: 'ElevenLabs', OPENROUTER: 'OpenRouter', GEMINI: 'Gemini', GOOGLE: 'Google', MISTRAL: 'Mistral', GROQ: 'Groq', DEEPSEEK: 'DeepSeek', REPLICATE: 'Replicate', STRIPE: 'Stripe', VERCEL: 'Vercel', CLOUDFLARE: 'Cloudflare', NPM: 'npm', RUNPOD: 'RunPod', FAL: 'fal' }
+const BRANDS: Record<string, string> = { OPENAI: 'OpenAI', GITHUB: 'GitHub', GH: 'GitHub', HF: 'Hugging Face', HUGGINGFACE: 'Hugging Face', ANTHROPIC: 'Anthropic', CARTESIA: 'Cartesia', ELEVENLABS: 'ElevenLabs', OPENROUTER: 'OpenRouter', GEMINI: 'Gemini', GOOGLE: 'Google', MISTRAL: 'Mistral', GROQ: 'Groq', DEEPSEEK: 'DeepSeek', REPLICATE: 'Replicate', STRIPE: 'Stripe', VERCEL: 'Vercel', CLOUDFLARE: 'Cloudflare', NPM: 'npm', RUNPOD: 'RunPod', FAL: 'fal', XAI: 'xAI', VAST: 'Vast.ai' }
 export const secretBrand = (name: string): { brand: string; token: boolean } => {
   const token = /_TOKEN$/.test(name)
   const prefix = name.replace(/_(API_KEY|TOKEN)$/, '')

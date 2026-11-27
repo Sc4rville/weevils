@@ -112,6 +112,11 @@ feature copy. Always distinguish canonical, candidate, tested and running revisi
   strings. To add a language, add it to `Lang`, `LANGS` and `LANG_NAMES` in `shared/i18n.ts`, then a block in every
   catalog; the shell scripts and weevboss's prompt (`server/orchestrator.<lang>.md`) have their own strings.
 - **The look**: flat colour bands, bold type, sharp corners, no shadows, no permanent help text.
+- **Nobody types what weevils can get.** Before a field asks for anything (a key, a token, a code, an address), in
+  this order: take it where it already is on the machine (`server/key-sources.ts`); a sign-in by one link when the
+  provider has one (`weevils setup github`, `weevils setup npm`), with weevils saying when it is done; and only then a
+  masked field, always with the link to the exact page that creates the thing next to it (`shared/key-sources.ts`) and
+  a paste button. Never a command, never "go to your settings". A new provider gets its line in that catalog.
 - **Small commits**, `type(scope): what and why` (`fix(install): …`, `feat(app): …`). Many existing commit messages
   and code comments are in French; new ones can be in English.
 - No new runtime dependency without a good reason.

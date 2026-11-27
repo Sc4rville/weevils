@@ -17,6 +17,18 @@ A short summary of what changed after the first working version.
 - `weevils post --help` and `weevils show --help` print the usage instead of posting a card that reads « --help ».
 - The newsprint theme joins the light themes whose busy mark is darkened in the new interface.
 
+### Nothing to type that weevils can get
+- A key or a token an agent needs is looked for on the machine first (the terminal's settings, the provider's own
+  tool, a sign-in already there): found, it is saved and the thread says so, with nothing asked. An agent does it
+  with `weevils setup key <NAME>`; the app does it when its link is tapped.
+- GitHub is never a token to create and paste any more: one link, whose tap copies GitHub's code and opens its page.
+  Codex's sign-in link does the same. npm signs in by a link too: `weevils setup npm` (or a `NPM_TOKEN` asked for)
+  posts npm's own web sign-in, nothing to copy back, and weevils says when it is done.
+- When a field is the only way, it shows a link to the exact page that creates the key (OpenAI, Anthropic, Gemini,
+  Cartesia, RunPod, Hugging Face and others, Gmail's app passwords) and a « paste » button; a key its provider
+  clearly refuses is not kept, and the field says why.
+- weevboss and every session are told the order: get it themselves, then a sign-in link, the masked field last.
+
 ## 2026-11-26
 
 ### Installing, in plain words

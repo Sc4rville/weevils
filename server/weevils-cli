@@ -13,7 +13,7 @@
 #   weevils new <projet> "message" [codex]   weevils projects
 #   weevils project new <nom>            le dossier d'un nouveau projet (avec git), dans le dossier des projets
 #   weevils do "travail" [codex]         une session qui s'en charge (installer, créer un repo…), et demande d'abord si besoin
-#   weevils setup [install | github | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
+#   weevils setup [install | github | npm | key <NOM> | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   un post dans « pour toi » (titre en gras en haut)
 #   weevils show <fichier> ["légende"] [--mockup phone|browser|tablet|print|cinema|board]   une image ou une vidéo dans « pour toi », dans sa maquette
@@ -84,7 +84,7 @@ if [ "$(wv_lang)" = fr ]; then
 weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
 weevils project new <nom>            weevils do "travail" [codex]
 weevils recall <id>                  weevils boss
-weevils setup [install | github | ask <brique> [--since <date> | --match <mots>] | ask claude [<machine>] | mark <id>]   weevils config set <CLÉ> <valeur>
+weevils setup [install | github | npm | key <NOM> | ask <brique> [--since <date> | --match <mots>] | ask claude [<machine>] | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
 weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."] [--mockup phone|browser|tablet|print|cinema|board]' # i18n-ignore
@@ -137,7 +137,7 @@ else
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
 weevils project new <name>           weevils do "job" [codex]
 weevils recall <id>                  weevils boss
-weevils setup [install | github | ask <brick> [--since <date> | --match <words>] | ask claude [<machine>] | mark <id>]   weevils config set <KEY> <value>
+weevils setup [install | github | npm | key <NAME> | ask <brick> [--since <date> | --match <words>] | ask claude [<machine>] | mark <id>]   weevils config set <KEY> <value>
 weevils memory [add "memory" | rm <id>]
 weevils post "text" [--title "title"] [--action "label::what to do"]…      weevils show <file> ["Title sentence. Why it matters."] [--mockup phone|browser|tablet|print|cinema|board]
   post and show: --link <https://…> [--link-label "label"] when the result lives at an address (a site, a preview, a page), never localhost   weevils link <post id> <https://…>
@@ -551,6 +551,16 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
         # GitHub's device sign-in: its code and the github.com/login/device link are said in weevboss's thread; prints
         # what happened (signed-in: nothing to do · posted: the person types the code · failed: said in the thread).
         curl -sf -m 240 -X POST "$base/api/setup/github" | json "print(d.get('state') or 'failed')" ;;
+      npm)
+        # npm's web sign-in: its one link is said in weevboss's thread, nothing to copy or type back; weevils says
+        # there when it is done (signed-in: nothing to do · posted: the person opens the link · failed: said in the thread).
+        curl -sf -m 120 -X POST "$base/api/setup/npm" | json "print(d.get('state') or 'failed')" ;;
+      key)
+        # A key or a token you need (OPENAI_API_KEY, HF_TOKEN…), never typed when weevils can get it: prints found (it
+        # was on this machine: saved in ~/.config/weevils/env under that name, read it there) · link (a sign-in link is
+        # in the thread, the secret is saved once approved) · field (the thread asks for it: the provider's page, a paste).
+        "$py" -c 'import json,sys; print(json.dumps({"name":sys.argv[1],"by":"agent"}))' "${3:?}" \
+          | curl -sf -m 240 -H 'content-type: application/json' --data-binary @- "$base/api/setup/key/ask" | json "print(d.get('state') or 'failed')" ;;
       ask|mark)
         # « ask machine --since 2026-10-01 » / « --match "words" »: the line for another computer then says what to
         # bring of its history (server/join.sh). « ask claude <machine> »: Claude's sign-in on that machine of yours.

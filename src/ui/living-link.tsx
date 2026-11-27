@@ -13,6 +13,8 @@ import './living-link.css'
 import { linkCss } from '../../shared/link-colors'
 import { startTour } from './tour-bus'
 import { TRIES, type Try } from '../../shared/setup'
+import { readCopyLink } from '../../shared/key-sources'
+import { copyText } from './copy'
 
 // The colours of each kind in each theme (shared/link-colors.ts), once per document.
 if (typeof document !== 'undefined' && !document.getElementById('lk-colors')) {
@@ -79,7 +81,7 @@ export function LivingLink({ href, label }: { href: string; label?: string }) {
  * A link to a place in the app, written by weevboss: `/#s=<session id or its first 8 characters>` opens that session,
  * `/#foryou` opens For you. Same living look as a page link (sessions blue, For you green); a tap stays in the app.
  */
-export function appLink(href: string): { kind: 'session'; id: string } | { kind: 'foryou' } | { kind: 'do'; action: DoAction } | undefined {
+export function appLink(href: string): { kind: 'session'; id: string } | { kind: 'foryou' } | { kind: 'do'; action: DoAction } | { kind: 'open'; url: string; code: string } | undefined {
   let u: URL
   try {
     u = new URL(href, 'http://local')
@@ -92,6 +94,9 @@ export function appLink(href: string): { kind: 'session'; id: string } | { kind:
   if (s) return { kind: 'session', id: s[1] }
   const d = /^#do=([a-z]+(?:\.[a-z]+)?|claude\.[A-Za-z0-9_-]{1,64})$/.exec(u.hash)
   if (d && isDoAction(d[1])) return { kind: 'do', action: d[1] }
+  // A provider's page that asks for a code (GitHub's and Codex's sign-ins): the tap copies the code and opens the page.
+  const open = readCopyLink(u.hash)
+  if (open) return { kind: 'open', ...open }
   return /^#foryou$/.test(u.hash) ? { kind: 'foryou' } : undefined
 }
 
@@ -99,8 +104,8 @@ export function appLink(href: string): { kind: 'session'; id: string } | { kind:
  *  instead of Claude, set a server up, « later », show the recovery code; the onboarding journey's steps (the tour,
  *  the phone, notifications, another computer), its examples to try (try.<example>, server/journey.ts TRIES), « ask
  *  me first » (agents ask before acting), and Claude's sign-in on another machine of yours (claude.<machine id>,
- *  server/machine-claude.ts). Never a button: a living link in the sentence (2026-11-22). */
-export const DO_ACTIONS = ['github', 'codex', 'server', 'later', 'recovery', 'tour', 'phone', 'push', 'computer', 'ask'] as const
+ *  server/machine-claude.ts), npm's sign-in by link. Never a button: a living link in the sentence (2026-11-22). */
+export const DO_ACTIONS = ['github', 'npm', 'codex', 'server', 'later', 'recovery', 'tour', 'phone', 'push', 'computer', 'ask'] as const
 export type DoAction = (typeof DO_ACTIONS)[number] | `try.${Try}` | `claude.${string}`
 const isDoAction = (x: string): x is DoAction =>
   (DO_ACTIONS as readonly string[]).includes(x) || (x.startsWith('try.') && (TRIES as readonly string[]).includes(x.slice(4))) || /^claude\.[A-Za-z0-9_-]{1,64}$/.test(x)
@@ -112,6 +117,13 @@ export function AppLink({ href, label }: { href: string; label: string }) {
     app = useApp()
   } catch {}
   const [busy, setBusy] = useState(false)
+  if (link.kind === 'open')
+    return (
+      // A real link to the provider's page, in a new tab; the code it will ask for is on the clipboard by then.
+      <a className="living lk-preview do" href={link.url} target="_blank" rel="noopener noreferrer" onClick={(e) => (e.stopPropagation(), void copyText(link.code))}>
+        {label}
+      </a>
+    )
   return (
     <a
       className={`living ${link.kind === 'session' ? 'lk-preview' : link.kind === 'do' ? 'lk-preview do' : 'lk-opportunities'}${busy ? ' busy' : ''}`}

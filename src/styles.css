@@ -2948,8 +2948,21 @@ button.copy.done {
 
 .setup-form .attach-line {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px 16px;
+}
+
+/* The provider's page that creates the key, next to its field, and « paste »: one tap each, nothing typed (src/ui/setup.tsx). */
+.setup-form .setup-page {
+  font-weight: 800;
+  margin-right: auto;
+}
+
+.setup-form .setup-paste {
+  flex: none;
+  min-height: 36px;
+  white-space: nowrap;
 }
 
 /* Une question à choix (l'hébergeur d'un VPS) : des boutons à la place du champ, qui passent à la ligne. */

@@ -6,7 +6,7 @@ import { deliver, awaitDelivery } from './outbox'
 import { automatedBrowser, automatedHeaders } from './automated'
 import OM from './i18n/outbox'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AskResult, Brick, Device } from '../shared/setup.ts'
+import type { AskResult, Brick, Device, KeyAsk } from '../shared/setup.ts'
 import type { BringView } from '../shared/bring.ts'
 import type { LabState } from '../shared/lab.ts'
 import { getLang, localeHeaders, subscribeLang, tr, type Lang } from './i18n'
@@ -148,7 +148,9 @@ export const api = {
   setupAsk: (brick: Brick, device: Device, again = false) => call<AskResult>('POST', '/api/setup/ask', again ? { brick, device, again } : { brick, device }),
   setupApply: (brick: Brick, values: Record<string, string>) => call<{ ok: true }>('POST', '/api/setup/apply', { brick, values }),
   /** Un secret demandé par un agent ([[setup:key:NOM]]) : la valeur part au serveur, rien ne revient. */
-  setupKey: (name: string, value: string) => call<{ ok: true }>('POST', '/api/setup/key', { name, value }),
+  setupKey: (name: string, value: string) => call<{ ok: true; said?: string }>('POST', '/api/setup/key', { name, value }),
+  /** The same secret, before any field: found on the machine, a sign-in by link, or the field as the last resort. */
+  setupKeyAsk: (name: string) => call<KeyAsk>('POST', '/api/setup/key/ask', { name }),
   setupDone: (brick: Brick) => call<{ ok: true }>('POST', '/api/setup/done', { brick }),
   /** A link in weevboss's words (/#do=…): GitHub's sign-in, the server setup, « later », the recovery code. */
   setupDo: (action: string, device: Device) => call<{ ok: true }>('POST', '/api/setup/do', { action, device }),

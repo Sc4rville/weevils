@@ -3,7 +3,7 @@
 // unfolds again into one band per thing, the same height, the same staircase (one small tone step per band), no line,
 // no box. What it shows is weevils' own: GET /api/factory (server/your-factory.ts), the snapshot, Tempo's own view.
 // Reused from the app: Collapse, Icon, ToolIcon (the providers' monochrome logos), Composer, PageView, Shell, the
-// setup flows (askSetup, openKey: a key is only ever typed in the masked field), Tempo (useTempo, TempoBand).
+// setup flows (askSetup, openKey: a key found on the machine or signed in by a link is never typed; else the masked field), Tempo (useTempo, TempoBand).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { AgentsChoice, Project, Session, Snapshot } from '../../shared/api.ts'
@@ -596,7 +596,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
   ]
   const add = (id: string) => {
     toBoss()
-    if (id.startsWith('key:')) { focusBoss({ flash: false }); openKey(id.slice(4)) }
+    if (id.startsWith('key:')) { focusBoss({ flash: false }); void openKey(id.slice(4)) }
     else askSetup(id === 'account' ? 'account' : 'codex')
   }
   useFlips(snap)
@@ -641,7 +641,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
               <Collapse open={oOpen}>
                 {onDemand.map((p) => (
                   <OnDemandBand key={p.id} p={p} step={step(mOpen && oOpen)} ranked={ranked}
-                    onKey={() => { toBoss(); focusBoss({ flash: false }); openKey(p.key) }}
+                    onKey={() => { toBoss(); focusBoss({ flash: false }); void openKey(p.key) }}
                     onTurn={(on) => moveOnDemand(p.id, on ? 'on' : 'off')} onFirst={() => moveOnDemand(p.id, 'first')} />
                 ))}
               </Collapse>

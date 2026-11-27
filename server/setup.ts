@@ -25,7 +25,9 @@ import path from 'node:path'
 import type { Message, Tool, Win } from '../shared/api.ts'
 import { preferredTool, providerStatus, providerReady, codexLogged } from './provider.ts'
 import type { MachineFacts } from '../shared/infra.ts'
-import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '../shared/setup.ts'
+import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device, type KeyAsk } from '../shared/setup.ts'
+import { keySource } from '../shared/key-sources.ts'
+import { checkKey, findKey, type FoundKey } from './key-sources.ts'
 import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL, USER_NAME, VAULT_KEY_FILE, vaultRemote } from './config.ts'
 import { claudeLoggedIn } from './claude-credentials.ts'
@@ -64,6 +66,8 @@ const LAB_STEP = path.join(DATA_DIR, 'lab-step.json')
 type LabStep = { kind: 'welcome'; device: Device } | { kind: 'say'; text: string } | { kind: 'do'; action: string; device?: Device }
 /** En deçà, un message automatique identique n'est pas reposté (voir Setup.add). */
 const REPEAT_MS = 30 * 60_000
+/** The public registry, named so a project's own .npmrc never sends the sign-in elsewhere. */
+const NPM_REGISTRY = 'https://registry.npmjs.org/'
 /** The first days: weevboss's turns get firstRunBrief, for three days or 40 messages. */
 const FIRST_RUN_MS = 3 * 86_400_000
 const FIRST_RUN_TURNS = 40
@@ -169,6 +173,8 @@ export interface SetupDeps {
   askFirst?: () => boolean
   /** One call to another machine of yours, through its tunnel with its local token (Claude's sign-in there). */
   machineCall?: <T>(id: string, path: string, body: unknown, timeout: number) => Promise<T>
+  /** Asks a provider whether it accepts a key (server/key-sources.ts; tests replace it). */
+  checkKey?: typeof checkKey
 }
 
 interface Persisted {
@@ -420,6 +426,9 @@ export function writeConfig(changes: Record<string, string>) {
   fs.writeFileSync(tmp, lines.join('\n') + '\n', { mode: 0o600 })
   fs.renameSync(tmp, CONFIG_FILE)
 }
+
+/** What weevils' own config file holds under a name ('' when nothing). */
+const configValue = (name: string): string => new RegExp(`^\\s*${name}\\s*=\\s*(\\S.*)$`, 'm').exec(read(CONFIG_FILE))?.[1].trim() ?? ''
 
 // ---------------------------------------------------------------- gestes et astuces (pour weevboss)
 
@@ -688,6 +697,11 @@ export class Setup {
   private githubShown: string | null = null
   /** GitHub's sign-in started from the person's own link (the sync line says the rest) rather than for weevboss. */
   private githubForSync = false
+  /** « npm login » waiting for its page to be approved, and what the thread showed for it. */
+  private npmProc: ChildProcess | null = null
+  private npmShown: string | null = null
+  /** Secrets asked for while a sign-in by link is under way: saved under their name once it is done. */
+  private keysWaiting = { github: new Set<string>(), npm: new Set<string>() }
   private syncing = false
   private syncFailedAt = 0
   /** Sur un Mac, « joignable de partout » part chez weevboss dès le tap : quand, pour qu'un double tap ne le confie pas deux fois. */
@@ -782,18 +796,81 @@ export class Setup {
   userSays = (text: string) => this.add('user', text)
 
   /** Un secret demandé par un agent ([[setup:key:NOM]]) : écrit dans la config, jamais montré (pas même la fin) ni
-   * journalisé ; le fil dit seulement qu'il est enregistré. */
-  saveKey(name: string, value: string) {
+   * journalisé ; le fil dit seulement qu'il est enregistré. A key its provider clearly refuses is not kept: the field
+   * says why and stays open. */
+  async saveKey(name: string, value: string) {
     const v = value.trim()
     if (!isSecretName(name) || !v || v.length > 4096 || /[\r\n]/.test(v)) throw new Error(tr(M).badSecret)
+    const verdict = await (this.deps.checkKey ?? checkKey)(name, v)
+    if (verdict === 'refused') throw new Error(tr(M).keyRefused(name))
     writeConfig({ [name]: v })
     this.userSays(tr(M).keyTyped(name))
-    this.say(tr(M).keySaved(name))
+    this.say(verdict === 'ok' ? tr(M).keyChecked(name) : tr(M).keySaved(name))
     console.log(`[setup] secret enregistré : ${name}`)
     this.deps.bump()
   }
 
+  /** This secret, when the machine already has it: under its name in the shell's settings, kept by the provider's own
+   * tool, or (GitHub) the sign-in gh holds. Never one already in weevils' config: asking again means replacing it. */
+  private async machineKey(name: string): Promise<FoundKey | null> {
+    if (keySource(name).login === 'github') {
+      const gh = which('gh')
+      if (gh && (await github(true)).logged) {
+        // gh's own sign-in, not a token of the environment (it may be the very one being replaced).
+        const env = shellEnv()
+        delete env.GH_TOKEN
+        delete env.GITHUB_TOKEN
+        const r = await run(gh, ['auth', 'token', '--hostname', 'github.com'], 6000, env)
+        if (r.ok && r.out) return { value: r.out, from: 'tool' }
+      }
+    }
+    const env = { ...process.env }
+    if (configValue(name)) delete env[name]
+    return findKey(name, HOME, env)
+  }
 
+  /** Found on the machine and not refused by its provider: saved under its name. True when it was. */
+  private async adoptKey(name: string, say: (found: FoundKey) => string): Promise<boolean> {
+    const found = await this.machineKey(name)
+    if (!found) return false
+    // The very one weevils already keeps: nothing to write, nothing to ask.
+    if (found.value === configValue(name)) return this.say(tr(M).keySaved(name), true), true
+    if ((await (this.deps.checkKey ?? checkKey)(name, found.value)) === 'refused') return false
+    writeConfig({ [name]: found.value })
+    this.say(say(found))
+    console.log(`[setup] secret trouvé sur la machine : ${name}`)
+    return true
+  }
+
+  /** The secrets asked for during a sign-in by link (GitHub, npm), now that it is done. */
+  private async adoptWaiting(kind: 'github' | 'npm') {
+    const names = [...this.keysWaiting[kind]]
+    this.keysWaiting[kind].clear()
+    for (const name of names) await this.adoptKey(name, () => tr(M).keySaved(name)).catch((e) => console.log(`[setup] ${name}: ${short(e)}`))
+  }
+
+  /**
+   * A key or a token an agent needs ([[setup:key:NAME]] tapped, or « weevils setup key NAME »): never typed when
+   * weevils can get it (shared/key-sources.ts). 'found': it was on this machine, saved, nothing to do · 'link': a
+   * sign-in by link is in the thread, weevils saves the secret once it is approved · 'field': the masked field, with
+   * the provider's page that creates the key next to it (an agent's ask posts the sentence that carries both).
+   */
+  async askKey(name: string, by: 'app' | 'agent' = 'app'): Promise<KeyAsk['state']> {
+    const t = tr(M)
+    if (!isSecretName(name)) throw new Error(t.badSecret)
+    if (await this.adoptKey(name, (f) => t.keyFound(name, f.from))) return this.deps.bump(), 'found'
+    const { login, create } = keySource(name)
+    if (login) {
+      this.keysWaiting[login].add(name)
+      const r = login === 'github' ? await this.githubDevice() : await this.npmLogin()
+      if (r === 'posted') return 'link'
+      // Signed in meanwhile: what it left on the machine is the secret.
+      if (r === 'signed-in' && (await this.adoptKey(name, () => t.keySaved(name)))) return this.keysWaiting[login].delete(name), 'found'
+      this.keysWaiting[login].delete(name)
+    }
+    if (by === 'agent') this.say(t.keyAsk(name, create), true)
+    return 'field'
+  }
 
   async detect(force = false): Promise<SetupState> {
     if (!force && this.cache && Date.now() - this.cache.at < 15_000) return this.cache.v
@@ -1229,6 +1306,7 @@ export class Setup {
     if (!gh.logged) return
     const bin = which('gh')
     if (bin) void run(bin, ['auth', 'setup-git'], 6000)
+    await this.adoptWaiting('github')
     if (!process.env.WEEVILS_GH_OWNER && gh.login) writeConfig({ WEEVILS_GH_OWNER: gh.login })
     console.log(`[setup] GitHub branché (${gh.login ?? ''})`)
     const t = tr(M)
@@ -1236,6 +1314,65 @@ export class Setup {
     // From the person's own link: the sync line says it all (watch() says it within seconds).
     if (this.githubForSync) return void this.watch()
     await this.deps.handoff(t.githubDeviceDone, githubBrief(gh.login ?? '', (await this.detect(true)).vault.state))
+  }
+
+  /**
+   * npm by a link (« weevils setup npm », /#do=npm, a NPM_TOKEN asked for): npm's own web sign-in. One sentence with
+   * the page to open; nothing to copy or type back, weevils says when it is done.
+   */
+  async npmLogin(): Promise<'signed-in' | 'posted' | 'failed'> {
+    const t = tr(M)
+    const npm = which('npm')
+    if (!npm) return this.say(t.npmFail(t.npmMissing)), 'failed'
+    const who = await run(npm, ['whoami', `--registry=${NPM_REGISTRY}`], 20_000, shellEnv())
+    if (who.ok && who.out) return this.say(t.npmOk(who.out.split('\n').pop() ?? ''), true), 'signed-in'
+    if (this.npmProc && this.npmProc.exitCode === null && this.npmShown) return this.say(this.npmShown, true), 'posted'
+    if (await this.launchNpmLogin(npm)) return 'posted'
+    this.say(t.npmFail(t.noAnswer))
+    return 'failed'
+  }
+
+  private launchNpmLogin(npm: string): Promise<boolean> {
+    const t = tr(M)
+    if (this.npmProc && this.npmProc.exitCode === null) this.npmProc.kill()
+    return new Promise((resolve) => {
+      const proc = spawn(npm, ['login', '--auth-type=web', `--registry=${NPM_REGISTRY}`], { env: shellEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
+      this.npmProc = proc
+      this.npmShown = null
+      let out = ''
+      const timer = setTimeout(() => resolve(false), 25_000)
+      const onData = (d: Buffer) => {
+        out += d.toString()
+        const url = /https:\/\/www\.npmjs\.com\/login\?next=\/login\/cli\/[\w-]+/.exec(out.replace(ANSI, ''))?.[0]
+        if (url && !this.npmShown) {
+          clearTimeout(timer)
+          this.npmShown = t.npmLink(url)
+          this.say(this.npmShown)
+          resolve(true)
+        }
+      }
+      proc.stdout.on('data', onData)
+      proc.stderr.on('data', onData)
+      proc.on('error', () => (clearTimeout(timer), resolve(false)))
+      proc.on('exit', (code) => {
+        clearTimeout(timer)
+        const shown = this.npmProc === proc && !!this.npmShown
+        if (this.npmProc === proc) this.npmProc = null
+        if (!shown) return resolve(false)
+        this.npmShown = null
+        if (code === 0) void this.npmSignedIn(npm).catch((e) => console.log(`[setup] npm: ${short(e)}`))
+        // npm's reason, not its own prompt lines (the address, the notices).
+        else if (code !== null) this.say(t.npmFail(lastLine(out.split('\n').filter((l) => !/npm notice|Login at|npmjs\.com\/login|Press ENTER|complete log|_logs/.test(l)).join('\n')).replace(/^npm (error|ERR!)\s*/i, '') || t.noAnswer))
+      })
+    })
+  }
+
+  private async npmSignedIn(npm: string) {
+    const who = await run(npm, ['whoami', `--registry=${NPM_REGISTRY}`], 20_000, shellEnv())
+    console.log('[setup] npm connecté')
+    this.say(tr(M).npmOk(who.ok ? (who.out.split('\n').pop() ?? '') : ''))
+    await this.adoptWaiting('npm')
+    this.deps.bump()
   }
 
   /** Ce qui a changé tout seul (une connexion faite dans un terminal) : dit une fois. */
@@ -1457,6 +1594,9 @@ export class Setup {
         if ((await this.githubDevice()) === 'signed-in') void this.watch()
         return true
       }
+      case 'npm':
+        await this.npmLogin()
+        return true
       case 'codex':
         // ChatGPT rather than Claude, from the hello: weevboss thinks with Codex from now on, its code follows here.
         try {
@@ -1653,9 +1793,22 @@ export class Setup {
         await this.askCodex(s, again)
         return false
       case 'github':
-        post(t.githubAsk(s))
-        return !s.github.logged
-      case 'voice':
+        // Never a token to create and paste: GitHub's own sign-in, one link (its code is copied by the tap).
+        if (s.github.logged) post(t.githubAsk(s))
+        else await this.githubDevice()
+        return false
+      case 'voice': {
+        // Keys already on this machine (the shell's settings, Codex signed in with a key) are taken there, not asked for.
+        let took = false
+        if (!cartesia()) took = (await this.adoptKey('CARTESIA_API_KEY', (f) => t.keyFound('CARTESIA_API_KEY', f.from))) || took
+        if (!openaiKey()) took = (await this.adoptKey('OPENAI_API_KEY', (f) => t.keyFound('OPENAI_API_KEY', f.from))) || took
+        if (took) {
+          this.cache = null
+          const now = await this.detect(true)
+          post(t.voiceAsk(now))
+          if (cartesia() && openaiKey()) return false
+          return true
+        }
         post(t.voiceAsk(s))
         if (!s.voice.spoken)
           void this.install('edge', s).then((r) => {
@@ -1663,6 +1816,7 @@ export class Setup {
             else if (!cartesia()) this.say(chip(t.voiceFreeFail(r.why), 'voice'))
           })
         return true
+      }
       case 'devil':
         post(t.devilAsk(s.devil.plugged, s.devil.model ?? ''))
         return true
@@ -1910,7 +2064,6 @@ export class Setup {
     try {
       if (brick === 'devil') await this.applyDevil(v)
       else if (brick === 'voice') await this.applyVoice(v)
-      else if (brick === 'github') await this.applyGithub(v)
       else if (brick === 'mail') await this.applyMail(v)
       else if (brick === 'author') this.applyAuthor(v)
       else if (brick === 'claude') await this.applyClaude(v)
@@ -2076,44 +2229,6 @@ export class Setup {
     writeConfig(changes)
     console.log(`[setup] voix : ${ok.join(', ')}`)
     this.say(t.voiceOk(ok))
-  }
-
-  private async applyGithub(v: Record<string, string>) {
-    const t = tr(M)
-    let login = ''
-    try {
-      const res = await fetch('https://api.github.com/user', { headers: { authorization: `Bearer ${v.token}`, 'user-agent': 'weevils' }, signal: AbortSignal.timeout(10_000) })
-      if (!res.ok) throw new Error(`${res.status}`)
-      login = ((await res.json()) as { login?: string }).login ?? ''
-    } catch (e) {
-      return this.say(chip(t.githubFail(short(e)), 'github'))
-    }
-    let gh = which('gh')
-    let why = ''
-    if (!gh) {
-      const r = await this.install('gh', await this.detect())
-      gh = which('gh')
-      why = r.why
-    }
-    if (gh) {
-      // gh garde le jeton dans sa propre config (~/.config/gh), comme après « gh auth login ».
-      const ok = await new Promise<boolean>((resolve) => {
-        const env = { ...process.env }
-        delete env.GH_TOKEN
-        delete env.GITHUB_TOKEN
-        const p = spawn(gh, ['auth', 'login', '--with-token', '--hostname', 'github.com'], { env, stdio: ['pipe', 'ignore', 'ignore'] })
-        p.on('error', () => resolve(false))
-        p.on('exit', (code) => resolve(code === 0))
-        p.stdin.end(v.token + '\n')
-      })
-      if (!ok) writeConfig({ GH_TOKEN: v.token })
-      void run(gh, ['auth', 'setup-git'], 6000)
-    } else writeConfig({ GH_TOKEN: v.token })
-    if (!process.env.WEEVILS_GH_OWNER && login) writeConfig({ WEEVILS_GH_OWNER: login })
-    ghCache = null
-    this.p.githubLogged = true
-    console.log(`[setup] GitHub branché (${login})`)
-    this.say(gh ? t.githubOk(login) : `${t.githubOk(login)} ${t.githubNoCli(why)}`)
   }
 
   private async applyMail(v: Record<string, string>) {

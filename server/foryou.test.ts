@@ -870,6 +870,11 @@ describe('media', () => {
     const shown = fy.feed().items.find((i) => i.themes?.includes('departures'))
     expect(shown).toMatchObject({ title: 'New theme', at: T0 + HOUR, themes: ['departures'] })
     expect(shown?.seen).toBeUndefined()
+    // A theme link stored as a post's link by an earlier version reads as its themes, never as an address.
+    const old = fy.post('An older theme post.')
+    ;(fy as unknown as { s: { items: { id: string; link?: { url: string } }[] } }).s.items.find((i) => i.id === old.id)!.link = { url: 'https://weevils.example.com/#theme=dark' }
+    expect(find(fy, old.id)).toMatchObject({ themes: ['dark'] })
+    expect(find(fy, old.id)?.link).toBeUndefined()
     // No app built here (a dev server): nothing can be said, nothing is held.
     expect(make({ file: path.join(dir, 'other.json') }).post('Any theme.', undefined, undefined, undefined, undefined, undefined, '#theme=anything')).toMatchObject({ themes: ['anything'] })
   })

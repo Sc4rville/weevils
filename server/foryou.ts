@@ -1428,8 +1428,11 @@ export class ForYou {
     if (i.eventId) out.eventId = i.eventId
     if (i.tool) out.tool = i.tool
     if (i.title) out.title = i.title
-    if (i.link) out.link = i.link
-    if (i.themes?.length) out.themes = i.themes
+    // A theme link stored as the post's link (given before themes had their own place): read as its themes.
+    const asLink = i.link && isThemeLink(i.link.url) ? themeIds(i.link.url) : []
+    if (i.link && !asLink.length) out.link = i.link
+    const themes = cleanThemeIds([...(i.themes ?? []), ...asLink])
+    if (themes.length) out.themes = themes
     if (i.body) out.body = i.body
     if (i.open) out.open = i.open
     if (i.reply && (i.reply !== 'session' || snap.sessions.some(s => s.id === i.sessionId && s.controllable))) out.reply = i.reply

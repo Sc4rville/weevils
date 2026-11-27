@@ -217,6 +217,8 @@ export function productGroups(snap: Snapshot, rows: Row[], github: { name: strin
     const mother = g.repos.find((r) => r.toLowerCase() === familyOf(r) && familyOf(r) === g.id) ?? g.repos[0]
     const repos = mother ? [mother, ...g.repos.filter((r) => r !== mother)] : g.repos
     const pre = new RegExp(`^${g.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[-_.]`, 'i')
+    // A product of one repo reads as that repo (« cash-tempo », « site.com »), never cut into a name and a part.
+    if (repos.length === 1 && !g.project) return { ...g, repos, name: repos[0], parts: [] }
     return { ...g, repos, parts: repos.filter((r) => r.toLowerCase() !== g.id.toLowerCase()).map((r) => r.replace(pre, '')) }
   }).sort((a, b) => b.at - a.at || a.name.localeCompare(b.name))
 }

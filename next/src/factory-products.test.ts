@@ -28,3 +28,8 @@ it('a product with no mother repo of its name still reads as one row', () => {
   const g = productGroups({ projects: [] } as unknown as Snapshot, [], [gh('game-web', 1), gh('game-api', 2)])
   expect(g.map((x) => [x.name, x.repos.join(','), x.parts.join(',')])).toEqual([['game', 'game-web,game-api', 'web,api']])
 })
+
+it('a product of one repo reads as that repo, never cut into a name and a part', () => {
+  const g = productGroups({ projects: [] } as unknown as Snapshot, [], [gh('cash-tempo', 1), gh('site.com', 2)])
+  expect(g.map((x) => [x.name, x.parts.length])).toEqual([['cash-tempo', 0], ['site.com', 0]])
+})

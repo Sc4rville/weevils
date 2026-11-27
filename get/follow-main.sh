@@ -37,7 +37,7 @@ if [ "$new" != "$old" ]; then
   changed=$(git -C "$live" diff --name-only "$old" "$new")
   git -C "$live" checkout -q --detach --force "$new"
   # What the service reads once, at start: its code, the install script it serves, the installer's step titles.
-  if grep -qxE 'get/server\.mjs|get/bootstrap\.sh|get/release-key\.pub|install\.sh' <<<"$changed"; then restart=1
+  if grep -qxE 'get/server\.mjs|get/landing-flow\.mjs|get/bootstrap\.sh|get/release-key\.pub|install\.sh' <<<"$changed"; then restart=1
   else echo "get on ${new:0:7} (pages and assets only: no restart)"; fi
 fi
 # The bundle first (signed), then the service that serves the script checking it.

@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>weevils — your AI dev team, in your pocket</title>
+<meta name="description" content="Run Claude Code and Codex agents on your own server and drive them from your phone, set up in a few minutes.">
+<link rel="icon" href="/favicon-32.png">
+<!-- The preview when the link is pasted (Twitter/X, iMessage, WhatsApp…): og.png, from the content repository (productions/og/weevils-og-ask.png); ?v= is its sha256, so X fetches a new card. -->
+<link rel="canonical" href="https://tryweevils.scarville.tech/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="weevils">
+<meta property="og:url" content="https://tryweevils.scarville.tech/">
+<meta property="og:title" content="weevils — your AI dev team, in your pocket">
+<meta property="og:description" content="Run Claude Code and Codex agents on your own server and drive them from your phone, set up in a few minutes.">
+<meta property="og:image" content="https://tryweevils.scarville.tech/og.png?v=c698e215">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="weevils: you can ask weevils to build weevils">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="weevils — your AI dev team, in your pocket">
+<meta name="twitter:description" content="Run Claude Code and Codex agents on your own server and drive them from your phone, set up in a few minutes.">
+<meta name="twitter:image" content="https://tryweevils.scarville.tech/og.png?v=c698e215">
+<meta name="twitter:image:alt" content="weevils: you can ask weevils to build weevils">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<script>document.documentElement.className = 'js'</script>
+<style>
+/* Direction C, sixth pass: one page that scrolls, never a slideshow.
+   HOW EACH THING BEHAVES, decided once for the whole page:
+   - Already there: every title, every box, the machines, the devices and what their screens show at rest. A visitor
+     who scrolls fast still reads the whole story from what stands still.
+   - Plays on its own: a stage's little film (the arm pressing the boxes, the phone's story, the weevil's rounds, each
+     card's demo) starts when the stage is well on screen, runs at one fixed pace whatever the scroll does, loops while
+     it stays there, and starts over when it comes back. Each film is short (under 8 seconds) and its last frame says
+     the point, so nothing is missed by passing quickly and nothing makes anyone wait.
+   - Driven by the scroll: nothing. No scrubbing, no snapping, no scroll caught by the page: reading never depends on
+     the speed of a finger or a trackpad.
+   Everything moves in hard steps (no easing, no fades): a block is a solid with three flat faces, like the logo.
+   The app shown is the real one, at its real size, in a real phone and a real laptop. */
+@property --p { syntax: '<length>'; inherits: true; initial-value: 0px; }
+:root {
+  --font: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --pad: max(22px, calc((100vw - 1180px) / 2));
+  --lime: #d6f74c;
+  --paper: #f3f0e8;
+  --bar: 58px;
+  --h1: clamp(38px, 10.4vw, 96px);
+}
+* { box-sizing: border-box; }
+html { background: #000; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: #000; color: #fff; font-family: var(--font); font-weight: 800; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+img, svg { display: block; }
+i { font-style: normal; }
+p { margin: 0; }
+a { color: inherit; }
+
+[data-tone=v] { --top: #9f7aea; --mid: #49405f; --dark: #211b2e; --on: #000; }
+[data-tone=l] { --top: #d6f74c; --mid: #9fb92e; --dark: #6e8218; --on: #000; }
+[data-tone=p] { --top: #f3f0e8; --mid: #c9c0aa; --dark: #a89f88; --on: #000; }
+[data-tone=k] { --top: #17171c; --mid: #3a3a44; --dark: #000; --on: #fff; }
+[data-tone=a] { --top: #b39bff; --mid: #6f58c0; --dark: #3d2f7a; --on: #000; }
+[data-tone=w] { --top: #ffffff; --mid: #c9c0aa; --dark: #a89f88; --on: #000; }
+
+/* ── a solid: any flat thing with a right side and an under side ── */
+.solid { --d: 6px; position: relative; background: var(--top); color: var(--on); }
+.solid::before, .solid::after, .blk::before, .blk::after { content: ''; position: absolute; pointer-events: none; }
+.solid::before { left: calc(100% - .5px); top: 0; height: 100%; width: calc(var(--d) + .5px); background: var(--mid); transform-origin: 0 0; transform: skewY(45deg); }
+.solid::after { top: calc(100% - .5px); left: 0; width: 100%; height: calc(var(--d) + .5px); background: var(--dark); transform-origin: 0 0; transform: skewX(45deg); }
+
+/* ── the block: a solid you press ── */
+.blk { --d: .2em; position: relative; display: inline-block; margin: 0; border: 0; border-radius: 0; padding: .14em .3em .22em .27em; background: var(--top); color: var(--on);
+  font: inherit; line-height: 1; letter-spacing: -0.05em; white-space: pre; text-align: left; text-decoration: none; cursor: pointer;
+  transform: translate(var(--p), var(--p)); transition: --p 90ms steps(3, end);
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; -webkit-user-select: none; user-select: none; outline: 0; }
+.blk::before { left: calc(100% - .5px); top: 0; height: 100%; width: calc(var(--d) - var(--p) + .5px); background: var(--mid); transform-origin: 0 0; transform: skewY(45deg); }
+.blk::after { top: calc(100% - .5px); left: 0; width: 100%; height: calc(var(--d) - var(--p) + .5px); background: var(--dark); transform-origin: 0 0; transform: skewX(45deg); }
+.blk.down, button.blk:active, a.blk:active { --p: calc(var(--d) * .8); }
+.blk:focus-visible { box-shadow: 0 0 0 3px #fff; }
+.paper .blk:focus-visible { box-shadow: 0 0 0 3px #000; }
+.blk.mini { --d: 5px; display: inline-flex; align-items: center; gap: 7px; font-size: 15px; letter-spacing: -0.01em; padding: .5em .72em .56em; }
+.blk.mini svg { width: 16px; height: 16px; }
+.blk.mid { --d: 8px; font-size: clamp(21px, 5.6vw, 28px); letter-spacing: -0.035em; padding: .42em .62em .5em; }
+
+.sec { position: relative; padding: 0 var(--pad); background: #000; color: #fff; overflow: hidden; }
+.sec.paper { background: var(--paper); color: #000; }
+.h1 { margin: 0; font-size: var(--h1); line-height: .98; letter-spacing: -0.06em; font-weight: 800; }
+.sub { font-size: clamp(18px, 4.8vw, 24px); line-height: 1.25; letter-spacing: -0.02em; font-weight: 600; color: rgba(255,255,255,.74); max-width: 24em; }
+.paper .sub { color: rgba(0,0,0,.7); }
+.sub b { color: #fff; font-weight: 700; }
+.paper .sub b { color: #000; }
+
+/* ── the bar: the name, GitHub, and the way in. Always there. ── */
+#bar { position: fixed; left: 0; right: 0; top: 0; z-index: 9; height: var(--bar); padding: env(safe-area-inset-top) calc(var(--pad) + 5px) 0 var(--pad); display: flex; align-items: center; gap: 12px; font-size: 19px; letter-spacing: -0.035em; color: #fff; background: #000; }
+#bar.inv { color: #000; background: var(--paper); }
+.logo { display: flex; align-items: center; gap: 8px; margin-right: auto; text-decoration: none; }
+.logo img { width: 30px; height: 30px; }
+
+/* ── 1. every machine on one side, every subscription on the other, weevils in the middle ── */
+#hero { min-height: 100vh; min-height: 100svh; padding-top: calc(var(--bar) + 12px); padding-bottom: 30px; display: flex; flex-direction: column; justify-content: center; }
+.hgrid { position: relative; display: grid; grid-template-areas: "l" "c" "r"; }
+.hcol { position: relative; z-index: 1; }
+.hcol.l { grid-area: l; } .hcol.r { grid-area: r; } .hmid { grid-area: c; position: relative; z-index: 2; }
+.hh { margin: 0; font-size: clamp(30px, 9vw, 60px); line-height: 1; letter-spacing: -0.055em; font-weight: 800; }
+.hh em { font-style: normal; color: rgba(255,255,255,.55); }
+.list { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; margin: 14px 0 6px; padding-left: 46px; font-size: clamp(18px, 5.5vw, 24px); }
+.box { --d: 5px; padding: .3em .5em .36em .46em; letter-spacing: -0.035em; cursor: default; }
+#wh .more { display: inline; }
+.core { --d: 8px; display: inline-flex; align-items: center; gap: 9px; margin: 10px 0 12px; padding: 9px 15px 10px 10px; font-size: 24px; letter-spacing: -0.04em; line-height: 1; }
+.core img { width: 34px; height: 34px; }
+.core.down { translate: 4px 4px; }
+#wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 0; }
+#wires path { fill: none; stroke: #33333b; stroke-width: 3; stroke-linecap: square; stroke-linejoin: miter; }
+#wires path.on { stroke: var(--lime); }
+.pk { --d: 4px; position: absolute; left: 0; top: 0; width: 13px; height: 13px; z-index: 1; pointer-events: none; }
+#arm { position: absolute; left: 0; top: 0; z-index: 4; width: var(--aw, 300px); pointer-events: none; transition: transform 180ms steps(3, end); will-change: transform; }
+#arm img { width: 100%; height: auto; }
+#arm.l img { transform: scaleX(-1); }
+#arm.jump { transition: none; }
+.hfoot { position: relative; z-index: 3; margin-top: 22px; display: flex; flex-direction: column; gap: 18px; align-items: flex-start; }
+.cta { display: flex; align-items: center; gap: 16px; }
+.cta span { font-size: 14px; font-weight: 600; line-height: 1.25; color: rgba(255,255,255,.5); }
+
+/* ── the app, as it is: real sizes, real words, scaled down whole into a real phone and a real laptop ── */
+.scr { position: relative; overflow: hidden; }
+.ap { --pad: 18px; --dl: -0.075; --ink: #000; --agent: #b39bff; --fluo: #b3138f; --link: #2d2a8c;
+  --p3: oklch(0.80 0.14 72.5); --p8: oklch(0.80 0.14 185); --p12: oklch(0.80 0.14 275); --p9: oklch(0.80 0.14 207.5); --p6: oklch(0.80 0.14 140); --p0: oklch(0.80 0.14 5); --fy: oklch(0.88 0.07 350);
+  --c: initial; position: absolute; left: 0; top: 0; width: var(--w, 360px); height: var(--h, 760px); transform-origin: 0 0; transform: scale(var(--k, 1));
+  overflow: hidden; background: var(--agent); color: var(--ink); font: 400 17px/1.45 var(--font); letter-spacing: normal; text-align: left; -webkit-font-smoothing: antialiased; }
+.ap[data-th=synthwave] { --ink: #fff0fb; --agent: #1e0b3a; --fluo: oklch(0.88 0.14 200); --link: oklch(0.88 0.14 200); --dl: 0.06; --p8: oklch(0.34 0.12 319.3); --p3: oklch(0.4 0.12 46.3); --p12: oklch(0.28 0.12 348.3); }
+.ap[data-th=botanical] { --ink: #0c1f10; --agent: #a6d2a7; --fluo: oklch(0.42 0.17 350); --link: oklch(0.38 0.12 160); --p8: oklch(0.92 0.085 174.7); --p3: oklch(0.86 0.085 109.3); --p12: oklch(0.74 0.085 202.7); }
+.ap[data-th=newsprint] { --ink: #14110e; --agent: oklch(0.87 0.02 90); --fluo: oklch(0.45 0.18 27); --link: oklch(0.45 0.18 27); --p8: oklch(0.9 0.045 150); --p3: oklch(0.9 0.045 70); --p12: oklch(0.78 0.045 210); }
+.ap .ic { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: square; stroke-linejoin: miter; }
+.ap .spin { display: inline-grid; color: var(--fluo); }
+.ap .spin .ic { animation: wspin 1.2s steps(6, end) infinite; }
+@keyframes wspin { to { transform: rotate(60deg) } }
+.ap .tone { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
+.ap .page { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--c, var(--agent)); }
+.ap .sbar { flex: none; height: 46px; display: flex; align-items: center; justify-content: space-between; padding: 8px 28px 0 34px; font: 600 16px/1 var(--font); letter-spacing: -0.01em; }
+.ap .sbar i { display: flex; gap: 5px; align-items: flex-end; }
+.ap .sbar i b { display: block; width: 4px; background: currentColor; }
+.ap .sbar i u { display: block; width: 24px; height: 11px; margin-left: 4px; border: 1.5px solid currentColor; opacity: .9; position: relative; }
+.ap .sbar i u::after { content: ''; position: absolute; left: 1.5px; top: 1.5px; bottom: 1.5px; width: 70%; background: currentColor; }
+.ap .top { flex: none; position: relative; height: 54px; display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 17px; }
+.ap .top .menu { position: absolute; left: 16px; top: 15px; }
+.ap .top .st { position: absolute; right: 16px; top: 13px; width: 28px; height: 28px; }
+.ap .top .st .ic { width: 28px; height: 28px; }
+.ap .top b { font-weight: 700; }
+.ap .top span { opacity: .6; }
+.ap .top .fy { opacity: 1; font-weight: 700; } .ap .top .fy ~ * { opacity: .6; }
+.ap .th { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 18px; padding: 8px var(--pad) 18px; }
+.ap .th.end { justify-content: flex-end; }
+.ap .who { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.ap .msg b, .ap .msg strong { font-weight: 700; }
+.ap .msg a { color: var(--link); font-weight: 700; text-decoration: none; }
+.ap .me { align-self: stretch; margin: 0 calc(var(--pad) * -1) 0 9px; padding: 10px var(--pad) 12px; background: oklch(from var(--agent) calc(l + var(--dl)) calc(c * 1.06) h); }
+.ap .brief { margin: 0 calc(var(--pad) * -1) 0 -2px; padding: 10px var(--pad) 12px; background: oklch(from var(--c) calc(l + var(--dl) * 1.6) calc(c * 1.06) h); }
+.ap .run { display: flex; align-items: center; gap: 10px; font-style: italic; }
+.ap .comp { flex: none; height: 132px; position: relative; padding: 14px var(--pad) 0; background: oklch(from var(--c, var(--agent)) calc(l + var(--dl)) calc(c * 1.06) h); }
+.ap .comp .ph { opacity: .55; }
+.ap .comp .said { opacity: 1; }
+.ap .comp .row { position: absolute; left: 14px; right: 14px; bottom: 22px; display: flex; align-items: center; gap: 22px; }
+.ap .comp .row .ic:first-child { margin-right: auto; }
+.ap .comp .dim { opacity: .45; }
+.ap .comp .live { color: var(--fluo); }
+.ap .comp .live .ic { animation: rec 600ms step-end infinite; }
+@keyframes rec { 50% { opacity: .3 } }
+.ap .home { position: absolute; left: 50%; bottom: 8px; width: 134px; height: 5px; margin-left: -67px; background: var(--ink); opacity: .8; z-index: 9; }
+/* the side bar */
+.ap .lay { position: absolute; inset: 0; }
+.ap .scrim { position: absolute; inset: 0; z-index: 3; background: rgba(0,0,0,.34); }
+.ap .side { position: absolute; left: 0; top: 0; bottom: 0; z-index: 4; width: 86%; display: flex; flex-direction: column; background: transparent; font-size: 16px; }
+.ap .side .lead { flex: none; height: 46px; background: var(--agent); }
+.ap .band { background: var(--c); }
+.ap .bh { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 0 var(--pad); font-size: 20px; letter-spacing: -0.01em; }
+.ap .bh img { width: 30px; height: 30px; }
+.ap .bh .nm { font-weight: 800; }
+.ap .bh .r { margin-left: auto; display: flex; gap: 18px; align-items: center; }
+.ap .rw { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 7px var(--pad); }
+.ap .mk { flex: none; width: 22px; display: grid; place-items: center; }
+.ap .rt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ap .rt b { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap .rt small { font-size: 13px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap .rw.tap { box-shadow: inset 0 0 0 999px rgba(0,0,0,.12); }
+/* a session */
+.ap .sess { z-index: 5; }
+.ap .strip { flex: none; display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 var(--pad); background: var(--agent); font-size: 20px; font-weight: 800; }
+.ap .strip img { width: 30px; height: 30px; }
+.ap .strip .ic:last-child { margin-left: auto; }
+.ap .shead { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px var(--pad) 12px 12px; font-size: 17px; }
+.ap .shead span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.ap .shead small { font-size: 15px; }
+/* For you */
+.ap .fyp { flex: 1; min-height: 0; overflow: hidden; padding: 12px var(--pad); background: var(--fy); }
+.ap .fyp .meta { font-size: 15px; font-weight: 700; opacity: .75; }
+.ap .fyp h4 { margin: 6px 0 6px; font-size: 22px; line-height: 1.2; font-weight: 800; }
+.ap .fyp hr { border: 0; height: 1px; background: currentColor; opacity: .25; margin: 14px 0 12px; }
+.ap .fyp .q { font-size: 19px; line-height: 1.3; font-weight: 800; opacity: .72; margin: 3px 0 8px; }
+.ap .fyp .opt { display: block; font-weight: 800; color: var(--link); margin: 6px 0 10px; }
+.ap .fyp .ok { display: block; font-weight: 800; margin: 6px 0 10px; }
+/* explain */
+.ap .sel { position: relative; background: rgba(0,122,255,.28); }
+.ap .sel::before, .ap .sel::after { content: ''; position: absolute; width: 2px; background: #0a7aff; top: -4px; bottom: -2px; }
+.ap .sel::before { left: -1px; } .ap .sel::after { right: -1px; top: -2px; bottom: -6px; }
+.ap .pill { position: absolute; z-index: 6; padding: 7px 12px 8px; background: var(--ink); color: var(--agent); font-size: 15px; font-weight: 700; line-height: 1; }
+.ap .qa { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; padding: 12px var(--pad) 22px; background: oklch(from var(--c) calc(l + var(--dl) * 1.6) calc(c * 1.06) h); }
+.ap .qa .words { display: flex; gap: 22px; font-weight: 700; margin-bottom: 8px; }
+.ap .qa .words .on { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
+.ap .tapm { position: absolute; z-index: 20; width: 34px; height: 34px; margin: -17px 0 0 -17px; background: rgba(0,0,0,.28); border: 3px solid rgba(255,255,255,.9); visibility: hidden; }
+.ap .tapm.on { visibility: visible; animation: tapm 260ms steps(3, end); }
+@keyframes tapm { from { transform: scale(1.6) } }
+
+/* the devices */
+.phone { --pw: 250px; position: absolute; width: var(--pw); padding: calc(var(--pw) * .042); background: #121215; border-radius: calc(var(--pw) * .165);
+  box-shadow: inset 0 0 0 1.5px #4a4a52, inset 0 0 0 calc(var(--pw) * .016) #1d1d21, 14px 14px 0 rgba(0,0,0,.16); }
+.phone::before, .phone::after { content: ''; position: absolute; background: #2a2a30; width: 3px; }
+.phone::before { left: -3px; top: 22%; height: 9%; } .phone::after { right: -3px; top: 27%; height: 14%; }
+.phone .scr { width: 100%; aspect-ratio: 360 / 760; border-radius: calc(var(--pw) * .125); background: #b39bff; }
+.phone .isl { position: absolute; z-index: 10; left: 50%; top: calc(var(--pw) * .068); width: 31%; height: calc(var(--pw) * .088); transform: translateX(-50%); background: #000; border-radius: 99px; }
+.laptop { --lw: 600px; position: absolute; width: var(--lw); }
+.lid { padding: calc(var(--lw) * .026) calc(var(--lw) * .026) calc(var(--lw) * .034); background: #121215; border-radius: calc(var(--lw) * .028) calc(var(--lw) * .028) 0 0; box-shadow: inset 0 0 0 1.5px #4a4a52; position: relative; }
+.lid::before { content: ''; position: absolute; left: 50%; top: calc(var(--lw) * .01); width: 5px; height: 5px; margin-left: -2.5px; background: #2c2c33; border-radius: 50%; }
+.lid .scr { width: 100%; aspect-ratio: 1280 / 800; background: #b39bff; }
+.deck { position: relative; height: calc(var(--lw) * .03); margin: 0 -7%; background: linear-gradient(#e4e4e8, #b9b9bf 60%, #8e8e95); border-radius: 0 0 calc(var(--lw) * .05) calc(var(--lw) * .05) / 0 0 calc(var(--lw) * .028) calc(var(--lw) * .028); box-shadow: 14px 14px 0 rgba(0,0,0,.16); }
+.deck::before { content: ''; position: absolute; left: 50%; top: 0; width: 15%; height: 42%; transform: translateX(-50%); background: #a2a2a9; border-radius: 0 0 8px 8px; }
+
+/* ── 2. you say it, weevboss dispatches, each agent gets its brief ── */
+#iface { padding-top: calc(var(--bar) + 28px); padding-bottom: 60px; }
+.steps { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: clamp(19px, 5vw, 30px); letter-spacing: -0.035em; line-height: 1; }
+.steps li { display: flex; align-items: center; gap: 12px; color: rgba(0,0,0,.36); }
+.steps li i { flex: none; width: 1.25em; height: 1.25em; display: grid; place-items: center; font-size: .62em; letter-spacing: 0; background: rgba(0,0,0,.1); color: rgba(0,0,0,.5); }
+.steps li.on { color: #000; }
+.steps li.on i { background: #000; color: var(--lime); }
+.stage { position: relative; height: 480px; margin-top: 20px; }
+.stage .laptop { --lw: min(122vw, 470px); left: -26%; top: 0; }
+.stage .phone { --pw: min(58vw, 230px); right: 2px; top: 4px; z-index: 2; }
+.talk { position: absolute; left: -30px; bottom: -36px; height: 280px; aspect-ratio: 520 / 990; z-index: 3; pointer-events: none; }
+.talk img { position: absolute; left: 0; bottom: 0; height: 100%; width: auto; visibility: hidden; }
+.talk img.on { visibility: visible; }
+
+/* ── 3. every conversation, from every machine, into your own GitHub ── */
+#mine { padding-top: calc(var(--bar) + 54px); padding-bottom: 80px; }
+.inl { vertical-align: baseline; margin-left: .16em; font-size: 1em; }
+.field { position: relative; width: min(100%, 560px); height: 330px; margin-top: 30px; }
+#fsvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+#fsvg path { fill: none; stroke: #2c2c33; stroke-width: 3; stroke-linecap: square; stroke-linejoin: miter; }
+#fsvg path.trail { stroke: var(--lime); stroke-width: 4; }
+.spot { position: absolute; top: 18px; z-index: 1; }
+.spot.c { left: 50%; transform: translateX(-50%); }
+.spot.r { right: 8px; }
+.spot.g { top: auto; bottom: 12px; left: 50%; transform: translateX(-50%); }
+.src { --d: 6px; display: block; padding: .38em .6em .44em; font-size: 17px; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+.src.down, .hub.down { translate: 4px 4px; }
+.cube { --d: 5px; position: absolute; width: 18px; height: 18px; }
+.src .cube { left: 50%; margin-left: -9px; bottom: calc(100% + 2px); visibility: hidden; }
+.src.has .cube { visibility: visible; }
+.hub { --d: 8px; display: block; padding: 10px 15px 11px; font-size: 18px; letter-spacing: -0.02em; line-height: 1.1; white-space: nowrap; }
+.hub small { display: block; margin-top: 4px; font-size: 13px; font-weight: 600; letter-spacing: 0; opacity: .7; }
+.lock { display: inline-block; width: 11px; height: 9px; margin-right: 8px; background: currentColor; position: relative; }
+.lock::before { content: ''; position: absolute; left: 2px; top: -6px; width: 7px; height: 7px; border: 2px solid currentColor; border-bottom: 0; box-sizing: border-box; }
+.hub.lit .lock { color: var(--lime); }
+.wv { position: absolute; left: 0; top: 0; width: 50px; height: 50px; z-index: 3; will-change: transform; }
+.wv img { width: 50px; height: 50px; }
+.wv.back img { transform: scaleX(-1); }
+.wv .cube { left: 16px; top: -12px; visibility: hidden; }
+.wv.full .cube { visibility: visible; }
+
+/* ── 4. made to be read: what weevils is like to use ── */
+#read { padding-top: calc(var(--bar) + 54px); padding-bottom: 90px; }
+.cards { display: grid; grid-template-columns: 1fr; gap: 46px; margin-top: 38px; }
+.card { --d: 14px; margin-right: 14px; padding: 18px 18px 0; display: flex; flex-direction: column; }
+.card h3 { margin: 0 0 4px; font-size: clamp(24px, 6.6vw, 32px); line-height: 1.02; letter-spacing: -0.045em; font-weight: 800; }
+.card p { margin: 0 0 16px; font-size: 16px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; opacity: .72; }
+.card .scr { margin: auto -18px 0; aspect-ratio: 360 / 400; }
+.card .tag { position: absolute; z-index: 2; right: 14px; top: 14px; padding: 5px 9px 6px; background: #000; color: var(--lime); font-size: 14px; letter-spacing: -0.01em; }
+
+/* ── 5. start ── */
+#start { padding-top: calc(var(--bar) + 54px); padding-bottom: 90px; }
+#start .rows { display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--h1) * .3); margin-top: calc(var(--h1) * .3); font-size: var(--h1); }
+#start .rows .blk { --d: calc(var(--h1) * .2); letter-spacing: -0.06em; }
+#start .sub { margin-top: calc(var(--h1) * .3 + 22px); }
+.oss { margin-top: 56px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; color: rgba(255,255,255,.66); }
+
+/* ── a wide screen ── */
+@media (min-width: 900px) {
+  :root { --bar: 70px; }
+  .hgrid { grid-template-areas: "l c r"; grid-template-columns: 1fr auto 1fr; column-gap: 110px; align-items: center; }
+  .hcol.r { text-align: right; }
+  .hcol.r .list { align-items: flex-end; padding: 0; }
+  .hcol.l .list { padding: 0; }
+  .list { font-size: clamp(24px, 2.4vw, 34px); gap: 13px; margin-top: 24px; }
+  .hh { font-size: clamp(42px, 4.6vw, 68px); }
+  .core { flex-direction: column; gap: 12px; padding: 18px 22px 16px; font-size: 30px; margin: 0; }
+  .core img { width: 74px; height: 74px; }
+  .hfoot { flex-direction: row; align-items: center; justify-content: space-between; margin-top: 50px; }
+  #iface .wrap { display: grid; grid-template-columns: 330px 1fr; gap: 30px; align-items: center; }
+  .stage { height: 600px; margin: 0; }
+  #iface { padding-top: calc(var(--bar) + 54px); }
+  .stage .laptop { --lw: 600px; left: 150px; top: 46px; }
+  .stage .phone { --pw: 250px; right: 0; top: 80px; }
+  .talk { left: 0; bottom: -40px; height: 390px; }
+  #mine .wrap { display: grid; grid-template-columns: 1fr 560px; gap: 60px; align-items: center; }
+  .field { margin: 0; height: 380px; }
+  .src, .hub { font-size: 22px; }
+  .hub small { font-size: 14px; }
+  .wv, .wv img { width: 64px; height: 64px; }
+  .cards { grid-template-columns: 1fr 1fr; gap: 56px 60px; }
+  .card:nth-child(2n) { margin-top: 90px; margin-bottom: -90px; }
+  .oss { margin-top: 70px; }
+}
+@media (min-width: 1200px) { .cards { grid-template-columns: repeat(4, 1fr); gap: 40px; } .card:nth-child(2n) { margin-top: 70px; margin-bottom: -70px; } .card .scr { aspect-ratio: 360 / 470; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .blk, #arm, #room { transition: none !important; }
+  .ap .spin .ic, .ap .comp .live .ic, .ap .tapm.on { animation: none !important; }
+}
+
+/* ── the room: the block you pressed becomes the screen, and the install is drawn in it ── */
+[hidden] { display: none !important; }
+:root { --a: #9f7aea; --b: #d6f74c; --c: #f3f0e8; --d: #ffffff; --e: #49405f; }
+#room { position: fixed; inset: 0; z-index: 10; background: var(--top); color: #000; padding: 0 var(--pad) 48px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; transition: clip-path 300ms steps(5, end); }
+#room > * { visibility: hidden; }
+#room.open > * { visibility: visible; }
+/* what scrolls passes under a band of the room's own colour, never under the Back block */
+#roomtop { position: fixed; z-index: 11; left: 0; right: 0; top: 0; height: calc(max(16px, env(safe-area-inset-top)) + 62px); background: var(--top); }
+#backbtn { position: fixed; z-index: 12; top: max(16px, env(safe-area-inset-top)); left: var(--pad); border: 0; border-radius: 0; background: #17171c; color: #fff; font: 800 19px var(--font); letter-spacing: -0.03em; padding: .46em .7em .52em; cursor: pointer; box-shadow: 1px 1px 0 #3a3a44, 2px 2px 0 #3a3a44, 3px 3px 0 #3a3a44, 4px 4px 0 #000, 5px 5px 0 #000, 6px 6px 0 #000; -webkit-tap-highlight-color: transparent; }
+#backbtn:active { transform: translate(5px, 5px); box-shadow: 1px 1px 0 #000; }
+#app { max-width: 660px; padding-top: 92px; font-weight: 600; }
+#app .band { padding: 0 0 22px; background: none; }
+#app .wrap { max-width: none; margin: 0; }
+#app h2 { margin: 0 0 16px; font-size: calc(var(--fs) * .66); line-height: 1; letter-spacing: -0.055em; font-weight: 800; }
+#app p { margin: 0 0 12px; max-width: 31em; font-size: 19px; line-height: 1.3; letter-spacing: -0.02em; }
+#app .small { font-size: 15px; opacity: .78; }
+#app .note { margin-top: 14px; font-size: 15px; line-height: 1.4; opacity: .82; }
+#app .note code { overflow-wrap: anywhere; }
+#app a { color: inherit; }
+#app .cmd, #app .btn, #app .err, #app .quote, #app .size, #app .srv { position: relative; box-shadow: 1px 1px 0 var(--side), 2px 2px 0 var(--side), 3px 3px 0 var(--side), 4px 4px 0 var(--side), 5px 5px 0 var(--under), 6px 6px 0 var(--under), 7px 7px 0 var(--under), 8px 8px 0 var(--under); margin-right: 8px; }
+#app .cmd { --side: #3a3a44; --under: #000; display: flex; align-items: stretch; margin-top: 16px; margin-bottom: 20px; background: #17171c; color: #fff; }
+#app .cmd code { flex: 1; padding: 16px 15px; font: 600 15px/1.42 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; word-break: break-all; -webkit-user-select: all; user-select: all; }
+#app .cmd button { flex: none; border: 0; border-radius: 0; background: var(--lime); color: #000; font: 800 17px var(--font); letter-spacing: -0.02em; padding: 0 18px; cursor: pointer; }
+#app .cmd button.ok { background: #fff; }
+#app .cmd.alt code { font-size: 12.5px; font-weight: 500; padding: 11px 12px; }
+#app .btn { --side: #3a3a44; --under: #000; display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 8px); margin-top: 18px; margin-bottom: 10px; padding: 16px 18px; border: 0; border-radius: 0; background: #17171c; color: #fff; font: 800 20px var(--font); letter-spacing: -0.03em; text-decoration: none; cursor: pointer; }
+#app .btn.light { --side: #c9c0aa; --under: #a89f88; background: #fff; color: #000; }
+#app .btn:active { transform: translate(6px, 6px); box-shadow: 1px 1px 0 var(--under), 2px 2px 0 var(--under); }
+#app .btn[disabled] { opacity: .45; }
+#app .link { background: none; border: 0; padding: 8px 0; font: inherit; font-size: 16px; text-decoration: underline; color: inherit; cursor: pointer; }
+#app label { display: block; margin: 16px 0 6px; font-weight: 800; font-size: 16px; }
+#app input, #app textarea { width: calc(100% - 8px); padding: 14px; border: 3px solid #000; border-radius: 0; background: #fff; color: #000; font: 600 17px var(--font); }
+#app textarea { min-height: 120px; font: 500 12.5px ui-monospace, 'SF Mono', Menlo, monospace; }
+#app .row { display: flex; gap: 10px; margin: 0; z-index: auto; }
+#app .row > :first-child { flex: 1; }
+#app ol.how { padding-left: 24px; margin: 8px 0 0; } #app ol.how li { font-size: 17px; line-height: 1.4; margin: 7px 0; }
+#app .sizes, #app .srvs { display: grid; gap: 16px; margin-top: 16px; }
+#app .size, #app .srv, #app .quote { --side: #c9c0aa; --under: #a89f88; display: grid; gap: 3px; padding: 14px; border: 0; border-radius: 0; background: #fff; color: #000; font: inherit; text-align: left; }
+#app .size { cursor: pointer; } #app .size b { font-size: 19px; } #app .size span { font-size: 15px; opacity: .8; } #app .size strong { font-size: 16px; }
+#app .size.on { --side: #3a3a44; --under: #000; background: #17171c; color: #fff; }
+#app .tag { display: inline-block; padding: 2px 7px; background: #000; color: #fff; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+#app .size.on .tag { background: var(--lime); color: #000; }
+#app .quote { margin-top: 16px; } #app .quote b { font-size: 22px; } #app .quote .btn { margin-top: 10px; }
+#app .srv b { font-size: 17px; } #app .srv span { font-size: 14px; opacity: .8; } #app .srv .btn { margin-top: 8px; padding: 12px; font-size: 17px; }
+#app .err { --side: #3a3a44; --under: #000; margin-top: 16px; padding: 13px 15px; background: #17171c; color: #fff; font-size: 16px; line-height: 1.4; }
+#app ul.steps { list-style: none; padding: 0; margin: 18px 0 0; }
+#app ul.steps li { display: flex; align-items: center; gap: 12px; padding: 8px 0; font-size: 19px; letter-spacing: -0.02em; opacity: .42; }
+#app ul.steps li.done, #app ul.steps li.now { opacity: 1; }
+#app ul.steps li.now { font-weight: 800; }
+#app ul.steps i { flex: none; width: 22px; height: 22px; border: 3px solid #000; display: grid; place-items: center; font-size: 13px; font-weight: 800; }
+#app ul.steps li.done i { background: #000; color: #fff; }
+#app ul.steps li.now i { animation: now 640ms step-end infinite; }
+@keyframes now { 0% { background: #000 } 50% { background: transparent } }
+#app .bar { height: 16px; margin: 16px 8px 0 0; border: 3px solid #000; background: #fff; overflow: hidden; }
+#app .bar div { height: 100%; width: 4%; background: #000; transition: width 500ms steps(5, end); }
+#app .qr { display: grid; justify-items: start; margin: 18px 0 10px; }
+#app .qr img, #app .qr svg { width: min(280px, 80vw); height: auto; padding: 10px; background: #fff; border: 3px solid #000; }
+#app .what { margin-top: 16px; }
+#app .what-title { font-weight: 800; font-size: 17px; margin: 0 0 6px; }
+#app .what ul { margin: 0; padding-left: 20px; } #app .what li { font-size: 16px; line-height: 1.4; margin: 5px 0; }
+#app .what details { margin-top: 8px; } #app .what summary { cursor: pointer; font-size: 16px; font-weight: 800; padding: 6px 0; }
+#app .what details li { font-size: 15px; opacity: .85; }
+.win-burst { position: fixed; top: 0; left: 0; height: 0; pointer-events: none; z-index: 60; }
+.win-burst > i { position: absolute; top: 0; display: block; }
+
+</style>
+</head>
+<body>
+<header id="bar">
+  <a class="logo" href="#hero"><img src="/weevil.png" alt="" width="30" height="30">weevils</a>
+  <a class="blk mini" id="gh" data-tone="p" href="https://github.com/Sc4rville/weevils" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>GitHub</a>
+  <button class="blk mini go" id="try" data-tone="l" data-kind="pc" type="button">Install</button>
+</header>
+
+<section class="sec" id="hero">
+  <div class="hgrid" id="hgrid">
+    <svg id="wires" aria-hidden="true"></svg>
+    <div class="hcol l">
+      <h1 class="hh">Run your agents on</h1>
+      <div class="list" id="mach">
+        <i class="blk box" data-tone="v">your PC.</i>
+        <i class="blk box" data-tone="l">your VPS.</i>
+        <i class="blk box" data-tone="p">another PC.</i>
+        <i class="blk box" data-tone="v">another server.</i>
+        <i class="blk box" data-tone="l" id="wh"><span>whatever</span><span class="more"> the f you want.</span></i>
+      </div>
+    </div>
+    <div class="hmid"><span class="core solid" id="core" data-tone="p"><img src="/weevil.png" alt="" width="74" height="74">weevils</span></div>
+    <div class="hcol r">
+      <p class="hh">with your <em>subscriptions</em></p>
+      <div class="list" id="subs">
+        <i class="blk box" data-tone="p">Claude.</i>
+        <i class="blk box" data-tone="v">ChatGPT.</i>
+        <i class="blk box" data-tone="l" id="both">both at once.</i>
+      </div>
+    </div>
+  </div>
+  <div id="arm" aria-hidden="true"><img src="/av-arm.webp?v=1" alt="" width="500" height="220"></div>
+  <div class="hfoot">
+    <p class="sub">One app on your phone to run and watch <b>Claude Code</b> and <b>Codex</b>, on every machine you own.</p>
+    <div class="cta"><button class="blk mid go" id="install" data-tone="l" data-kind="pc" type="button">Install weevils</button><span>One line to paste.<br>Free and open source.</span></div>
+  </div>
+</section>
+
+<section class="sec paper" id="iface">
+  <div class="wrap">
+    <div>
+      <h2 class="h1">Say it once.</h2>
+      <ol class="steps" id="steps">
+        <li class="on"><i>1</i>You tell weevboss.</li>
+        <li><i>2</i>It dispatches.</li>
+        <li><i>3</i>Each agent gets its brief.</li>
+      </ol>
+    </div>
+    <div class="stage" id="stage">
+      <div class="laptop" aria-hidden="true"><div class="lid"><div class="scr" id="lap"></div></div><div class="deck"></div></div>
+      <div class="phone" aria-hidden="true"><i class="isl"></i><div class="scr" id="ph"></div></div>
+      <div class="talk" aria-hidden="true">
+        <img id="w-a" src="/av-talk-a.webp" alt="" width="520" height="990">
+        <img id="w-b" src="/av-talk-b.webp" alt="" width="520" height="990">
+        <img id="w-c" class="on" src="/av-talk-c.webp" alt="" width="520" height="990">
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="mine">
+  <div class="wrap">
+    <div>
+      <p class="h1" style="font-size: calc(var(--h1) * .86)">Your conversations are<span class="blk inl" data-tone="l">yours.</span></p>
+      <p class="sub" style="margin-top: 26px">From every machine, encrypted, into <b>your own GitHub</b>. Pick any one up, anywhere.</p>
+    </div>
+    <div class="field" id="field" aria-hidden="true">
+      <svg id="fsvg"></svg>
+      <span class="spot"><span class="src solid has" id="f-pc" data-tone="v">your PC<i class="cube solid" data-tone="l"></i></span></span>
+      <span class="spot c"><span class="src solid has" id="f-sv" data-tone="v">a server<i class="cube solid" data-tone="l"></i></span></span>
+      <span class="spot r"><span class="src solid has" id="f-vps" data-tone="v">your VPS<i class="cube solid" data-tone="l"></i></span></span>
+      <span class="spot g"><span class="hub solid" id="f-hub" data-tone="p"><i class="lock"></i>your GitHub<small id="f-n">12 conversations, encrypted</small></span></span>
+      <div class="wv" id="f-wv"><i class="cube solid" data-tone="l"></i><img src="/weevil-384.png" alt="" width="64" height="64"></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec paper" id="read">
+  <h2 class="h1">Made to be read.</h2>
+  <p class="sub" style="margin-top: 20px">No logs to decode. Plain words, and answers in one tap.</p>
+  <div class="cards">
+    <article class="card solid" data-tone="a" id="cd-done"><h3>What got done, in plain words.</h3><p>weevboss sums up every session for you.</p><div class="scr"></div></article>
+    <article class="card solid" data-tone="l" id="cd-ex"><h3>Select a word. Learn it.</h3><p>Anything you don't know, explained where it is.</p><div class="scr"></div></article>
+    <article class="card solid" data-tone="w" id="cd-fy"><h3>Your calls, one tap each.</h3><p>Only what needs you, in For you.</p><div class="scr"></div></article>
+    <article class="card solid" data-tone="v" id="cd-th"><h3>Make it yours.</h3><p>Themes for every mood, new ones every week.</p><div class="scr"></div><span class="tag" id="th-name">light</span></article>
+  </div>
+</section>
+
+<section class="sec" id="start">
+  <p class="h1">Start on</p>
+  <div class="rows">
+    <button class="blk go" data-tone="v" data-kind="pc" type="button">your PC.</button>
+    <button class="blk go" data-tone="l" data-kind="vps" type="button">your VPS.</button>
+    <button class="blk go" data-tone="p" data-kind="new" type="button">a new server.</button>
+  </div>
+  <p class="sub">One line to paste. Read it first.</p>
+  <div class="oss"><span>Open source, MIT licence.</span><a class="blk mini" data-tone="p" href="https://github.com/Sc4rville/weevils" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>GitHub</a></div>
+</section>
+
+<div id="room" data-tone="v" hidden role="dialog" aria-modal="true">
+  <i id="roomtop"></i>
+  <button id="backbtn" type="button" hidden></button>
+  <button id="lang" type="button" hidden></button>
+  <main id="app"></main>
+  <div hidden><p id="code"><a></a></p><p id="count"></p></div><!-- what index.html's script fills on its own page -->
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id)
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  const buzz = () => { try { navigator.vibrate && navigator.vibrate(8) } catch {} }
+  const wide = () => innerWidth >= 900
+
+  /* A stage plays its film when it is well on screen, at its own pace, and starts over when it comes back. */
+  function stage(el, film, at = 0.4) {
+    let tok = 0, on = false
+    const io = new IntersectionObserver(([e]) => {
+      if (e.intersectionRatio >= Math.min(at, (innerHeight / Math.max(1, e.boundingClientRect.height)) * 0.6) && !on) { on = true; const my = ++tok; film(() => my === tok) }
+      else if (!e.isIntersecting && on) { on = false; tok++ }
+    }, { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5] })
+    io.observe(el)
+    return { restart() { if (on) { const my = ++tok; film(() => my === tok) } } }
+  }
+
+  /* ── the app's own pieces, as the app draws them ── */
+  const IC = { menu: 'M4 6h16M4 12h16M4 18h16', star: 'M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9', plus: 'M12 4v16M4 12h16', mic: 'M9 3h6v10H9zM5 10v6h14v-6M12 16v5M8 21h8',
+    arrow: 'M12 20V5M5 12l7-7 7 7', chev: 'M5 15l7-7 7 7', page: 'M3 4h18v16H3zM3 9h18', factory: 'M4 20V10l5.5 4v-4l5.5 4V4h5v16z', slash: 'M16 3L8 21',
+    settings: 'M3 6h10M17 6h4M13 4h4v4h-4zM3 12h3M10 12h11M6 10h4v4H6zM3 18h8M15 18h6M11 16h4v4h-4z', check: 'M4 12.5l5 5L20 6.5' }
+  const ic = (n, rot = 0) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]}"${rot ? ` transform="rotate(${rot} 12 12)"` : ''}/></svg>`
+  const star = () => `<span class="spin">${ic('star')}</span>`
+  const SBAR = `<div class="sbar">9:41<i><b style="height:5px"></b><b style="height:8px"></b><b style="height:11px"></b><b style="height:14px"></b><u></u></i></div>`
+  const PJ = [
+    { n: 'shop', c: 'var(--p8)', t: 'Shipping the new checkout', s: 'runs the tests · your VPS' },
+    { n: 'game', c: 'var(--p3)', t: 'Fixing the save bug', s: 'found the cause · your PC' },
+    { n: 'agency', c: 'var(--p12)', t: 'Drafting the client offer', s: 'writes the pricing · your PC' },
+  ]
+  const top = (fy) => `<div class="top">${ic('menu').replace('class="ic"', 'class="ic menu"')}${fy ? '<span>weevboss</span><b class="fy">for you</b>' : '<b>weevboss</b><span>for you</span>'}<span class="st spin" style="opacity:1">${ic('star')}</span></div>`
+  const comp = (ph, id) => `<div class="comp"><span class="ph" ${id ? `id="${id}"` : ''}>${ph}</span><div class="row">${ic('plus')}<span ${id ? `id="${id}-mic"` : ''}>${ic('mic')}</span><span class="dim">${ic('arrow')}</span></div></div>`
+  const SAID = 'Pick up the work on my companies.'
+  const REPLY = 'On it. I sent it to <a>shop</a>, <a>game</a> and <a>agency</a>: three agents at work.'
+  const side = () => `<nav class="side"><div class="band" style="--c:var(--agent)"><div class="bh"><img src="/weevil.png" alt=""><span class="nm">weevboss</span><span class="r">${star()}</span></div></div>` +
+    PJ.map((p, k) => `<section class="band" style="--c:${p.c}"><div class="bh"><span class="nm">${p.n}</span>${star()}<span class="r">${ic('slash')}${ic('chev', 90)}</span></div><div class="rw tone" style="--c:${p.c}" data-row="${k}"><span class="mk">${star()}</span><span class="rt"><b>${p.t}</b><small>${p.s}</small></span></div></section>`).join('') +
+    `<div class="band" style="--c:var(--p6)"><div class="bh">${ic('page')}<span>pages</span><span class="r">${ic('plus')}</span></div></div><div class="band" style="--c:#f4f1e9"><div class="bh">${ic('factory')}<span>your factory</span></div></div><div class="band" style="--c:var(--p9)"><div class="bh">${ic('settings')}<span>settings</span></div></div></nav>`
+  const sess = (p) => `<div class="page sess" style="--c:${p.c}"><div class="strip"><img src="/weevil.png" alt="">weevboss${ic('chev', 180)}</div><div class="shead tone">${ic('chev', -90)}<span>${p.t}</span><small>claude · VPS</small></div>
+    <div class="th"><div class="msg brief"><div class="who">weevboss</div><p>Pick up the new checkout where you left it. Run the tests, then ship it.</p></div>
+    <div class="msg" data-s="1"><p>On it. Tests first, then I ship.</p></div><div class="msg run" data-s="2">${star()}<span>Running the tests</span></div></div>${comp('write a message')}</div>`
+
+  /* the phone: the whole story, played by the app itself */
+  const ph = $('ph'), lap = $('lap')
+  ph.innerHTML = `<div class="ap" style="--w:360px;--h:760px"><div class="page boss">${SBAR}${top()}<div class="th end"><div class="msg"><div class="who">weevboss</div><p>Morning. What do we do today?</p></div>
+    <div class="msg me" id="p-me"><div class="who">you</div><p>${SAID}</p></div><div class="msg" id="p-rep"><div class="who">weevboss</div><p id="p-rept">${REPLY}</p></div></div>${comp('tell me what to do', 'p-say')}</div>
+    <div class="scrim" id="p-scrim"></div><div class="lay" id="p-side" style="z-index:4">${side()}</div><div class="lay" id="p-sess" style="z-index:5">${sess(PJ[0])}</div><i class="tapm" id="p-tap"></i><i class="home"></i></div>`
+  /* the laptop: the same app at rest, everything at work */
+  lap.innerHTML = `<div class="ap" style="--w:1280px;--h:800px"><div class="page boss" style="left:380px">${top()}<div class="th end" style="padding:20px 140px 30px"><div class="msg"><div class="who">weevboss</div><p>Morning. What do we do today?</p></div>
+    <div class="msg me"><div class="who">you</div><p>${SAID}</p></div><div class="msg"><div class="who">weevboss</div><p>${REPLY}</p></div><div class="msg"><div class="who">weevboss</div><p><a>game</a> found the cause of the save bug. <a>shop</a> is running its tests.</p></div></div>${comp('tell me what to do')}</div>
+    <div style="position:absolute;left:0;top:0;bottom:0;width:380px">${side().replace('class="side"', 'class="side" style="width:100%"')}</div></div>`
+
+  /* every app screen is drawn at its real size, then scaled whole to the glass it sits behind */
+  function fitScreens() { document.querySelectorAll('.scr').forEach((s) => { const a = s.querySelector('.ap'); if (a) { const w = parseFloat(a.style.getPropertyValue('--w')) || 360; a.style.setProperty('--k', s.clientWidth / w); if (s.closest('.card')) a.style.setProperty('--h', Math.round(s.clientHeight * w / s.clientWidth) + 'px') } }) }
+
+  /* ── 1. the arm presses the boxes, one after the other; each one sends its share into weevils ── */
+  const hero = $('hero'), grid = $('hgrid'), wires = $('wires'), arm = $('arm'), core = $('core')
+  const mach = [...$('mach').children], subs = [...$('subs').children], WH = $('wh'), whMore = WH.querySelector('.more'), WH_MORE = whMore.textContent
+  let routes = new Map()
+  function heroLayout() {
+    const g = grid.getBoundingClientRect(), rel = (el) => { const r = el.getBoundingClientRect(); return { l: r.left - g.left, t: r.top - g.top, r: r.right - g.left, b: r.bottom - g.top, cy: (r.top + r.bottom) / 2 - g.top } }
+    const c = rel(core), W = wide()
+    wires.setAttribute('width', g.width); wires.setAttribute('height', g.height)
+    wires.innerHTML = ''
+    routes = new Map()
+    const add = (b, side) => {
+      const r = rel(b)
+      let pts
+      if (!W) { const bx = 18; pts = [[r.l, r.cy], [bx, r.cy], [bx, c.cy]] }
+      else if (side === 'l') { const bx = c.l - 46; pts = [[r.r, r.cy], [bx, r.cy], [bx, c.cy], [c.l, c.cy]] }
+      else { const bx = c.r + 46; pts = [[r.l, r.cy], [bx, r.cy], [bx, c.cy], [c.r, c.cy]] }
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      p.setAttribute('d', 'M' + pts.map((q) => q.map(Math.round).join(' ')).join(' L'))
+      if (b.classList.contains('sent')) p.classList.add('on')
+      wires.appendChild(p)
+      routes.set(b, { pts, path: p, side: W ? side : 'r', r })
+    }
+    mach.forEach((b) => add(b, 'l')); subs.forEach((b) => add(b, 'r'))
+    const aw = W ? 600 : Math.max(300, Math.min(370, innerWidth * 0.9))
+    arm.style.setProperty('--aw', aw + 'px')
+  }
+  // where the arm stands to press a box: its fist on the box's edge, the rest of it off the screen's edge
+  function armAt(b, push = 0) {
+    const R = routes.get(b), h = hero.getBoundingClientRect(), g = grid.getBoundingClientRect(), W = arm.offsetWidth, H = W * 0.44
+    const fromL = R.side === 'l'
+    const x = fromL ? R.r.l + g.left - h.left : R.r.r + g.left - h.left, y = R.r.cy + g.top - h.top
+    arm.classList.toggle('l', fromL)
+    const left = fromL ? x - W * 0.99 + push : x - W * 0.01 - push
+    return [left, y - H * 0.5]
+  }
+  const armGo = ([x, y]) => { arm.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)` }
+  function armOut(side) { const h = hero.getBoundingClientRect(), W = arm.offsetWidth; const t = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(arm.style.transform); const y = t ? +t[2] : h.height / 2; return [side === 'l' ? -W - 20 : h.width + 20, y] }
+  function cube(b) {
+    const R = routes.get(b); if (!R) return
+    R.path.classList.add('on'); b.classList.add('sent')
+    const k = document.createElement('i'); k.className = 'pk solid'; k.dataset.tone = 'l'; grid.appendChild(k)
+    const seg = []; for (let i = 1; i < R.pts.length; i++) { const [x0, y0] = R.pts[i - 1], [x1, y1] = R.pts[i], n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 26)); for (let j = 1; j <= n; j++) seg.push([x0 + (x1 - x0) * j / n, y0 + (y1 - y0) * j / n]) }
+    let i = 0
+    const put = ([x, y]) => (k.style.transform = `translate(${Math.round(x - 6)}px, ${Math.round(y - 6)}px)`)
+    put(R.pts[0])
+    const t = setInterval(() => { if (i >= seg.length) { clearInterval(t); k.remove(); core.classList.add('down'); setTimeout(() => core.classList.remove('down'), 110); return } put(seg[i++]) }, 32)
+  }
+  async function press(b, alive) {
+    armGo(armAt(b, 10)); b.classList.add('down')
+    await sleep(110)
+    if (b === WH && !WH.dataset.grown) {
+      // « whatever » goes on in length, never down: the rest of the words type themselves along the line
+      WH.dataset.grown = '1'
+      for (let i = 1; i <= WH_MORE.length; i++) { if (!alive()) return; whMore.textContent = WH_MORE.slice(0, i); armGo(armAt(b, 10)); await sleep(34) }
+      heroLayout()
+    }
+    b.classList.remove('down'); armGo(armAt(b, 0))
+    cube(b)
+    if (b.id === 'both') { cube(subs[0]); cube(subs[1]) }
+  }
+  async function heroFilm(alive) {
+    heroLayout()
+    if (calm) { WH.dataset.grown = '1'; whMore.textContent = WH_MORE; heroLayout(); [...mach, ...subs].forEach((b) => { b.classList.add('sent'); routes.get(b).path.classList.add('on') }); arm.classList.add('jump'); armGo(armAt(subs[2])); return }
+    const order = [...mach, ...subs]
+    let side = null
+    arm.classList.add('jump'); armGo(armOut(routes.get(order[0]).side)); void arm.offsetWidth; arm.classList.remove('jump')
+    await sleep(500)
+    for (let round = 0; alive(); round++) {
+      for (const b of order) {
+        if (!alive()) return
+        const s = routes.get(b).side
+        if (side && s !== side) { armGo(armOut(side)); await sleep(220); arm.classList.add('jump'); const p = armAt(b); armGo(armOut(s).map((v, i) => (i ? p[1] : v))); void arm.offsetWidth; arm.classList.remove('jump'); await sleep(40) }
+        side = s
+        armGo(armAt(b)); await sleep(240)
+        await press(b, alive)
+        await sleep(round ? 520 : 330)
+      }
+      armGo(armOut(side)); await sleep(1900)
+    }
+  }
+  if (!WH.dataset.grown) whMore.textContent = ''
+
+  /* ── 2. the phone's story: you say it, weevboss dispatches, you open one: its brief is there ── */
+  const steps = [...$('steps').children]
+  const lit = (n) => steps.forEach((s, k) => s.classList.toggle('on', k === n))
+  const face = (k) => ['a', 'b', 'c'].forEach((n) => $('w-' + n).classList.toggle('on', n === k))
+  const P = { me: $('p-me'), rep: $('p-rep'), rept: $('p-rept'), say: $('p-say'), mic: $('p-say-mic'), scrim: $('p-scrim'), side: $('p-side'), sess: $('p-sess'), tap: $('p-tap') }
+  const show = (el, on) => (el.style.visibility = on ? '' : 'hidden')
+  const slide = (el, from) => new Promise((ok) => { if (calm) return ok(); let i = 0; const f = [1, .66, .33, 0]; const t = setInterval(() => { el.style.transform = from === 'l' ? `translateX(${-f[i] * 100}%)` : `translateX(${f[i] * 100}%)`; if (++i >= f.length) { clearInterval(t); ok() } }, 40) })
+  function phoneRest() {
+    show(P.me, false); show(P.rep, false); show(P.scrim, false); show(P.side, false); show(P.sess, false)
+    P.say.textContent = 'tell me what to do'; P.say.className = 'ph'; P.mic.className = ''; face('c'); lit(0)
+    P.sess.querySelectorAll('[data-s]').forEach((m) => show(m, false)); P.side.querySelectorAll('.rw').forEach((r) => r.classList.remove('tap'))
+  }
+  const tapAt = (el) => { const s = ph.querySelector('.ap').getBoundingClientRect(), r = el.getBoundingClientRect(), k = s.width / 360; P.tap.style.left = (r.left - s.left) / k + 70 + 'px'; P.tap.style.top = (r.top - s.top) / k + r.height / k / 2 + 'px'; P.tap.classList.remove('on'); void P.tap.offsetWidth; P.tap.classList.add('on'); setTimeout(() => P.tap.classList.remove('on'), 420) }
+  async function phoneFilm(alive) {
+    if (calm) { phoneRest(); show(P.me, true); show(P.rep, true); show(P.sess, true); P.sess.querySelectorAll('[data-s]').forEach((m) => show(m, true)); lit(2); return }
+    while (alive()) {
+      phoneRest()
+      await sleep(500); if (!alive()) return
+      // 1. he says it: the words land in the box as he speaks
+      P.mic.className = 'live'; P.say.className = 'said'; P.say.textContent = ''
+      const MOUTH = ['a', 'b', 'a', 'c', 'b']
+      for (let i = 1; i <= SAID.length; i++) { if (!alive()) return; P.say.textContent = SAID.slice(0, i); if (i % 3 === 0) face(MOUTH[(i / 3) % MOUTH.length]); await sleep(26) }
+      face('c'); P.mic.className = ''
+      await sleep(260); if (!alive()) return
+      P.say.textContent = 'tell me what to do'; P.say.className = 'ph'; show(P.me, true)
+      await sleep(380); if (!alive()) return
+      // 2. weevboss answers and sends the work out
+      lit(1); show(P.rep, true)
+      const words = REPLY.split(' ')
+      for (let i = 1; i <= words.length; i++) { if (!alive()) return; P.rept.innerHTML = words.slice(0, i).join(' '); await sleep(55) }
+      await sleep(700); if (!alive()) return
+      show(P.scrim, true); show(P.side, true); P.side.style.transform = 'translateX(-100%)'; await slide(P.side, 'l')
+      await sleep(1100); if (!alive()) return
+      // 3. one tap on a session: weevboss's brief is the first thing in it
+      const row = P.side.querySelector('[data-row="0"]'); tapAt(row); row.classList.add('tap')
+      await sleep(320); if (!alive()) return
+      lit(2); show(P.sess, true); P.sess.style.transform = 'translateX(100%)'; await slide(P.sess, 'r')
+      show(P.side, false); show(P.scrim, false)
+      await sleep(650); show(P.sess.querySelector('[data-s="1"]'), true)
+      await sleep(500); show(P.sess.querySelector('[data-s="2"]'), true)
+      await sleep(2600)
+    }
+  }
+  phoneRest()
+
+  /* ── 3. the weevil takes a conversation from each machine in turn and brings it to the middle, into your GitHub ── */
+  const field = $('field'), fsvg = $('fsvg'), wv = $('f-wv'), hub = $('f-hub'), count = $('f-n')
+  let F = null
+  function fieldLayout() {
+    const box = field.getBoundingClientRect(), rel = (el) => { const r = el.getBoundingClientRect(); return { l: r.left - box.left, t: r.top - box.top, w: r.width, h: r.height } }
+    const h = rel(hub), hx = Math.round(h.l + h.w / 2), ht = Math.round(h.t) - 4
+    const srcs = ['f-pc', 'f-sv', 'f-vps'].map((id) => { const el = $(id), r = rel(el); return { el, x: Math.round(r.l + r.w / 2), y0: Math.round(r.t + r.h + 3), y: Math.round(r.t + r.h + wv.offsetWidth * 0.95) } })
+    const bus = Math.round((Math.max(...srcs.map((s) => s.y)) + ht) / 2)
+    fsvg.innerHTML = ''
+    srcs.forEach((s) => {
+      s.pts = s.x === hx ? [[s.x, s.y], [hx, ht]] : [[s.x, s.y], [s.x, bus], [hx, bus], [hx, ht]]
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M' + [[s.x, s.y0], ...s.pts].map((q) => q.join(' ')).join(' L')); fsvg.appendChild(p)
+    })
+    const trail = document.createElementNS('http://www.w3.org/2000/svg', 'path'); trail.classList.add('trail'); fsvg.appendChild(trail)
+    F = { srcs, hx, ht, trail, W: wv.offsetWidth }
+  }
+  const wvPut = (x, y, lift = 0) => { wv.style.transform = `translate(${Math.round(x - F.W / 2)}px, ${Math.round(y - F.W * 0.86 - lift)}px)` }
+  // a walk along a line of the map, in hops; behind a weevil carrying, the line lights up
+  async function walk(pts, alive, carry) {
+    const STEP = 15, LIFT = [0, 5, 8, 5]
+    let path = [pts[0]], f = 0
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / STEP))
+      if (x1 !== x0) wv.classList.toggle('back', x1 < x0)
+      for (let j = 1; j <= n; j++) {
+        if (!alive()) return false
+        const x = x0 + (x1 - x0) * j / n, y = y0 + (y1 - y0) * j / n
+        wvPut(x, y, LIFT[f++ % LIFT.length])
+        if (carry) F.trail.setAttribute('d', 'M' + [...path, [x, y]].map((q) => q.map(Math.round).join(' ')).join(' L'))
+        await sleep(34)
+      }
+      path.push(pts[i])
+    }
+    return true
+  }
+  async function fieldFilm(alive) {
+    fieldLayout()
+    let n = 12
+    count.textContent = `${n} conversations, encrypted`
+    F.srcs.forEach((s) => s.el.classList.add('has')); wv.classList.remove('full'); F.trail.setAttribute('d', '')
+    wvPut(F.hx, F.ht)
+    if (calm) return
+    await sleep(300)
+    for (let k = 0; alive(); k++) {
+      if (k % 3 === 0) { fieldLayout(); wvPut(F.hx, F.ht) }
+      const s = F.srcs[k % 3]
+      if (!(await walk([...s.pts].reverse(), alive, false))) return
+      s.el.classList.remove('has'); s.el.classList.add('down'); wv.classList.add('full')
+      await sleep(120); s.el.classList.remove('down')
+      setTimeout(() => s.el.classList.add('has'), 2400)
+      if (!(await walk(s.pts, alive, true))) return
+      wv.classList.remove('full'); hub.classList.add('down', 'lit'); count.textContent = `${++n} conversations, encrypted`
+      await sleep(140); hub.classList.remove('down', 'lit')
+      await sleep(260); F.trail.setAttribute('d', '')
+    }
+  }
+
+  /* ── 4. the cards: four things weevils is like to use, each a small film of the real app ── */
+  const card = (id, h, html) => { const s = $(id).querySelector('.scr'); s.innerHTML = `<div class="ap" style="--w:360px;--h:${h}px">${html}</div>`; return s.querySelector('.ap') }
+  // what got done, in plain words
+  const DONE = 'Morning. While you slept: <a>game</a> keeps its saves now, the new checkout of <a>shop</a> is live, and <a>agency</a> has an offer ready for you to read.'
+  const cDone = card('cd-done', 400, `<div class="page">${top()}<div class="th end"><div class="msg"><div class="who">weevboss</div><p class="t">${DONE}</p></div></div>${comp('tell me what to do')}</div>`)
+  // select a word, learn it
+  const cEx = card('cd-ex', 400, `<div class="page" style="--c:var(--p8)"><div class="shead tone">${ic('chev', -90)}<span>Shipping the new checkout</span></div><div class="th"><div class="msg brief"><div class="who">weevboss</div><p>Let the shop take payments with Stripe.</p></div><div class="msg"><p>Done. I added a <span class="w">webhook</span>, so Stripe tells the shop the moment a payment lands.</p></div></div>
+    <span class="pill" style="visibility:hidden">Explain</span><div class="qa" style="visibility:hidden"><div class="words"><span class="on">explain</span><span>ask</span><span>copy</span></div><p class="t"></p></div><i class="tapm"></i></div>`)
+  const EXPLAIN = 'A webhook is a message one service sends another the moment something happens. Here, Stripe tells your shop a payment just arrived.'
+  // your calls, one tap each
+  const cFy = card('cd-fy', 400, `<div class="page">${top(true)}<div class="fyp"><div class="meta">weevboss · now</div><h4>2 decisions for you</h4><p style="font-size:16px">Tap an answer: it goes straight back to where it waits.</p><hr>
+    <div class="meta">agency</div><p class="q">Which price for the offer?</p><div class="a" data-q="0"><span class="opt">49 a month</span><span class="opt">59 a month</span></div><hr>
+    <div class="meta">game</div><p class="q">Ship the save fix tonight?</p><div class="a" data-q="1"><span class="opt">Yes, ship it</span><span class="opt">Wait for me</span></div></div><i class="tapm"></i></div>`)
+  // make it yours
+  const cTh = card('cd-th', 400, `<div class="page">${top()}<div class="th end"><div class="msg"><div class="who">weevboss</div><p><a>game</a> keeps its saves now.</p></div><div class="msg"><div class="who">weevboss</div><p>The new checkout of <a>shop</a> is live. Want to see it?</p></div></div>${comp('tell me what to do')}</div>`)
+
+  async function doneFilm(alive) {
+    const t = cDone.querySelector('.t'), words = DONE.split(' ')
+    if (calm) { t.innerHTML = DONE; return }
+    while (alive()) {
+      t.innerHTML = ''; await sleep(500)
+      for (let i = 1; i <= words.length; i++) { if (!alive()) return; t.innerHTML = words.slice(0, i).join(' '); await sleep(45) }
+      await sleep(4200)
+    }
+  }
+  async function exFilm(alive) {
+    const w = cEx.querySelector('.w'), pill = cEx.querySelector('.pill'), qa = cEx.querySelector('.qa'), t = qa.querySelector('.t'), tap = cEx.querySelector('.tapm')
+    const place = () => { const a = cEx.getBoundingClientRect(), r = w.getBoundingClientRect(), k = a.width / 360; pill.style.left = (r.left - a.left) / k + 'px'; pill.style.top = (r.bottom - a.top) / k + 10 + 'px'; return [(r.left - a.left) / k + 40, (r.bottom - a.top) / k + 24] }
+    const reset = () => { w.className = 'w'; show(pill, false); show(qa, false); t.textContent = '' }
+    if (calm) { w.className = 'w sel'; place(); show(pill, true); show(qa, true); t.textContent = EXPLAIN; return }
+    while (alive()) {
+      reset(); await sleep(900); if (!alive()) return
+      w.className = 'w sel'; await sleep(450)
+      const [x, y] = place(); show(pill, true); await sleep(700); if (!alive()) return
+      tap.style.left = x + 'px'; tap.style.top = y + 'px'; tap.classList.remove('on'); void tap.offsetWidth; tap.classList.add('on'); setTimeout(() => tap.classList.remove('on'), 400)
+      await sleep(260); show(pill, false); show(qa, true)
+      const words = EXPLAIN.split(' ')
+      for (let i = 1; i <= words.length; i++) { if (!alive()) return; t.textContent = words.slice(0, i).join(' '); await sleep(45) }
+      await sleep(3600)
+    }
+  }
+  async function fyFilm(alive) {
+    const A = [...cFy.querySelectorAll('.a')], tap = cFy.querySelector('.tapm'), keep = A.map((a) => a.innerHTML)
+    const pick = (k, j) => { const o = A[k].children[j], a = cFy.getBoundingClientRect(), r = o.getBoundingClientRect(), s = a.width / 360; tap.style.left = (r.left - a.left) / s + 40 + 'px'; tap.style.top = (r.top - a.top) / s + 12 + 'px'; tap.classList.remove('on'); void tap.offsetWidth; tap.classList.add('on'); setTimeout(() => tap.classList.remove('on'), 400); setTimeout(() => (A[k].innerHTML = `<span class="ok">✓ ${o.textContent}</span>`), 220) }
+    if (calm) { A[0].innerHTML = '<span class="ok">✓ 59 a month</span>'; return }
+    while (alive()) {
+      A.forEach((a, k) => (a.innerHTML = keep[k])); await sleep(1100); if (!alive()) return
+      pick(0, 1); await sleep(1300); if (!alive()) return
+      pick(1, 0); await sleep(3200)
+    }
+  }
+  const THEMES = ['light', 'synthwave', 'botanical', 'newsprint']
+  async function thFilm(alive) {
+    if (calm) return
+    for (let i = 0; alive(); i++) { cTh.dataset.th = THEMES[i % 4]; $('th-name').textContent = THEMES[i % 4]; await sleep(1500) }
+  }
+
+  /* the bar takes the colours of what is under it */
+  const bar = $('bar'), papers = [...document.querySelectorAll('.sec.paper')]
+  let ticking = false
+  const barTone = () => { ticking = false; const y = bar.offsetHeight / 2, inv = papers.some((s) => { const r = s.getBoundingClientRect(); return r.top <= y && r.bottom > y }); bar.classList.toggle('inv', inv); $('gh').dataset.tone = inv ? 'k' : 'p' }
+  addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(barTone) } }, { passive: true })
+
+  /* the install button names the machine it is read on */
+  const ua = navigator.userAgent, os = /Android|iPhone|iPad|iPod/.test(ua) ? '' : /Mac/.test(ua) ? 'Mac' : /Win/.test(ua) ? 'Windows' : /Linux|X11/.test(ua) ? 'Linux' : ''
+  if (os) $('install').textContent = 'Install on ' + os
+
+  /* ── the room: the block floods the screen. What is drawn in it, and when it closes, is the install's own
+     business (flow.js: index.html's own script, see landing-flow.mjs), so its Back, its links and a reload all behave as there. ── */
+  const room = $('room')
+  let from = null
+  const hole = (el) => { const r = el.getBoundingClientRect(); return `inset(${Math.max(0, r.top)}px ${Math.max(0, innerWidth - r.right)}px ${Math.max(0, innerHeight - r.bottom)}px ${Math.max(0, r.left)}px)` }
+  const onScreen = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight }
+  window.wvRoom = {
+    open() {
+      if (!room.hidden) { room.scrollTop = 0; return }
+      room.dataset.tone = (from && from.dataset.tone) || 'p'
+      room.classList.remove('open'); room.hidden = false; room.scrollTop = 0; document.body.style.overflow = 'hidden'
+      if (onScreen(from) && !calm) { room.style.clipPath = hole(from); void room.offsetWidth; room.style.clipPath = 'inset(0px 0px 0px 0px)'; setTimeout(() => room.classList.add('open'), 320) }
+      else { room.style.clipPath = 'none'; room.classList.add('open') }
+      buzz()
+    },
+    close() {
+      if (room.hidden) return
+      room.classList.remove('open'); document.body.style.overflow = ''
+      if (onScreen(from) && !calm) { room.style.clipPath = hole(from); setTimeout(() => { room.hidden = true }, 320) } else room.hidden = true
+    },
+  }
+  document.querySelectorAll('.blk.go').forEach((b) => b.addEventListener('click', () => {
+    b.classList.add('down')
+    setTimeout(() => { b.classList.remove('down'); from = b; if (typeof choose === 'function') choose(b.dataset.kind || 'pc') }, 120)
+  }))
+
+  /* ── start ── */
+  fitScreens()
+  const S = [stage(hero, heroFilm, 0.3), stage($('stage'), phoneFilm), stage(field, fieldFilm), stage($('cd-done'), doneFilm), stage($('cd-ex'), exFilm), stage($('cd-fy'), fyFilm), stage($('cd-th'), thFilm)]
+  let rw = innerWidth
+  addEventListener('resize', () => { fitScreens(); if (innerWidth !== rw) { rw = innerWidth; heroLayout(); S[0].restart(); S[2].restart() } })
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitScreens(); heroLayout(); S[0].restart(); S[2].restart() })
+  barTone()
+})()
+</script>
+<script src="/qrcode.js"></script>
+<script src="/flow.js"></script>
+</body>
+</html>

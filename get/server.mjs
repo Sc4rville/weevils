@@ -28,6 +28,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SIZES } from './hetzner.js'
+import { buildFlow } from './landing-flow.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** The npm package `weevils` is published: the page shows `npx weevils <setup id>` first (same switch as
@@ -650,8 +651,8 @@ const ownAddresses = () => (OWN ??= Object.values(os.networkInterfaces()).flat()
 
 // ---------------------------------------------------------------- HTTP
 
-const PAGE_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' }
-const STATIC = { '/': 'index.html', '/logo.svg': '../public/branding/weevboss.svg', '/qrcode.js': 'qrcode.js', '/hetzner.js': 'hetzner.js', '/icon-192.png': '../public/icon-192.png', '/icon-180.png': '../public/icon-180.png', '/favicon-32.png': '../public/favicon-32.png', '/og.png': 'og.png' }
+const PAGE_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' }
+const STATIC = { '/': 'index.html', '/logo.svg': '../public/branding/weevboss.svg', '/weevil.png': 'weevil.png', '/weevil-384.png': 'weevil-384.png', '/av-arm.webp': 'av-arm.webp', '/av-talk-a.webp': 'av-talk-a.webp', '/av-talk-b.webp': 'av-talk-b.webp', '/av-talk-c.webp': 'av-talk-c.webp', '/qrcode.js': 'qrcode.js', '/hetzner.js': 'hetzner.js', '/icon-192.png': '../public/icon-192.png', '/icon-180.png': '../public/icon-180.png', '/favicon-32.png': '../public/favicon-32.png', '/og.png': 'og.png' }
 const SECURITY_HEADERS = {
   'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.hetzner.cloud; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   'referrer-policy': 'no-referrer',
@@ -1103,11 +1104,18 @@ export function createServer(cfg = config(), deps = {}) {
         if (req.headers['content-type'] && !String(req.headers['content-type']).startsWith('application/json')) return fail(res, 415, 'json_only')
         return await h(req, res, ip)
       }
+      if (url.pathname === '/flow.js' && req.method === 'GET') {
+        const js = buildFlow(fs.readFileSync(path.join(HERE, 'index.html'), 'utf8'))
+        return js ? send(res, 200, js, PAGE_TYPES['.js'], { 'cache-control': 'no-cache' }) : fail(res, 404, 'not_found')
+      }
       if (url.pathname === '/' && req.method === 'GET') {
         // A link preview being drawn (WhatsApp, iMessage, Twitter…): where the link was pasted, never a visit.
         const who = previewerOf(req.headers['user-agent'])
         if (who) stats.preview(who)
-        let html = fs.readFileSync(path.join(HERE, 'index.html'), 'utf8')
+        // The landing (landing.html), whose install room runs index.html's own steps (/flow.js); index.html itself
+        // when its script can't be made into that room (see landing-flow.mjs), so the install always works.
+        const steps = fs.readFileSync(path.join(HERE, 'index.html'), 'utf8')
+        let html = buildFlow(steps) ? fs.readFileSync(path.join(HERE, 'landing.html'), 'utf8') : steps
         // The code's link once the public repository is open; « N people already run weevils » with GET_PUBLIC_COUNT=1.
         const attrs = (codeOpen() ? ` data-code="${cfg.codeUrl}"` : '') + (cfg.publicCount ? ` data-count="${stats.installs()}"` : '')
         if (attrs) html = html.replace('<html lang="en">', `<html lang="en"${attrs}>`)

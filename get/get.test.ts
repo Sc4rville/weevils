@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import * as HZ from './hetzner.js'
 import { config, createServer, publicAddress, sslip, stepTitles, loadJobs, saveJobs, createStore, describeStats, NPX_PUBLISHED } from './server.mjs'
 import { claimSetup } from '../server/get-claim.ts'
+import { buildFlow } from './landing-flow.mjs'
 
 const listen = (s: http.Server) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as AddressInfo).port)))
 
@@ -684,7 +685,7 @@ describe('guards', () => {
     opened.close()
     github.close()
     expect(html).toContain('<html lang="en" data-code="https://github.com/Sc4rville/weevils">')
-    expect(html).toContain('<a href="https://x.com/weevilscode" data-t="soon">')
+    expect(html).toContain('href="https://github.com/Sc4rville/weevils"')
   })
   it('limits job creation per address', async () => {
     const own = createServer(config({ GET_TRUST_PROXY: '0' })).server
@@ -702,6 +703,28 @@ describe('guards', () => {
 const here = path.dirname(new URL(import.meta.url).pathname)
 const bootstrap = fs.readFileSync(path.join(here, 'bootstrap.sh'), 'utf8')
 const page = fs.readFileSync(path.join(here, 'index.html'), 'utf8')
+
+describe('the landing', () => {
+  it('is served at / with the share card, and its install room runs index.html\'s own steps', async () => {
+    const res = await fetch(base + '/')
+    const html = await res.text()
+    expect(res.status).toBe(200)
+    expect(html).toContain('id="hero"')
+    expect(html).toContain('<meta property="og:image" content="https://tryweevils.scarville.tech/og.png?v=')
+    expect(html).not.toContain('noindex')
+    expect(html).toContain('<script src="/flow.js"></script>')
+    const js = await (await fetch(base + '/flow.js')).text()
+    expect(js).toContain('window.wvRoom?.open(app)')
+    expect(js).toContain("sendBeacon('/api/hit'")
+    expect(js.trimEnd().endsWith("return computer ? pcHere() : pc(true)\n})()")).toBe(true)
+    for (const f of ['/av-arm.webp', '/weevil-384.png', '/weevil.png']) expect((await fetch(base + f)).status).toBe(200)
+  })
+  it('gives way to index.html when its script no longer has the shape the room needs', () => {
+    expect(buildFlow(page)).toBeTruthy()
+    expect(buildFlow(page.replace('function home(notice) {', 'function home2(notice) {'))).toBeNull()
+    expect(buildFlow('<p>nothing</p>')).toBeNull()
+  })
+})
 
 describe('the shared script (a computer)', () => {
   it('is the same file for everyone, with its checksum, says what it does, and reads its settings as plain values', async () => {

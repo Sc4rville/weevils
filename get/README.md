@@ -7,6 +7,12 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
 `og.png`, 1200×630, comes from the content repository (`productions/og/weevils-og-ask.png`), and its URL carries
 `?v=<first 8 characters of its sha256>` so that X fetches the new card when it changes).
 
+0. Since 2026-11-27 the page at `/` is the landing, `landing.html`: one scrolling page (machines and subscriptions
+   wired into weevils, the real app in a phone and a laptop, the conversations field, « Made to be read », Start).
+   Each Install or Start block opens a room over the page with the steps below: `/flow.js` is `index.html`'s own
+   script, made into that room on each request by `landing-flow.mjs`, so `index.html` stays the one place the install
+   lives (and what its tests read). If its script changes shape so the room can't be made, `/` serves `index.html`
+   again by itself. Roll back to the previous page: `git revert` the commit that added `landing.html` (the tag `tryweevils-before-landing-c` marks main just before it).
 1. The onboarding starts here, as a conversation, before anything is installed (2026-11-23). weevboss says hello
    (what weevils is, in a line) and asks what the visitor would like to make; they type it or tap a suggestion. Its
    reply says first what weevils runs on (the person's own subscriptions or API keys, as many as they like), then asks

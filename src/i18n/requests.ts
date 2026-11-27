@@ -29,12 +29,6 @@ export default defineMessages({
     notSent: 'pas encore envoyées',
     moreDone: (n: number) => `${n} de plus, finie${n > 1 ? 's' : ''}`,
     openSession: 'ouvrir la session',
-    /** Sous « demandes » dans la barre latérale de next (next/src/requests-band.tsx) : celles qui attendent la personne. */
-    needYou: (n: number) => `${n} t’attend${n > 1 ? 'ent' : ''}`,
-    /** La même bande, lue à voix haute : son nom, combien sont ouvertes, combien attendent. */
-    bandLabel: (open: number, waiting: number) => ['demandes', ...(open ? [`${open} ouverte${open > 1 ? 's' : ''}`] : []), ...(waiting ? [`${waiting} t’attend${waiting > 1 ? 'ent' : ''}`] : [])].join(', '),
-    /** Son interrupteur dans « Your factory ». */
-    inSideBar: 'demandes dans la barre latérale',
   },
   en: {
     title: 'requests',
@@ -60,8 +54,5 @@ export default defineMessages({
     notSent: 'not sent yet',
     moreDone: (n: number) => `${n} more, finished`,
     openSession: 'open the session',
-    needYou: (n: number) => `${n} need${n === 1 ? 's' : ''} you`,
-    bandLabel: (open: number, waiting: number) => ['requests', ...(open ? [`${open} open`] : []), ...(waiting ? [`${waiting} need${waiting === 1 ? 's' : ''} you`] : [])].join(', '),
-    inSideBar: 'requests in the side bar',
   },
 })

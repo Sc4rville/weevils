@@ -13,7 +13,6 @@ import { TEMPO_MODES, type TempoMode } from '../../shared/tempo.ts'
 import { useT } from '../../src/i18n/index.ts'
 import TM from '../../src/i18n/tempo.ts'
 import AM from '../../src/i18n/agents.ts'
-import RM from '../../src/i18n/requests.ts'
 import { useApp, type Page } from '../../src/ui/app-context.tsx'
 import { selfProject } from '../../src/ui/recursive-identity.ts'
 import { Collapse, Composer, ToolIcon } from '../../src/ui/bits.tsx'
@@ -120,7 +119,7 @@ export function showProject(r: { id: string; repos: string[] }, on: boolean) {
   flipProject(r.id, on)
   void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))
 }
-/** A drawer (requests, autonomous, pages) pinned or taken out, shown at once. */
+/** A drawer (autonomous, pages) pinned or taken out, shown at once. */
 export function showDrawer(id: Drawer, on: boolean) {
   flipProject(`drawer:${id}`, on)
   void call('POST', '/api/factory/drawer', { id, shown: on }).catch(() => flipProject(`drawer:${id}`, null))
@@ -132,7 +131,7 @@ export function drawerChoice(snap: Snapshot, id: Drawer): boolean | undefined {
 }
 /** What the drawers hold now (shared/drawers.ts DrawerFacts). */
 export function drawerFacts(snap: Snapshot) {
-  return { autonomous: (snap.optimizers ?? []).some((o) => o.state !== 'proposed' && o.state !== 'refused'), requests: snap.asksOpen }
+  return { autonomous: (snap.optimizers ?? []).some((o) => o.state !== 'proposed' && o.state !== 'refused') }
 }
 /** The conversations started with no repo (the reserved « divers » id, never shown as such): each its own band in the
  *  side bar while pinned. A page's conversation (pages band) or a machine's (its page) is not one of them. */
@@ -528,7 +527,7 @@ export function reorder(list: FactoryOnDemand[], id: string, to: 'on' | 'off' | 
 // ---------------------------------------------------------------- sessions
 
 const SESSIONS_PAGE = 40
-const DRAWER_ICON: Record<Drawer, IconName> = { requests: 'bang', autonomous: 'cycle', pages: 'page' }
+const DRAWER_ICON: Record<Drawer, IconName> = { autonomous: 'cycle', pages: 'page' }
 const STATE_ICON: Partial<Record<Session['status'], IconName>> = { needs_user: 'waits', interrupted: 'pause', done: 'check' }
 const STATE_WORD: Partial<Record<Session['status'], string>> = { working: 'working', needs_user: 'needs you', interrupted: 'paused', done: 'done', idle: 'idle' }
 
@@ -558,7 +557,6 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
   /** Closes the side bar onto weevboss's screen (for a « + » that weevboss takes over). */
   toBoss: () => void
 }) {
-  const rq = useT(RM)
   const [open, fold] = useFold('__factory')
   const [mOpen, mFold] = useFold('__factory_machines')
   const [iOpen, iFold] = useFold('__factory_intel')
@@ -682,9 +680,7 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
               the last week, whatever their place in Sessions below. */}
           {looseSessions(snap).filter((x) => sessionPinned(snap, x) || x.status !== 'done' || snap.now - x.lastActivityAt < 7 * 86_400_000)
             .sort((a, b) => b.lastActivityAt - a.lastActivityAt).slice(0, 12).map((x) => looseBand(x, step(pOpen)))}
-          {/* requests has a switch only where the server takes the choice (it sends asksWaiting, as it knows this
-              drawer): no ledger, or a server from before the band, and the switch would flip back by itself. */}
-          {DRAWERS.filter((id) => id !== 'requests' || snap.asksWaiting !== undefined).map((id) => drawerBand(id, step(pOpen)))}
+          {DRAWERS.map((id) => drawerBand(id, step(pOpen)))}
         </Collapse>
         <LevelHead step={step()} name="Sessions" mark="chat" open={sOpen} onFold={sFold} />
         <Collapse open={sOpen}>
@@ -715,17 +711,17 @@ export function FactorySection({ snap, colors, page, toBoss, openSession }: {
     </section>
   )
 
-  /** A drawer's band (requests, autonomous, pages; never settings, always in the side bar): its side bar colour and icon, its switch: on pins it there. */
+  /** A drawer's band (autonomous, pages; never settings, always in the side bar): its side bar colour and icon, its switch: on pins it there. */
   function drawerBand(id: Drawer, at: number) {
     const on = drawerOn(snap, id)
-    const c = id === 'autonomous' ? 'h24' : id === 'pages' ? PAGES_SLOT : (colors.__foot ?? 'p3')
+    const c = id === 'autonomous' ? 'h24' : PAGES_SLOT
     return (
       <Band key={id} step={at} depth={2} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${c})` } as CSSProperties}>
         <span className="nx-fx-main">
           <span className="nx-mark"><Icon name={DRAWER_ICON[id]} /></span>
-          <span className="nx-row-title">{id === 'requests' ? rq.menu : id}</span>
+          <span className="nx-row-title">{id}</span>
         </span>
-        <Switch small on={on} label={id === 'requests' ? rq.inSideBar : `${id} in the side bar`} onChange={(v2) => showDrawer(id, v2)} />
+        <Switch small on={on} label={`${id} in the side bar`} onChange={(v2) => showDrawer(id, v2)} />
         {/* The room of a project's « / » and « > », so every switch stands in one column. */}
         <div className="chars nx-fx-room" aria-hidden><span className="ch"><Icon name="slash" /></span><span className="ch"><G c=">" /></span></div>
       </Band>

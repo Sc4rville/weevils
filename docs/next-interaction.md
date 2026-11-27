@@ -45,21 +45,19 @@ once, and the code follows. Behaviour is never flipped back and forth.
   left of its name, in ink, the weight of the Claude and Codex logos, in one column (2026-11-23): a graphics card
   (Machines), a brain (Intelligence), GitHub's mark (Projects), a lightning bolt (Tempo).
 - **Pins: you choose what is in the side bar** (2026-11-26). A drawer pinned in it wears a small thin pin between its
-  icon and its name (the name never moves); unpinned, the pin is gone. weevils and Your factory are always there and
-  never pinned. **A repo is in the side bar only while it is pinned**, whatever its conversations do; it stays in Your
-  factory's **Projects**, one switch away (on pins it with the app's pin, off takes it out). requests, autonomous,
-  pages and settings have the same switch there (shared/drawers.ts: on pins it, off takes it out; never touched, each
-  keeps its own rule: requests while one is open, autonomous while it has automations, pages and settings always).
-- **Requests, one tap from the top** (2026-11-26): a band right under weevboss's head, above its sessions, so it is
-  seen without scrolling however many sessions weevboss has (where weevboss has no repo of its own, right under its
-  lone button); always before the repos. It is laid out like a band's head (the settings line's « ! » in the logo's
-  column, in ink; « requests » under the « w »; on the right the open count in bold, then « > »). The whole band is
-  one tap target and opens the list of all requests, which wears the same colour (the settings band's slot). Under
-  its name, as a session row's sub line, how many wait on you (« 12 need you »), counted by the server with the
-  list's own rule (Snapshot.asksWaiting); nothing there when none does. Out of the side bar when nothing is open
-  (unless pinned) and where the server keeps no ledger. Its switch in Your factory is listed only where the server
-  knows this drawer (it sends that count): elsewhere the choice would not be kept.
-  The requests line of the settings band stays: a second way in.
+  icon and its name (the name never moves); unpinned, the pin is gone. **weevils, Your factory and settings are always
+  there**: never pinned, no pin on them, no switch for them (2026-11-27: settings was a drawer for a day and one stray
+  tap on its pin took it away, with the way back to everything; a choice kept for it from then is ignored). **A repo
+  is in the side bar only while it is pinned**, whatever its conversations do; it stays in Your factory's
+  **Projects**, one switch away (on pins it with the app's pin, off takes it out). autonomous and pages have the same
+  switch there (shared/drawers.ts: on pins it, off takes it out; never touched, each keeps its own rule: autonomous
+  while it has automations, pages always).
+- **Unpinning is never one stray tap** (2026-11-27). A first tap on a pin of the side bar only asks: the pin tilts and
+  « unpin? » (« retirer ? ») stands beside it for a few seconds, in the band's two colours swapped. A second tap, on
+  the pin or on those words, takes the drawer out; a tap anywhere else, or waiting, is a no. Whatever is out of the
+  side bar stays listed in Your factory with its switch: that is always the way back.
+- **No requests band in the side bar** (2026-11-27; it stood under weevboss's head for a day, never asked for). The
+  list of all requests opens from its line in the settings band, with the open count, as before.
 - **One row per automation in a project's band** (2026-11-26). The runs of one automation are one row under the
   automation's name, with « · N runs » after it (« Price watch · 5 runs ») and, under it, what came out of its newest
   run and when (while a run works: what it is doing; while one waits for you: what it asks). A tap unfolds its runs,

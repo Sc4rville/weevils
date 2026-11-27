@@ -127,9 +127,9 @@ describe('what the factory switches', () => {
     await route(d, 'POST', '/api/factory/drawer', { id: 'pages', shown: false })
     await route(d, 'POST', '/api/factory/drawer', { id: 'autonomous', shown: true })
     expect(d.st.drawers).toEqual({ pages: false, autonomous: true })
-    // The requests band of the side bar is one of them (2026-11-26): the person can take it out.
-    await route(d, 'POST', '/api/factory/drawer', { id: 'requests', shown: false })
-    expect(d.st.drawers).toEqual({ pages: false, autonomous: true, requests: false })
+    // No requests band in the side bar any more (2026-11-27): nothing to pin or take out.
+    expect((await route(d, 'POST', '/api/factory/drawer', { id: 'requests', shown: false })).status).toBe(400)
+    expect(d.st.drawers).toEqual({ pages: false, autonomous: true })
     expect((await route(d, 'POST', '/api/factory/drawer', { id: 'misc', shown: true })).status).toBe(400)
     // settings is always in the side bar: it cannot be taken out.
     expect((await route(d, 'POST', '/api/factory/drawer', { id: 'settings', shown: false })).status).toBe(400)

@@ -4,20 +4,17 @@
 // everything else (2026-11-27: it was a drawer for a day, one stray tap on its pin took it away; a choice kept for it
 // from then is ignored). Projects follow the same idea with the app's pins (next/src/factory.tsx inSideBar).
 
-export const DRAWERS = ['requests', 'autonomous', 'pages'] as const
+export const DRAWERS = ['autonomous', 'pages'] as const
 export type Drawer = (typeof DRAWERS)[number]
 
-/** What the drawers hold now, for their own rule: requests shows while there is an open request, autonomous while it
- *  has automations, pages always. requests: how many are open, absent where weevboss keeps no ledger:
- *  no band there whatever was chosen, it would open on nothing. A server from before this drawer still shows the band
- *  while a request is open, and takes no choice for it (Your factory offers no switch there).
- *  (No catch-all drawer since 2026-11-26: a conversation started with no repo is its own band.) */
-export type DrawerFacts = { autonomous: boolean; requests?: number }
+/** What the drawers hold now, for their own rule: autonomous shows while it has automations, pages always.
+ *  (No requests band in the side bar since 2026-11-27: the requests page opens from settings, as before it. No
+ *  catch-all drawer since 2026-11-26: a conversation started with no repo is its own band.) */
+export type DrawerFacts = { autonomous: boolean }
 
 /** Whether a drawer is in the side bar. choice: true pinned (always), false out (never), undefined its own rule. */
 export function drawerShown(choice: boolean | undefined, id: Drawer, facts: DrawerFacts): boolean {
   if (choice === false) return false
-  if (id === 'requests') return facts.requests !== undefined && (choice === true || facts.requests > 0)
   if (id === 'autonomous') return choice === true || facts.autonomous
   return true
 }

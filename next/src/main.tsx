@@ -43,7 +43,6 @@ import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
 import { drawerOn, drawerPinned, FactorySection, looseSessions, NextMachinePage, pinnedProject, pinSession, sessionPinned, showDrawer, showProject, shownNow, slotOf, useFlips } from './factory.tsx'
 import { PinMark } from './pin.tsx'
-import { RequestsBand } from './requests-band.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
 import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
@@ -150,7 +149,7 @@ const MISC = 'divers'
 const unfoldedRuns = new Set<string>()
 
 export function ProjectGroup({ snap, project, color, current, open, page, boss, pinned = false, under }: { snap: Snapshot; project: Project; color: string; current: string | null; open: (id: string | null) => void; page: (p: Page) => void; boss?: boolean; pinned?: boolean
-  /** Drawn right under its head, above its sessions, folded or not (the requests band under weevboss). */
+  /** Drawn right under its head, above its sessions, folded or not. */
   under?: React.ReactNode }) {
   const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === project.id)
   // Its rows (side-rows.ts): an automation that reruns is one row under its own name, and a session that is over but
@@ -364,19 +363,14 @@ function SideBar({ snap: all, colors, current, open, close, page, openPages, sti
         <div className="nx-side-scroll" onClick={(e) => { if (e.target === e.currentTarget) close() }}>
           {/* weevboss and weevils' own repo are one block at the top (weevils improving itself). Where weevboss has no
               repo of its own (anyone else's install), the block is its logo and « weevils » alone. */}
-          {/* The person's open requests (requests-band.tsx), in the colour of the page it opens (RequestsPage wears
-              the same slot): right under weevboss's head, above its sessions, so it is seen without scrolling
-              however long that list is. */}
           {self ? (
-            <ProjectGroup snap={snap} project={self} color={colors[self.id] ?? 'p0'} current={current} open={open} page={page} boss
-              under={<RequestsBand snap={snap} color={colors.__foot ?? 'p3'} page={page} />} />
+            <ProjectGroup snap={snap} project={self} color={colors[self.id] ?? 'p0'} current={current} open={open} page={page} boss />
           ) : (
             <button className={`nx-row nx-boss-row band recursive-identity recursive-active ${current === null ? 'nx-active' : ''}`} onClick={() => open(null)} aria-label="weevboss">
               <WeevbossLogo className="nx-logo" />
               <span className="nx-row-title">weevils</span>
             </button>
           )}
-          {!self && <RequestsBand snap={snap} color={colors.__foot ?? 'p3'} page={page} />}
           {projects.filter((p) => p !== self).map((p) => (
             <ProjectGroup key={p.id} snap={snap} project={p} color={colors[p.id] ?? 'p0'} current={current} open={open} page={page}
               pinned={pinnedProject(snap, p)} />

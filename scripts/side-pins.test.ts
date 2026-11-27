@@ -34,19 +34,13 @@ describe('the pin', () => {
     expect(css).toMatch(/\.nx-pin\.nx-pin-tap \{ pointer-events: auto/)
     expect(css).toMatch(/\.nx-pin\.nx-pin-tap::before \{ content: ''; position: absolute; inset: -16px -9px; \}/)
     expect(main).not.toMatch(/WeevbossLogo[^\n]*PinMark/)
-    // The requests band is drawn in a file of its own (next/src/requests-band.tsx): its pin is there.
-    const requests = fs.readFileSync(path.join(import.meta.dirname, '../next/src/requests-band.tsx'), 'utf8')
-    expect(requests).toMatch(/<G c="!" \/>\{drawerPinned\(snap, 'requests'\) && <PinMark \/>\}/)
   })
 })
 
 describe('every drawer, chosen in Your factory', () => {
-  // requests: 0, a ledger with nothing open.
-  const facts = { autonomous: false, requests: 0 }
+  const facts = { autonomous: false }
   it('left alone, each keeps its own rule; no catch-all drawer any more', () => {
     expect(DRAWERS).not.toContain('misc')
-    expect(drawerShown(undefined, 'requests', facts)).toBe(false)
-    expect(drawerShown(undefined, 'requests', { autonomous: false, requests: 3 })).toBe(true)
     expect(drawerShown(undefined, 'autonomous', facts)).toBe(false)
     expect(drawerShown(undefined, 'pages', facts)).toBe(true)
   })
@@ -59,22 +53,16 @@ describe('every drawer, chosen in Your factory', () => {
   })
   it('pinned, always there; out, never', () => {
     for (const d of DRAWERS) expect(drawerShown(true, d, facts)).toBe(true)
-    for (const d of DRAWERS) expect(drawerShown(false, d, { autonomous: true, requests: 3 })).toBe(false)
+    for (const d of DRAWERS) expect(drawerShown(false, d, { autonomous: true })).toBe(false)
   })
-  it('requests: in the side bar by default while one is open, and never where there is no ledger to list', () => {
-    expect(DRAWERS[0]).toBe('requests')
-    expect(drawerOn(snap({ asksOpen: 3 }), 'requests')).toBe(true)
-    expect(drawerOn(snap({ asksOpen: 0 }), 'requests')).toBe(false)
-    expect(drawerOn(snap({ asksOpen: 3, sideDrawers: { requests: false } }), 'requests')).toBe(false)
-    expect(drawerOn(snap({ asksOpen: 0, sideDrawers: { requests: true } }), 'requests')).toBe(true)
-    // Another machine, an older server: no ledger, so no band, pinned or not.
-    expect(drawerShown(true, 'requests', { autonomous: false })).toBe(false)
-    expect(drawerOn(snap({ sideDrawers: { requests: true } }), 'requests')).toBe(false)
-    // Your factory lists its switch only where the server takes the choice: it sends asksWaiting as it knows this
-    // drawer. No ledger, or a server from before the band (asksOpen alone): no switch, it would flip back by itself.
-    const factory = fs.readFileSync(path.join(import.meta.dirname, '../next/src/factory.tsx'), 'utf8')
-    expect(factory).toMatch(/DRAWERS\.filter\(\(id\) => id !== 'requests' \|\| snap\.asksWaiting !== undefined\)\.map/)
-    expect(factory).not.toMatch(/id !== 'requests' \|\| snap\.asksOpen/)
+  it('no requests band in the side bar, and no switch for one: the requests page opens from settings, where it was', () => {
+    expect(DRAWERS).toEqual(['autonomous', 'pages'])
+    const main = fs.readFileSync(path.join(import.meta.dirname, '../next/src/main.tsx'), 'utf8')
+    expect(main).not.toMatch(/RequestsBand|requests-band/)
+    expect(fs.existsSync(path.join(import.meta.dirname, '../next/src/requests-band.tsx'))).toBe(false)
+    expect(fs.readFileSync(path.join(import.meta.dirname, '../next/src/next.css'), 'utf8')).not.toMatch(/\.nx-requests/)
+    // Its line in settings, with the open count: the way in, unchanged.
+    expect(fs.readFileSync(path.join(import.meta.dirname, '../src/ui/bands.tsx'), 'utf8')).toMatch(/<Line ch="!" value=\{snap\.asksOpen \? String\(snap\.asksOpen\) : undefined\} onClick=\{\(\) => push\(\{ kind: 'requests' \}\)\}>/)
   })
   it('a switch flipped shows at once, with its pin', () => {
     const s = snap({})

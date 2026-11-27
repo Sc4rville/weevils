@@ -31,6 +31,7 @@ import { call, useAuth, useSnapshot } from './data.ts'
 import { Sky } from './sky.tsx'
 import { Chat } from './chat.tsx'
 import { useDispatchTrail } from './dispatch.ts'
+import { followSwipe } from './swipe.ts'
 import { slide } from './moves.ts'
 import { foldPrefs, saveFold } from './fold.ts'
 import { bandRows, holds, runRows, sessionState, sessionSub, type RowState } from './side-rows.ts'
@@ -458,18 +459,10 @@ function BossInner({ snap, stars, theme, safeT, openSide, ctx, placeholder, labe
     return () => removeEventListener(FOCUS_BOSS, on)
   }, [setTop])
   const dir = top === 'foryou' ? 1 : -1
-  // A sideways swipe on the thread switches, like a tap on the other word (mostly horizontal, 70 px or more).
+  // A sideways swipe on the thread switches, like a tap on the other word (swipe.ts: decided where the finger lifts).
   const swipe = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('textarea, input, button, a, .nx-composer')) return
-    const x0 = e.clientX
-    const y0 = e.clientY
-    const up = (ev: PointerEvent) => {
-      removeEventListener('pointerup', up)
-      const dx = ev.clientX - x0
-      const dy = ev.clientY - y0
-      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) setTop(dx < 0 ? 'foryou' : 'boss')
-    }
-    addEventListener('pointerup', up)
+    followSwipe(e, setTop)
   }
   return (
     <>

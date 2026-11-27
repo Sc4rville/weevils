@@ -14,7 +14,7 @@ vi.mock('react-dom/client', async (orig) => {
   return { ...real, createRoot: (el: Element | null, ...rest: []) => (el ? real.createRoot(el, ...rest) : { render() {}, unmount() {} }) }
 })
 vi.mock('../next/src/worker.ts', () => ({ registerWorker() {}, useWorker: () => null }))
-vi.mock('../next/src/fresh.ts', () => ({ keepFresh() {} }))
+vi.mock('../next/src/fresh.ts', () => ({ keepFresh() {}, freshNow() {} }))
 vi.mock('../src/api', () => ({ api: {} }))
 
 localStorage.setItem('weevils-language', 'en')

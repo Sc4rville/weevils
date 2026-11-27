@@ -17,7 +17,7 @@ export const LINK_HUES: Record<PageKind, [number, number]> = {
   render: [15, 350],
 }
 
-const APP_THEMES = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco', 'carbon', 'chalkboard', 'atlas', 'crt', 'terrazzo', 'woodblock'] as const
+const APP_THEMES = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave', 'botanical', 'vaporwave', 'coastal', 'deco', 'carbon', 'chalkboard', 'atlas', 'crt', 'terrazzo', 'woodblock', 'departures', 'newsprint'] as const
 export type LinkTheme = (typeof APP_THEMES)[number] | `${(typeof APP_THEMES)[number]}-bubble` | 'page-light' | 'page-dark'
 export const LINK_THEMES: LinkTheme[] = [...APP_THEMES, ...APP_THEMES.map((t) => `${t}-bubble` as const), 'page-light', 'page-dark']
 
@@ -100,6 +100,8 @@ const AGENT: Record<(typeof APP_THEMES)[number], { agent: Rgb; dl: number }> = {
   crt: { agent: ok(0.19, 0.03, 65), dl: 0.05 },
   terrazzo: { agent: ok(0.86, 0.11, 95), dl: -0.05 },
   woodblock: { agent: ok(0.27, 0.075, 258), dl: 0.05 },
+  departures: { agent: ok(0.2, 0, 0), dl: 0.05 },
+  newsprint: { agent: ok(0.87, 0.02, 90), dl: -0.05 },
 }
 /** Every background a living link can sit on: in a theme, the page, the weevboss band, the project bands (--p0…--p15),
  *  the h24, devil and calm bands; in a « -bubble » row, weevboss's message inside a session thread (.msg.orch: its band
@@ -142,6 +144,10 @@ function grounds(theme: LinkTheme): Rgb[] {
       return [AGENT.terrazzo.agent, ...arc(25, -312.5, [0.91, 0.86, 0.81, 0.76], 0.085), ok(0.85, 0.065, 305), ok(0.8, 0.1, 32), ok(0.9, 0.06, 170), ok(0.955, 0.025, 70)]
     case 'woodblock':
       return [AGENT.woodblock.agent, ...arc(265, -5, [0.22, 0.27, 0.32, 0.37], 0.07), ok(0.3, 0.05, 70), ok(0.33, 0.11, 30), ok(0.3, 0.05, 170), ok(0.17, 0.04, 262)]
+    case 'departures':
+      return [AGENT.departures.agent, ...arc(250, -80, [0.24, 0.29, 0.34, 0.39], 0.065), ok(0.31, 0.1, 262), ok(0.33, 0.11, 28), ok(0.3, 0.06, 150), ok(0.14, 0, 0)]
+    case 'newsprint':
+      return [AGENT.newsprint.agent, ...arc(350, 650, [0.9, 0.86, 0.82, 0.78], 0.045), ok(0.86, 0.06, 45), ok(0.8, 0.08, 28), ok(0.89, 0.045, 145), ok(0.93, 0.02, 90)]
     case 'page-light':
       return [hexToRgb('#ffffff')]
     default:
@@ -150,7 +156,7 @@ function grounds(theme: LinkTheme): Rgb[] {
 }
 export const LINK_GROUNDS: Record<LinkTheme, Rgb[]> = Object.fromEntries(LINK_THEMES.map((t) => [t, grounds(t)])) as Record<LinkTheme, Rgb[]>
 /** Rows whose grounds are dark: their links are lighter than the grounds, the others darker. */
-const LIGHT_TEXT = new Set<LinkTheme>(['dark', 'dark-bubble', 'synthwave', 'synthwave-bubble', 'vaporwave', 'vaporwave-bubble', 'deco', 'deco-bubble', 'chalkboard', 'chalkboard-bubble', 'crt', 'crt-bubble', 'woodblock', 'woodblock-bubble', 'page-dark'])
+const LIGHT_TEXT = new Set<LinkTheme>(['dark', 'dark-bubble', 'synthwave', 'synthwave-bubble', 'vaporwave', 'vaporwave-bubble', 'deco', 'deco-bubble', 'chalkboard', 'chalkboard-bubble', 'crt', 'crt-bubble', 'woodblock', 'woodblock-bubble', 'departures', 'departures-bubble', 'page-dark'])
 
 // ---------------------------------------------------------------- the shade of each hue
 

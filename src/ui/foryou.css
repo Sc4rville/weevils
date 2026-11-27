@@ -122,6 +122,27 @@
   --fy-g4: var(--p15);
 }
 
+/* Departures: dark bands; outside authors brought down to the board; the gradient walks the network's lines, far apart. */
+:root[data-theme='departures'] {
+  --fy-ok: oklch(from var(--fluo) 0.38 calc(c * 0.45) h);
+  --fy-who-lm: 0;
+  --fy-who-la: 0.36;
+  --fy-who-k: 0.6;
+  --fy-g1: var(--p2);
+  --fy-g2: var(--p6);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p14);
+}
+
+/* Newsprint: the gradient walks the kiosk's tinted papers, pink → buff → green → lilac. */
+:root[data-theme='newsprint'] {
+  --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
+  --fy-g1: var(--p0);
+  --fy-g2: var(--p5);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p15);
+}
+
 /* Carbon: the gradient walks the form's copies, canary → green → blue → pink. */
 :root[data-theme='carbon'] {
   --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.35) h);
@@ -1715,7 +1736,8 @@ button.fy-hit {
 [data-theme='deco'] .fy-sheet-back,
 [data-theme='chalkboard'] .fy-sheet-back,
 [data-theme='crt'] .fy-sheet-back,
-[data-theme='woodblock'] .fy-sheet-back {
+[data-theme='woodblock'] .fy-sheet-back,
+[data-theme='departures'] .fy-sheet-back {
   background: rgb(0 0 0 / 0.45);
 }
 

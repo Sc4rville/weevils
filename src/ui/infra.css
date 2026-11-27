@@ -12,7 +12,8 @@
 :root[data-theme='deco'],
 :root[data-theme='chalkboard'],
 :root[data-theme='crt'],
-:root[data-theme='woodblock'] {
+:root[data-theme='woodblock'],
+:root[data-theme='departures'] {
   --warn: #ffa347;
   --crit: #ffc27a;
 }

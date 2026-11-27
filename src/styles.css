@@ -731,6 +731,112 @@
   --texture-opacity: 0.12;
 }
 
+/* Départs (departures) : le tableau à palettes d'une gare, la nuit. Bandes noir d'émail sans aucune teinte (le premier
+   thème sombre vraiment noir), 24/7 bleu des plaques de quai, bande diable rouge du signal fermé, réponse vert de la
+   voie libre, bande calme noir profond ; encre blanc cassé des palettes, et tout le texte dans la police étroite du
+   téléphone (Avenir Next Condensed sur iPhone et Mac, Roboto Condensed sur Android, Arial Narrow ailleurs). Projets :
+   les lignes du plan de réseau vues de nuit, tout le cercle en partant du bleu, quatre crans. Ce qui travaille est le
+   jaune des palettes, ce qui tourne tout seul le vert « à l'heure », le titre 24/7 le jaune de l'en-tête. Texture : les
+   palettes elles-mêmes, des rangées de volets coupés par leur charnière, éclairés par le haut, séparés en colonnes. */
+:root[data-theme='departures'] {
+  color-scheme: dark;
+  --font: 'Avenir Next Condensed', 'Roboto Condensed', sans-serif-condensed, 'Arial Narrow', 'Helvetica Neue Condensed', 'Liberation Sans Narrow', 'Nimbus Sans Narrow', ui-sans-serif, system-ui, sans-serif;
+  --ink: #f6f2e3;
+  --logo-filter: grayscale(1) brightness(.3) invert(1) sepia(.2);
+  --agent: oklch(0.2 0 0);
+  --devil: oklch(0.33 0.11 28);
+  --devil-reply: oklch(0.3 0.06 150);
+  --h24: oklch(0.31 0.1 262);
+  --calm: oklch(0.14 0 0);
+  --calm-soft: -0.03;
+  --fluo: oklch(0.88 0.17 98);
+  /* Les 16 emplacements : les lignes du plan de réseau, de nuit, tout le cercle depuis le bleu, quatre crans. */
+  --p0: oklch(0.24 0.065 250.0);
+  --p1: oklch(0.29 0.065 228.0);
+  --p2: oklch(0.34 0.065 206.0);
+  --p3: oklch(0.39 0.065 184.0);
+  --p4: oklch(0.24 0.065 162.0);
+  --p5: oklch(0.29 0.065 140.0);
+  --p6: oklch(0.34 0.065 118.0);
+  --p7: oklch(0.39 0.065 96.0);
+  --p8: oklch(0.24 0.065 74.0);
+  --p9: oklch(0.29 0.065 52.0);
+  --p10: oklch(0.34 0.065 30.0);
+  --p11: oklch(0.39 0.065 8.0);
+  --p12: oklch(0.24 0.065 346.0);
+  --p13: oklch(0.29 0.065 324.0);
+  --p14: oklch(0.34 0.065 302.0);
+  --p15: oklch(0.39 0.065 280.0);
+  /* Logo vocal : jaune palette, vert voie libre, orange des lampes, blanc. */
+  --anim-rec: oklch(0.7 0.2 25);
+  --anim-wait: oklch(0.88 0.17 98);
+  --anim-ready: oklch(0.88 0.17 98);
+  --anim-1: oklch(0.86 0.14 155);
+  --anim-2: oklch(0.8 0.15 60);
+  --anim-3: oklch(0.96 0.02 95);
+  --mix: 10%;
+  --dl: 0.05;
+  /* Texture : les colonnes de palettes, la charnière au milieu de chaque rangée et le reflet du haut de chaque volet. */
+  --texture: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 26px), repeating-linear-gradient(180deg, #000 0 1px, transparent 1px 19px, #000 19px 21px, rgba(255, 255, 255, 0.5) 21px 22px, transparent 22px 40px), repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0, rgba(255, 255, 255, 0) 19px, rgba(255, 255, 255, 0.3) 22px, rgba(255, 255, 255, 0) 40px);
+  --texture-size: auto;
+  --texture-blend: normal;
+  --texture-opacity: 0.12;
+}
+
+/* Papier journal (newsprint) : la une d'un quotidien. Bande du haut gris chaud du papier journal, 24/7 saumon des
+   pages financières, bande diable rouge délavé de la dernière heure, réponse vert du journal des courses, bande calme
+   papier plus clair ; encre noir de presse, et tout le texte dans le romain des journaux (Times New Roman, puis le
+   sérif du système). Presque monochrome, avec un seul cri : le rouge du bandeau, pour ce qui travaille. Projets : les
+   papiers teintés du kiosque, rose → saumon → chamois → jaune → vert → bleu → lilas, à peine colorés, quatre crans.
+   Ce qui tourne tout seul est au bleu du stylo des mots croisés, le titre 24/7 en noir de gros titre. Texture : la
+   trame de similigravure (points à 45°) qui s'efface par plages, le grain de la pâte à papier, et la pliure du journal
+   au milieu de la fenêtre. */
+:root[data-theme='newsprint'] {
+  color-scheme: light;
+  --font: 'Times New Roman', Times, 'Liberation Serif', 'Nimbus Roman', Tinos, serif;
+  --ink: #14110e;
+  --logo-filter: grayscale(1) brightness(.3);
+  --agent: oklch(0.87 0.02 90);
+  --devil: oklch(0.8 0.08 28);
+  --devil-reply: oklch(0.89 0.045 145);
+  --h24: oklch(0.86 0.06 45);
+  --calm: oklch(0.93 0.02 90);
+  --calm-soft: 0.02;
+  --fluo: oklch(0.45 0.18 27);
+  /* Les 16 emplacements : les papiers teintés du kiosque, rose → saumon → chamois → jaune → vert → bleu → lilas. */
+  --p0: oklch(0.9 0.045 350.0);
+  --p1: oklch(0.86 0.045 10.0);
+  --p2: oklch(0.82 0.045 30.0);
+  --p3: oklch(0.78 0.045 50.0);
+  --p4: oklch(0.9 0.045 70.0);
+  --p5: oklch(0.86 0.045 90.0);
+  --p6: oklch(0.82 0.045 110.0);
+  --p7: oklch(0.78 0.045 130.0);
+  --p8: oklch(0.9 0.045 150.0);
+  --p9: oklch(0.86 0.045 170.0);
+  --p10: oklch(0.82 0.045 190.0);
+  --p11: oklch(0.78 0.045 210.0);
+  --p12: oklch(0.9 0.045 230.0);
+  --p13: oklch(0.86 0.045 250.0);
+  --p14: oklch(0.82 0.045 270.0);
+  --p15: oklch(0.78 0.045 290.0);
+  /* Logo vocal : rouge du bandeau, bleu stylo, saumon, noir de presse. */
+  --anim-rec: oklch(0.55 0.2 28);
+  --anim-wait: oklch(0.45 0.18 27);
+  --anim-ready: oklch(0.45 0.18 27);
+  --anim-1: oklch(0.42 0.14 262);
+  --anim-2: oklch(0.66 0.11 45);
+  --anim-3: oklch(0.3 0.01 60);
+  --mix: 10%;
+  --dl: -0.05;
+  /* Texture : la pliure, le grain de la pâte, deux plages blanches qui effacent la trame, puis la trame à 45°. */
+  --texture: linear-gradient(180deg, rgba(0, 0, 0, 0) calc(50% - 18px), rgba(0, 0, 0, 0.32) calc(50% - 1px), rgba(0, 0, 0, 0) 50%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75 .95' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .16 0 0 0 0 .14 0 0 0 0 .12 0 0 0 2.6 -1.05'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"), radial-gradient(ellipse 36% 32% at 30% 34%, #fff 0, #fff 18%, rgba(255, 255, 255, 0) 100%), radial-gradient(ellipse 30% 36% at 66% 62%, #fff 0, #fff 14%, rgba(255, 255, 255, 0) 100%), radial-gradient(circle at 50% 50%, #000 0, #000 1.15px, rgba(0, 0, 0, 0) 2.1px), radial-gradient(circle at 50% 50%, #000 0, #000 1.15px, rgba(0, 0, 0, 0) 2.1px);
+  --texture-size: auto, 240px 240px, 640px 520px, 470px 610px, 7px 7px, 7px 7px;
+  --texture-position: 0 0, 0 0, 0 0, 210px 130px, 0 0, 3.5px 3.5px;
+  --texture-blend: multiply;
+  --texture-opacity: 0.12;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1887,6 +1993,15 @@ button.copy.done {
   --auto-fluo: oklch(0.86 0.07 200);
 }
 
+/* Départs : vert « à l'heure ». Papier journal : bleu du stylo des mots croisés. */
+:root[data-theme='departures'] {
+  --auto-fluo: oklch(0.86 0.14 155);
+}
+
+:root[data-theme='newsprint'] {
+  --auto-fluo: oklch(0.42 0.14 262);
+}
+
 .auto-mark {
   color: var(--auto-fluo);
 }
@@ -2125,6 +2240,7 @@ button.copy.done {
 [data-theme='chalkboard'] .msg.orch.ext,
 [data-theme='crt'] .msg.orch.ext,
 [data-theme='woodblock'] .msg.orch.ext,
+[data-theme='departures'] .msg.orch.ext,
 [data-theme='synthwave'] .msg.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
   /* Keep the external bubble dark enough for its white text and living links. */
@@ -2933,6 +3049,7 @@ button.copy.done {
 [data-theme='chalkboard'] .peek-item.orch.ext,
 [data-theme='crt'] .peek-item.orch.ext,
 [data-theme='woodblock'] .peek-item.orch.ext,
+[data-theme='departures'] .peek-item.orch.ext,
 [data-theme='synthwave'] .peek-item.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
 }
@@ -3208,6 +3325,7 @@ button.copy.done {
 [data-theme='chalkboard'] .wv-flash,
 [data-theme='crt'] .wv-flash,
 [data-theme='woodblock'] .wv-flash,
+[data-theme='departures'] .wv-flash,
 [data-theme='synthwave'] .wv-flash,
 [data-theme='graphite'] .wv-flash {
   animation-name: wv-flash-dark;

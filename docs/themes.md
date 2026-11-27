@@ -76,6 +76,8 @@ everything the themes need, and the checks decide.
 | `crt` | cathodique / CRT | dark | an amber monochrome monitor in a dark room: warm near-black bands, amber-glow 24/7, red devil band; **ink in P3 amber** `#ffdca0`, the first dark theme whose text is a colour; **texture** scanlines (one line in three), the red-green-blue phosphor grille and the tube's dark corners (normal, 0.12) | **a badly tuned screen**, amber → red → violet → blue → cyan (280° arc, chroma 0.075), 4 dim depths | phosphor-green star (the one scream), cyan AutoMark, hot-amber 24/7 title |
 | `terrazzo` | terrazzo / terrazzo | light | a 1980s Milanese terrazzo floor: **mustard top and lilac 24/7 that clash on purpose**, tomato devil band, mint reply, warm plaster calm band, aubergine ink `#1a0f1e`; **typeface** the phone's rounded sans (`ui-rounded`: SF Pro Rounded on Apple devices), the first rounded theme; **texture** stone chips, irregular polygons in seven stones on two tiles of different sizes (multiply, 0.12) | **marble chips**, the whole circle from Verona red, 4 steps (chroma 0.085) | cobalt star, Prato-green AutoMark, brick 24/7 title |
 | `woodblock` | estampe / woodblock | dark | a Japanese woodblock print at night: Prussian-blue top (the *bero-ai* of the waves), block-wood 24/7, seal-vermilion devil band, verdigris reply, deep indigo calm band, washi-cream ink `#f8eedb`; **typeface** the phone's mincho (Hiragino Mincho on Apple devices, then the system serif); **texture** the grain of the carved block, noise stretched 22:1 horizontally, which reads as wood and as water, plus a *bokashi* glow rising from the bottom (screen, 0.12) | **the print's pigments**, indigo → blue → green → ochre → vermilion → safflower (270° arc descending, chroma 0.07), 4 depths | persimmon star, wave-foam AutoMark, safflower-pink 24/7 title |
+| `departures` | départs / departures | dark | a station's split-flap board at night: **enamel black with no hue at all** on top (the first truly black dark theme), platform-sign blue 24/7, closed-signal red devil band, clear-signal green reply, deeper black calm band, flap-white ink `#f6f2e3`; **typeface** the phone's condensed sans (Avenir Next Condensed on Apple devices, Roboto Condensed on Android, Arial Narrow elsewhere), the first condensed theme; **texture** the flaps themselves: rows of half-flaps lit from above, a hinge through each row, columns 26px apart (normal, 0.12) | **the lines of a network map by night**, the whole circle from blue, descending (chroma 0.065), 4 depths | flap-yellow star, « on time » green AutoMark, header-yellow 24/7 title |
+| `newsprint` | papier journal / newsprint | light | the front page of a daily: warm newsprint grey top, financial-pages salmon 24/7, faded stop-press red devil band, racing-sheet green reply, paler paper calm band, press-black ink `#14110e`; **near-monochrome with one scream**, the masthead red, kept for what works; **typeface** the newspapers' roman (Times New Roman, then the system serif); **texture** the first halftone: a 45° dot screen that fades out in patches, pulp grain, and the paper's fold across the middle of the window (multiply, 0.12) | **the tinted papers of a kiosk**, pink → salmon → buff → yellow → green → blue → lilac (300° arc, chroma 0.045: the palest slots of all), 4 steps | masthead-red star, crossword-ballpoint blue AutoMark, headline-black 24/7 title (the first 24/7 title with no colour) |
 
 ## Log
 
@@ -314,18 +316,56 @@ two. `shared/link-colors.ts` makes the landing run the whole suite (`touchesServ
 fail inside the automation worktree: that is very likely what keeps all six waiting. terrazzo belongs in the
 `.nx-fx-busy` list of `next/src/next.css` (a light theme), left to the person like carbon and atlas.
 
+### 2026-11-27 — departures, newsprint
+
+Eleventh nightly run. One dark, one light, each with three bold moves (typeface, texture, palette), both from the
+list below (condensed typefaces, newsprint).
+
+- **departures** (départs): the split-flap board of a station at night. The texture is the object itself: three
+  gradients and no SVG draw rows of half-flaps lit from above, the hinge through the middle of each row and the gaps
+  between columns, so the whole window is a wall of flaps and every band, whatever its colour, is made of them. First
+  condensed typeface (Avenir Next Condensed, Roboto Condensed through Android's `sans-serif-condensed`, Arial Narrow;
+  elsewhere the system sans, nothing downloaded). First dark theme whose bands are a true black, chroma exactly 0
+  (dark is violet, deco gilded, crt warm): the colour comes only from the slots, the lines of a network map, and from
+  the flap yellow of what works. Joins every dark-theme rule.
+- **newsprint** (papier journal): the front page of a daily. The first halftone: two offset dot grids make a 45°
+  screen, two large white patches on tiles of different sizes erase it in places so it reads as a printed tone
+  rather than a wallpaper, a pulp grain lies over it, and a faint shadow line across the middle of the window is the
+  paper's fold. Times New Roman, the newspapers' own roman (atlas's `ui-serif` is New York on Apple devices, a
+  different face). Near-monochrome: grey paper, black ink, a black 24/7 headline, and one red, the masthead's, for
+  the working star alone. The slots are the palest of all themes (chroma 0.045), which needs a 300° arc to keep them
+  apart. The star needed L 0.45 (0.48 gave 2.95:1 on the deepest slot).
+
+Checked: contrast, slot, texture, logo and link-colour tests, typecheck, i18n, public guard, the whole front-end
+suite (src, test, shared: all green; `test/logo.test.tsx` counts the themes' logo filters, now 18). Screenshots of
+weevboss, For you (cards in their project's slot), the menu, the theme line (« départs », « papier journal »,
+« departures », « newsprint ») and slot swatches in en and fr at 1280×900 and 390×844, from a throwaway server
+(`env -i`, the empty home of the last run, ports 4391/4392). Not seen: the condensed face itself (the run's Linux
+browser has none and falls back to the system sans) and Times New Roman (it falls back to Liberation Serif, the same
+metrics). Dark yellows and dark cyans leave the sRGB gamut early: departures' slots stay at chroma 0.065 (0.075
+clipped five of them).
+
+Note for the person: newsprint belongs in the `.nx-fx-busy` list of `next/src/next.css` (a light theme), left to
+the person like carbon and atlas were. This run's worktree was on the branch `feat/theme-textures`, level with main,
+not on the `auto/…` branch named in its brief: the work is committed there, without switching branch.
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.
 - **Candy-pastel dark**: brighter, sugary pastel slots on black (vaporwave stays dusty and low-chroma).
 - **Forest night**: a dark green theme (botanical is the day version; moss, never shipped, was its warm cousin).
-- **Newsprint / ink wash**: grey paper, sumi-ink black, one red seal.
+- **Ink wash**: sumi-ink greys bleeding into wet paper, one red seal (newsprint took the printed page and its halftone).
 - **Glacier / arctic**: a near-white icy light theme with one aurora accent (coastal is warm-sand and blues; this would
   be cold and almost monochrome).
 - **Lacquer red**: a dark red-lacquer theme (woodblock took the indigo print, deco black and gold).
 - **Thermal receipt**: carbon took monospace and coloured ink; a true one-ink receipt (16 slots in one faded hue) does
   not pass the slots ≥ 2 apart rule at low chroma: it needs a hue arc of 200° or more.
-- **Serif worlds**: atlas took `ui-serif` for a map; newsprint or a library card catalogue could take it for print.
-- **Condensed typefaces**: terrazzo took `ui-rounded`; a condensed face (`"Avenir Next Condensed"`, `"Arial Narrow"`) for a
-  poster or railway-timetable world is free.
+- **Serif worlds**: atlas took `ui-serif` for a map, newsprint Times for a daily; a library card catalogue or a
+  paperback (Baskerville, Palatino) is free.
+- **Geometric typefaces**: departures took the condensed sans; a geometric face (`"Avenir Next"`, Futura, `"Century
+  Gothic"`) for a poster or a swimming-pool world is free.
+- **Woven and ruled textures**: tartan or twill (crossing translucent stripes), a knit, the Seyès ruling of a French
+  school notebook with its red margin, graph paper in orange: all free. Taken so far: grain, ripples, fan scales,
+  fibre, chalk dust, contour lines, scanlines, stone chips, wood grain, split flaps, halftone.
+- **Stained glass**: jewel colours held by dark leading, on a dark theme.
 - **Seasonal / time of day**: a theme that follows the clock (dawn → noon → dusk → night) needs a product decision first.

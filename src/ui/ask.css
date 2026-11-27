@@ -148,6 +148,7 @@
 [data-theme='deco'] ::highlight(wv-ask),
 [data-theme='chalkboard'] ::highlight(wv-ask),
 [data-theme='crt'] ::highlight(wv-ask),
-[data-theme='woodblock'] ::highlight(wv-ask) {
+[data-theme='woodblock'] ::highlight(wv-ask),
+[data-theme='departures'] ::highlight(wv-ask) {
   background-color: rgb(255 255 255 / 0.24);
 }

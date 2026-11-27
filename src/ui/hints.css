@@ -24,7 +24,8 @@
 [data-theme='deco'] .hint,
 [data-theme='chalkboard'] .hint,
 [data-theme='crt'] .hint,
-[data-theme='woodblock'] .hint {
+[data-theme='woodblock'] .hint,
+[data-theme='departures'] .hint {
   background: #fff;
   color: #000;
 }

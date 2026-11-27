@@ -1,42 +1,26 @@
-// Explain any text of the app, wherever it is: a side bar row, a For you post, a card, a decision and its answers, a
-// button, a caption. One handler for the whole app, and the same bar as threads and files (src/ui/ask.tsx: explain,
-// ask, copy), answered with the text around it (server/explain.ts, kind « ui »).
-//
-// - Phone: a small mark under the camera's. A tap freezes the app the way the camera does (its veil, its cross), but
-//   the screen stays live text: a tap takes a word (or a button's whole label), a held finger uses the phone's own
-//   selector, and nothing under the finger acts (no tap, no link, no swipe). The mark again, or the cross, lets go.
-//   Outside that mode the phone's long press and selector are never touched: fighting the system's selector made the
-//   app hard to use.
-// - Computer: text selected with the mouse anywhere opens the bar; a label that can't be selected (a button, a link)
-//   opens it when the button is held. Threads and files keep their own bar (askthread.tsx, codeview.tsx).
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+// Explain any text of the app, riding on the real selection (2026-11-27): the phone's own selector (a held finger) or
+// the mouse. When something is selected anywhere (a thread, For you, the side bar, a card), one small « Explain » pill
+// sits just under it, never over the system's menu (which sits above the selection), never taking the selection nor a
+// tap; a tap on it opens the bar of threads and files (src/ui/ask.tsx: explain, ask, copy) in its place, answered with
+// the text around it (server/explain.ts, kind « ui »). No mode, no frozen screen, no button of its own: a page cannot
+// add a line to Apple's own menu, so the pill stands beside it.
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AskPanel, useAsk } from '../../src/ui/ask.tsx'
-import { caretAt } from '../../src/ui/textpick.ts'
-import { wordAt } from '../../src/ui/codesel.ts'
-import { Icon } from '../../src/ui/icons.tsx'
 import { useT } from '../../src/i18n/index.ts'
 import SM from '../../src/i18n/select.ts'
 import { mark } from './camera-geometry.ts'
 
-/** This mode's own layers (the mark, the cross, the bar): they keep their taps. */
+/** The pill and the bar: their own taps, never read as a new selection. */
 const OWN = '[data-wv-pick]'
+/** A field's own selection (writing, editing) is never something to explain. */
 const FIELD = 'input, textarea, select, [contenteditable]'
-/** On a computer these keep their own bar: a thread's messages, a file's lines. */
-const HAS_OWN = '[data-mid], .code.lines, .qa'
-/** What is read as one label: its whole text, never a word of it. */
-const LABEL = 'button, a, [role="button"], label, summary'
-const HOLD_MS = 500
-const TAP_MS = 450
-const HL = 'wv-pick'
-/** Every event that could make something under the finger act, while the screen is frozen. */
-const STOPPED = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'] as const
+const SETTLE_MS = 250
 
-export interface Picked { text: string; range: Range; where: string; around: string; native: boolean }
+export interface Picked { text: string; rect: { top: number; bottom: number; left: number }; where: string; around: string }
 
 const flat = (s: string) => s.replace(/\s+/g, ' ').trim()
 const textOf = (el: Element) => flat((el as HTMLElement).innerText || el.textContent || '')
 const elementOf = (n: Node | null): Element | null => (n instanceof Element ? n : (n?.parentElement ?? null))
-const ownTarget = (e: Event) => !!elementOf(e.target as Node | null)?.closest(OWN)
 
 /** Where the text is and what is around it, as shown: the nearest heading or label, and the block holding it. */
 export function contextOf(node: Node): { where: string; around: string } {
@@ -52,66 +36,30 @@ export function contextOf(node: Node): { where: string; around: string } {
   return { where: where.slice(0, 120), around: around.slice(0, 3000) }
 }
 
-/** What a tap at (x, y) takes: in a label, the line under the finger or the whole label (a button, a chip, a post's title), otherwise the word under the finger. */
-export function pickAt(x: number, y: number): Omit<Picked, 'where' | 'around' | 'native'> | null {
-  const target = document.elementFromPoint(x, y)
-  if (!target || target.closest(OWN) || target.closest(FIELD)) return null
-  const label = target.closest(LABEL)
-  // Inside a label (a button, a link, a For you post's head): the smallest part under the finger that reads as one
-  // line (a title, a source, a chip), up to the whole label.
-  for (let e: Element | null = label ? target : null; e; e = e === label ? null : e.parentElement) {
-    const text = textOf(e)
-    if (!text) continue
-    if (text.length > 120) break
-    const range = document.createRange()
-    range.selectNodeContents(e)
-    return { text, range }
-  }
-  const c = caretAt(x, y)
-  if (!c || c.node.nodeType !== Node.TEXT_NODE) return null
-  const data = (c.node as Text).data
-  const w = wordAt(data, c.offset) ?? wordAt(data, c.offset - 1)
-  if (!w || !/[\p{L}\p{N}]/u.test(data.slice(w[0], w[1]))) return null
-  const range = document.createRange()
-  range.setStart(c.node, w[0])
-  range.setEnd(c.node, w[1])
-  return { text: data.slice(w[0], w[1]), range }
-}
-
-/** The text the person selected with the system's selector, if it is something to explain here. */
-function nativePick(frozen: boolean): Omit<Picked, 'where' | 'around'> | null {
+/** The real selection, if it is something to explain: not empty, not in a field, not in the pill or its bar. */
+export function selectionNow(): Picked | null {
   const s = window.getSelection()
   if (!s || s.isCollapsed || !s.rangeCount) return null
   const range = s.getRangeAt(0)
   const text = flat(s.toString())
   const el = elementOf(range.commonAncestorContainer)
-  if (!text || text.length > 2000 || !el || el.closest(OWN) || el.closest(FIELD) || (!frozen && el.closest(HAS_OWN))) return null
-  return { text, range: range.cloneRange(), native: true }
+  if (!text || text.length > 2000 || !el || el.closest(OWN) || el.closest(FIELD)) return null
+  // Under its last line: where the selection ends, the system's handle and menu are above or at its start.
+  const rects = [...range.getClientRects()].filter((r) => r.width || r.height)
+  const all = range.getBoundingClientRect()
+  const last = rects.at(-1) ?? all
+  return { text, rect: { top: all.top, bottom: last.bottom, left: last.left }, ...contextOf(range.commonAncestorContainer) }
 }
 
-type Highlights = { set: (k: string, v: unknown) => void; delete: (k: string) => void }
-function highlight(range: Range | null) {
-  const reg = (globalThis.CSS as unknown as { highlights?: Highlights })?.highlights
-  const H = (globalThis as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight
-  if (!reg || !H) return
-  if (range) reg.set(HL, new H(range))
-  else reg.delete(HL)
-}
-
-const coarse = () => typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
-
-/** `top`: where the phone's mark sits (under the camera's); `hideMark`: the camera is busy or the keyboard is up. */
-export function Select({ top, hideMark }: { top: string; hideMark: boolean }) {
+export function Select() {
   const t = useT(SM)
-  const [phone] = useState(coarse)
-  const [on, setOn] = useState(false)
-  const onRef = useRef(on)
-  onRef.current = on
   const [picked, setPicked] = useState<Picked | null>(null)
   const pickedRef = useRef(picked)
   pickedRef.current = picked
-  const box = useRef<HTMLDivElement>(null)
-  const [place, setPlace] = useState<{ top?: number; bottom?: number }>({})
+  // The pill was tapped: the bar is open, and stays while its answer is read, whatever the selection does.
+  const [open, setOpen] = useState(false)
+  const openRef = useRef(open)
+  openRef.current = open
 
   const a = useAsk(() => {
     const p = pickedRef.current
@@ -119,138 +67,65 @@ export function Select({ top, hideMark }: { top: string; hideMark: boolean }) {
   })
   const aRef = useRef(a)
   aRef.current = a
-
-  const show = useCallback((p: Omit<Picked, 'where' | 'around'> | null) => {
+  const close = useCallback(() => {
     aRef.current.reset()
-    if (!p) return setPicked(null)
-    const cur = pickedRef.current
-    if (cur && cur.text === p.text && cur.native === p.native) return
-    setPicked({ ...p, ...contextOf(p.range.commonAncestorContainer) })
+    setOpen(false)
+    setPicked(null)
   }, [])
-  const leave = useCallback(() => {
-    setOn(false)
-    show(null)
-    window.getSelection()?.removeAllRanges()
-  }, [show])
 
-  // The bar sits under what was taken, or over it when there is no room below.
-  useLayoutEffect(() => {
-    highlight(picked && !picked.native ? picked.range : null)
-    if (!picked) return
-    const r = picked.range.getBoundingClientRect()
-    const h = window.innerHeight
-    setPlace(r.bottom + 220 < h || r.top < h / 2 ? { top: Math.max(8, r.bottom + 10) } : { bottom: Math.max(8, h - r.top + 10) })
-  }, [picked])
-  useEffect(() => () => highlight(null), [])
-
-  // ---- The phone's frozen screen: nothing under the finger acts; a tap takes a word, the system's selector a passage.
   useEffect(() => {
-    if (!on) return
-    const root = document.documentElement
-    root.classList.add('wv-picking')
-    let down: { x: number; y: number; t: number; id: number } | null = null
-    const stop = (e: Event) => {
-      if (ownTarget(e)) return
-      e.stopPropagation()
-      if (e.type === 'click' || e.type === 'dblclick' || e.type === 'auxclick') e.preventDefault()
-      if (e.type === 'pointerdown') {
-        const p = e as PointerEvent
-        down = { x: p.clientX, y: p.clientY, t: performance.now(), id: p.pointerId }
-      } else if (e.type === 'pointerup') {
-        const p = e as PointerEvent
-        const d = down
-        down = null
-        if (!d || d.id !== p.pointerId || Math.hypot(p.clientX - d.x, p.clientY - d.y) > 10 || performance.now() - d.t > TAP_MS) return
-        window.getSelection()?.removeAllRanges()
-        const hit = pickAt(p.clientX, p.clientY)
-        show(hit ? { ...hit, native: false } : null)
-      }
-    }
-    for (const k of STOPPED) window.addEventListener(k, stop, { capture: true })
     let timer: ReturnType<typeof setTimeout> | undefined
-    const sel = () => {
-      clearTimeout(timer)
-      timer = setTimeout(() => { const p = nativePick(true); if (p) show(p) }, 250)
+    let down = false
+    const read = () => {
+      if (openRef.current) return
+      const p = down ? null : selectionNow()
+      if (p) setPicked((cur) => (cur && cur.text === p.text && cur.rect.bottom === p.rect.bottom ? cur : p))
+      else if (!down) setPicked(null)
     }
-    document.addEventListener('selectionchange', sel)
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && leave()
+    const later = () => { clearTimeout(timer); timer = setTimeout(read, SETTLE_MS) }
+    // A mouse still dragging is still choosing: read once it is let go.
+    const press = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && !(e.target as Element | null)?.closest?.(OWN)) down = true
+      // A tap elsewhere while the bar is open closes it (the page's own tap goes on as usual).
+      if (openRef.current && !(e.target as Element | null)?.closest?.(OWN)) close()
+    }
+    const release = (e: PointerEvent) => { if (e.pointerType === 'mouse') { down = false; later() } }
+    const moved = () => { if (pickedRef.current && !openRef.current) later() }
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    document.addEventListener('selectionchange', later)
+    window.addEventListener('pointerdown', press, true)
+    window.addEventListener('pointerup', release, true)
+    window.addEventListener('scroll', moved, true)
     window.addEventListener('keydown', key)
     return () => {
-      root.classList.remove('wv-picking')
-      for (const k of STOPPED) window.removeEventListener(k, stop, { capture: true })
-      document.removeEventListener('selectionchange', sel)
-      window.removeEventListener('keydown', key)
       clearTimeout(timer)
-    }
-  }, [on, show, leave])
-
-  // ---- The computer: a mouse selection anywhere, or a held button on a label that can't be selected.
-  useEffect(() => {
-    if (phone) return
-    let hold: ReturnType<typeof setTimeout> | undefined
-    let at: { x: number; y: number } | null = null
-    const down = (e: PointerEvent) => {
-      if (onRef.current || e.pointerType !== 'mouse' || e.button !== 0) return
-      if (ownTarget(e)) return
-      if (pickedRef.current) show(null)
-      const label = elementOf(e.target as Node)?.closest(LABEL)
-      if (!label || label.closest(FIELD)) return
-      at = { x: e.clientX, y: e.clientY }
-      const x = e.clientX
-      const y = e.clientY
-      clearTimeout(hold)
-      hold = setTimeout(() => {
-        at = null
-        const hit = pickAt(x, y)
-        if (!hit) return
-        // The release that follows is not a click on the label.
-        const eat = (ev: Event) => { ev.preventDefault(); ev.stopPropagation() }
-        window.addEventListener('click', eat, { capture: true, once: true })
-        setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 600)
-        show({ ...hit, native: false })
-      }, HOLD_MS)
-    }
-    const move = (e: PointerEvent) => { if (at && Math.hypot(e.clientX - at.x, e.clientY - at.y) > 6) { clearTimeout(hold); at = null } }
-    const up = (e: PointerEvent) => {
-      clearTimeout(hold)
-      at = null
-      if (onRef.current || e.pointerType !== 'mouse' || ownTarget(e)) return
-      setTimeout(() => { const p = nativePick(false); if (p) show(p) }, 0)
-    }
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && pickedRef.current && show(null)
-    window.addEventListener('pointerdown', down, true)
-    window.addEventListener('pointermove', move, true)
-    window.addEventListener('pointerup', up, true)
-    window.addEventListener('keydown', key)
-    return () => {
-      clearTimeout(hold)
-      window.removeEventListener('pointerdown', down, true)
-      window.removeEventListener('pointermove', move, true)
-      window.removeEventListener('pointerup', up, true)
+      document.removeEventListener('selectionchange', later)
+      window.removeEventListener('pointerdown', press, true)
+      window.removeEventListener('pointerup', release, true)
+      window.removeEventListener('scroll', moved, true)
       window.removeEventListener('keydown', key)
     }
-  }, [phone, show])
+  }, [close])
 
+  if (!picked) return null
+  const h = window.innerHeight
+  const below = picked.rect.bottom + 12
+  const room = below + (open ? 200 : 40) < h
+  const place = room ? { top: Math.max(8, below) } : { bottom: Math.max(8, h - picked.rect.top + 12) }
+  if (!open) {
+    const left = Math.min(Math.max(8, picked.rect.left), window.innerWidth - 120)
+    return (
+      <button className="pick-pill" data-wv-pick="" {...mark} style={{ ...place, left }}
+        // Never takes the selection away: no focus, no default on the press.
+        onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}
+        onClick={() => { setOpen(true); void a.ask('explain') }}>
+        {t.explain}
+      </button>
+    )
+  }
   return (
-    <>
-      {on && (
-        <div className="pick-freeze" {...mark}>
-          <div className="cam-veil" />
-          <span className="pick-hint" aria-hidden>{t.hint}</span>
-          <button className="cam-close pick-close" data-wv-pick="" aria-label={t.leave} onClick={leave}><Icon name="close" /></button>
-        </div>
-      )}
-      {picked && (
-        <div ref={box} className="pick-bar" data-wv-pick="" {...mark} style={place}>
-          <AskPanel a={a} text={picked.text} usage={false} onHit={() => {}} />
-        </div>
-      )}
-      {phone && !(hideMark && !on) && (
-        <button className={`cam-mark pick-mark ${on ? 'cam-on' : ''}`} data-wv-pick="" {...mark} style={{ top }}
-          aria-label={on ? t.leave : t.select} aria-pressed={on} onClick={() => (on ? leave() : setOn(true))}>
-          <Icon name={on ? 'close' : 'select'} />
-        </button>
-      )}
-    </>
+    <div className="pick-bar" data-wv-pick="" {...mark} style={place}>
+      <AskPanel a={a} text={picked.text} usage={false} onHit={() => {}} />
+    </div>
   )
 }

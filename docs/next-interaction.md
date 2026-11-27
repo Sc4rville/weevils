@@ -297,27 +297,14 @@ once, and the code follows. Behaviour is never flipped back and forth.
 
 ## Explain any text (2026-11-27)
 
-- **Phone: a select mark under the camera's** (over it when the camera sits low). A tap freezes the app the way the
-  camera does (its veil, its cross) but the screen stays text: a tap takes a word, or a button's whole label; a held
-  finger uses the phone's own selector, on any text, buttons included. The explain bar opens under it (explain, ask,
-  copy: the bar of threads and files), answered with the text around it. Nothing under the finger acts while frozen:
-  no tap, no link, no swipe. The mark again, or the cross, lets go.
-- **Outside that mode the phone's long press and selector are never touched**: an explain that fired on every
-  selection fought the system's selector and made the app hard to use.
-- **Computer: text selected with the mouse anywhere opens the bar**; a button or a link (text that can't be selected)
-  opens it when held half a second, and that release is not a click. Threads and files keep their own bar.
-
-## weevboss hands work over (2026-11-27)
-
-- **When weevboss hands an ask to a session**, a short flat line of that session's project colour runs from its little
-  weevil at the foot of the thread to the menu (the three bars), which takes that colour for a moment, then settles
-  back. In the app's own style: square ends, the hard ink shadow of its marks, no glow, no ring, nothing pops, and the
-  weevil does not turn around (2026-11-27, replaces the glowing streak of the same day). Under a second, transform and
-  opacity only (next/src/dispatch.ts).
-- **The signal is real state**: the reaction of your message moving from nothing or 👀 to 📤, 🛠️ or ❓ (the request
-  ledger's, server/reactions.ts). Once per message; never on load, on a return to the screen, or for an older message.
-- **Only when both ends are on screen**: a session, a page or the side bar over the menu, or no weevil at work, and the
-  menu alone takes the colour (or nothing, when the menu is covered). Reduced motion: the colour alone.
+- **It rides on the real selection**, the phone's own (a held finger) or the mouse's: when something is selected
+  anywhere in the app (a thread, For you, the side bar, a card), one small « Explain » pill sits just under it. A tap
+  opens the explain bar in its place (explain, ask, copy: the bar of threads and files), answered with the text around
+  it. The pill never takes the selection, never sits over the system's menu (above the selection) and never blocks a
+  tap; with no selection there is nothing.
+- **No mode of its own**: the select button under the camera and its frozen screen are gone (they fought the system's
+  selector). A page cannot add a line to Apple's own menu (Copy, Translate…), so the pill stands beside it.
+- A field's own selection (writing a message) is never explained.
 
 ## From the classic app
 

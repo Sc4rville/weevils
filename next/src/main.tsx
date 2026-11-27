@@ -52,6 +52,7 @@ import { useApp } from '../../src/ui/app-context.tsx'
 import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
 import { ForYouPage } from '../../src/ui/foryou.tsx'
 import { Camera, type Spot } from './camera.tsx'
+import { Select } from './select.tsx'
 import { NewPage, PageStudio, PagesSection, type NxPage } from './pages.tsx'
 import { TourLayer, useTour } from './tour.tsx'
 import { Syncing } from '../../src/ui/loading.tsx'
@@ -790,6 +791,8 @@ function App() {
         </AnimatePresence>
       </div>
       <Camera spot={spot} />
+      {/* Under any real selection, one small « Explain » pill (select.tsx). */}
+      <Select />
       <TourLayer {...tour} />
       <ThemeTryLayer />
     </div>

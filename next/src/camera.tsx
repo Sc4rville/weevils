@@ -16,7 +16,6 @@ import { hold, useHeld } from '../../src/ui/held-capture.ts'
 import { mark, place, PRESS_MS, region, secondTap, TAP_MS, type Box, type Tap } from './camera-geometry.ts'
 import { crop, shoot, SlowShot } from './camera-shoot.ts'
 import { ownBuild } from './fresh.ts'
-import { Select } from './select.tsx'
 
 /** What is on the screen, read at the moment of the tap (main.tsx knows it). */
 export interface Spot { context: Record<string, unknown> }
@@ -239,8 +238,6 @@ export function Camera({ spot }: { spot: () => Spot }) {
           <button className="cam-error-off" aria-label={t.close} onClick={() => setError(null)}><Icon name="close" /></button>
         </div>
       )}
-      {/* Explain any text: its mark sits under the camera's (over it when the camera is low on the screen). */}
-      <Select top={y > 0.7 ? `calc(${(y * 100).toFixed(2)}% - 70px)` : `calc(${(y * 100).toFixed(2)}% + 26px)`} hideMark={typing || mode !== 'off'} />
       {!(typing && mode === 'off') && (
         <button className={`cam-mark ${mode !== 'off' ? 'cam-on' : ''} ${markShowsHeld ? 'cam-has' : ''}`} {...mark} style={{ top: `calc(${(y * 100).toFixed(2)}% - 22px)` }}
           aria-label={mode === 'off' ? t.camera : t.cancel} onPointerDown={onMark}>

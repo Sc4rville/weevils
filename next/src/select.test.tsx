@@ -11,93 +11,56 @@ vi.mock('../../src/api', () => ({ api: { explain: (b: unknown) => explain(b) } }
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
-let coarse = true
-beforeEach(() => {
-  setLang('en')
-  explain.mockClear()
-  vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('coarse') ? coarse : false, addEventListener() {}, removeEventListener() {} }))
-  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
-})
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null); vi.unstubAllGlobals() })
+beforeEach(() => { vi.useFakeTimers(); setLang('en'); explain.mockClear(); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
+afterEach(async () => { window.getSelection()!.removeAllRanges(); await act(async () => root.unmount()); host.remove(); setLang(null); vi.useRealTimers() })
 
 const { Select } = await import('./select.tsx')
-const mark = () => host.querySelector<HTMLButtonElement>('.pick-mark')
-const fire = (el: Element, type: string, x = 5, y = 5) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'touch', isPrimary: true }))
+const select = async (el: Element) => {
+  const r = document.createRange(); r.selectNodeContents(el)
+  window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(r)
+  await act(async () => { document.dispatchEvent(new Event('selectionchange')); vi.advanceTimersByTime(300) })
+}
+const pill = () => host.querySelector<HTMLButtonElement>('.pick-pill')
 
 function Page({ go }: { go: () => void }) {
   return (
     <section>
       <h2>For you</h2>
+      <p className="txt">Night lens found three ideas</p>
       <button className="act" onClick={go}>Try this theme</button>
+      <input className="field" defaultValue="my draft" />
     </section>
   )
 }
 
-it('phone: the mark freezes the app; a tap takes a button whole and never presses it; the mark lets go', async () => {
+it('a real selection anywhere gets one small Explain pill; a tap explains it with what is around it', async () => {
   const go = vi.fn()
-  await act(async () => root.render(<><Page go={go} /><Select top="60%" hideMark={false} /></>))
-  expect(mark()!.getAttribute('aria-label')).toBe('Select text to explain it')
-  const btn = host.querySelector('.act')!
-  // Off: a tap is a tap, nothing is taken.
-  await act(async () => (btn as HTMLButtonElement).click())
-  expect(go).toHaveBeenCalledTimes(1)
-  await act(async () => mark()!.click())
-  expect(document.documentElement.classList.contains('wv-picking')).toBe(true)
-  expect(host.querySelector('.pick-freeze .pick-close')).not.toBeNull()
-  document.elementFromPoint = () => btn
-  await act(async () => { fire(btn, 'pointerdown'); fire(btn, 'pointerup'); (btn as HTMLButtonElement).click() })
-  expect(go).toHaveBeenCalledTimes(1)
-  const bar = host.querySelector('.pick-bar')!
-  expect(bar.textContent).toContain('explain')
-  await act(async () => [...bar.querySelectorAll('button')].find((b) => b.textContent === 'explain')!.click())
-  expect(explain).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ui', mode: 'explain', selection: 'Try this theme', title: 'For you' }))
+  await act(async () => root.render(<><Page go={go} /><Select /></>))
+  expect(pill()).toBeNull()
+  await select(host.querySelector('.txt')!)
+  expect(pill()!.textContent).toBe('Explain')
+  // The pill never takes the selection away.
+  expect(String(window.getSelection())).toBe('Night lens found three ideas')
+  await act(async () => { pill()!.click(); vi.useRealTimers(); await new Promise((ok) => setTimeout(ok, 0)) })
+  expect(explain).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ui', mode: 'explain', selection: 'Night lens found three ideas', title: 'For you' }))
   expect(host.querySelector('.pick-bar')!.textContent).toContain('It opens the post.')
-  await act(async () => mark()!.click())
-  expect(document.documentElement.classList.contains('wv-picking')).toBe(false)
-  expect(host.querySelector('.pick-bar')).toBeNull()
-  await act(async () => (btn as HTMLButtonElement).click())
-  expect(go).toHaveBeenCalledTimes(2)
 })
 
-it('phone, outside select mode: a long press and the system selector are left alone', async () => {
-  await act(async () => root.render(<><p className="txt">Night lens found three ideas</p><Select top="60%" hideMark={false} /></>))
-  const p = host.querySelector('.txt')!
-  const r = document.createRange(); r.selectNodeContents(p)
-  window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(r)
-  await act(async () => { fire(p, 'pointerdown'); await new Promise((ok) => setTimeout(ok, 600)); fire(p, 'pointerup') })
-  expect(host.querySelector('.pick-bar')).toBeNull()
-  window.getSelection()!.removeAllRanges()
-})
-
-it('computer: no mark; a mouse selection anywhere opens the bar, but not inside a thread', async () => {
-  coarse = false
-  try {
-    await act(async () => root.render(<><aside aria-label="Side bar"><p className="row">Repo hygienist</p></aside><div data-mid="m1"><p className="msg">in a thread</p></div><Select top="60%" hideMark={false} /></>))
-    expect(mark()).toBeNull()
-    const sel = async (el: Element) => {
-      const r = document.createRange(); r.selectNodeContents(el)
-      window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(r)
-      await act(async () => { el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' })); await new Promise((ok) => setTimeout(ok, 5)) })
-    }
-    await sel(host.querySelector('.msg')!)
-    expect(host.querySelector('.pick-bar')).toBeNull()
-    await sel(host.querySelector('.row')!)
-    expect(host.querySelector('.pick-bar')!.textContent).toContain('explain')
-  } finally {
-    coarse = true
-    window.getSelection()!.removeAllRanges()
-  }
-})
-
-it('in a long label (a For you post head), a tap takes the line under the finger: its title, not the whole post', async () => {
+it('no selection, no pill: taps and buttons are the page\'s own; a field\'s selection is never explained', async () => {
   const go = vi.fn()
-  await act(async () => root.render(<><section><h2>For you</h2><button className="head" onClick={go}><span className="src">weevboss · 55m</span><span className="title">6 decisions for you</span><span className="body">These are yours alone. Tap an answer and it goes straight back to where it waits, and the session stops asking you.</span></button></section><Select top="60%" hideMark={false} /></>))
-  await act(async () => mark()!.click())
-  const title = host.querySelector('.title')!
-  document.elementFromPoint = () => title
-  await act(async () => { fire(title, 'pointerdown'); fire(title, 'pointerup'); (title as HTMLElement).click() })
-  expect(go).not.toHaveBeenCalled()
-  await act(async () => [...host.querySelectorAll<HTMLButtonElement>('.pick-bar button')].find((b) => b.textContent === 'explain')!.click())
-  expect(explain).toHaveBeenLastCalledWith(expect.objectContaining({ selection: '6 decisions for you' }))
-  await act(async () => mark()!.click())
+  await act(async () => root.render(<><Page go={go} /><Select /></>))
+  await act(async () => host.querySelector<HTMLButtonElement>('.act')!.click())
+  expect(go).toHaveBeenCalledTimes(1)
+  expect(pill()).toBeNull()
+  await select(host.querySelector('.field')!)
+  expect(pill()).toBeNull()
+})
+
+it('the pill goes when the selection does', async () => {
+  await act(async () => root.render(<><Page go={() => {}} /><Select /></>))
+  await select(host.querySelector('.txt')!)
+  expect(pill()).not.toBeNull()
+  window.getSelection()!.removeAllRanges()
+  await act(async () => { document.dispatchEvent(new Event('selectionchange')); vi.advanceTimersByTime(300) })
+  expect(pill()).toBeNull()
 })

@@ -97,6 +97,27 @@ export interface VisualProposal {
   options: { id: string; label: string; description: string; instruction: string; recommended?: boolean }[]
 }
 
+/**
+ * One decision of a « decisions » post: a short plain question only the person can answer, with what to tap. One
+ * choice is tapped; with `many`, any number are ticked and sent together. A tap records the answer and sends it back to
+ * where the question waits (its session, or weevboss): POST /api/foryou/<item>/decide { decision, choices }.
+ */
+export interface ForYouDecision {
+  id: string
+  /** Where it waits, in a few words: the conversation's or the automation's name. */
+  from?: string
+  question: string
+  /** One line under the question when it helps: a price, what a yes sets off. */
+  note?: string
+  choices: { id: string; label: string }[]
+  /** A list to tick (any number, none included) instead of one answer to tap. */
+  many?: boolean
+  /** The conversation it waits in, when it can be opened. */
+  open?: ForYouOpen
+  /** Recorded on a tap: what was chosen, and when. Nothing more is asked of it. */
+  answer?: { choices: string[]; at: number }
+}
+
 /** One line of the morning recap: something that really happened while the user slept, read from the state, never written by a model. */
 export interface ForYouRecapLine {
   /** done: an automation run that succeeded, or a session whose last words state a finished outcome · failed: a run that
@@ -153,6 +174,8 @@ export interface ForYouItem {
   }
   localization?: { target: 'fr' | 'en'; source: 'fr' | 'en' | 'unknown'; revision: string; status: 'pending' | 'failed' | 'translated'; original: Record<string,string> }
   visualProposal?: VisualProposal
+  /** The few choices that are the person's alone, in one post: each is answered with a tap, right here. */
+  decisions?: ForYouDecision[]
 
   /** Same event identity as the session page, when applicable. */
   eventId?: string

@@ -187,6 +187,8 @@ export const api = {
   foryouSeen: (ids: string[]) => call<{ ok: true }>('POST', '/api/foryou/seen', { ids }),
   foryouDismiss: (id: string, eventId?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/dismiss`, { eventId }),
   foryouAct: (id: string, action: string, card?: string, eventId?: string) => send<{ ok: true; open?: ForYouOpen; intentId?: string; existing?: boolean }>(`/api/foryou/${enc(id)}/act${inLang()}`, { action, card, eventId }),
+  /** The person's answer to one decision of a « decisions » post: the ids of what was tapped or ticked. */
+  foryouDecide: (id: string, decision: string, choices: string[]) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/decide${inLang()}`, { decision, choices }),
   foryouReply: (id: string, text: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
   foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),
   deleteAutomation: (id: string) => call<{ ok: true; running: boolean }>('DELETE', `/api/auto/${enc(id)}`),

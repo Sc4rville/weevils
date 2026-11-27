@@ -3,6 +3,7 @@ import { LivingLink, livingLink } from './living-link'
 import { linkText, type PostLink } from '../../shared/post-link.ts'
 import { ThemeTryLinks, isTryLink, postThemes, postThemesUnknown, staleApp } from './theme-try'
 import { InlineMediaFormats } from './foryou-formats'
+import { Decisions } from './foryou-decisions'
 import { OutboxStatus } from './outbox-status'
 import { SaveMediaButton, useLongPressSave } from './save-media'
 import { resolveOpen, useForYouOpen } from './foryou-open'
@@ -306,6 +307,7 @@ function Post({ item, format }: CardProps & { format: ForYouFormat }) {
       </button>
       {item.link && !isTryLink(item) && <PostLinkLine link={item.link} />}
       <ThemeTryLinks themes={themes} />
+      <Decisions item={item} />
       {format === 'visual' && <PostMedia item={item} />}
       {!!limits.length && <p className="in fy-post-limit">{t.notChecked(limits.join(' · '))}</p>}
       <div className="in fy-post-foot" />

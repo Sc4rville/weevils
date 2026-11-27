@@ -262,6 +262,28 @@ with optional buttons whose brief comes back to weevboss when tapped) and `weevi
 prompt tells it when: after dispatching several things, when something is worth the user's eyes, and to ask the
 sessions it briefs to `weevils show` their visual results.
 
+### 3.4b Decisions (2026-11-27)
+
+The few choices that are the person's alone (spend, publish outside, delete, a matter of taste) arrive as one post,
+not as scattered cards: `weevils decisions <file.json>` → `POST /api/foryou/decisions` (this machine only, never an
+automation's run) → `publishDecisions()`. The post is a `boss` item of tone `question` carrying `decisions`
+(`shared/foryou.ts` `ForYouDecision`): where each waits, a short plain question, and its answers (two to four to
+tap, or a list to tick with `many`). Its title counts what is left (« 3 decisions for you », then « All answered »).
+One such post is open at a time: publishing again adds to it, an unanswered decision takes the new wording, an
+answered one keeps its answer; `drop` removes unanswered ones and `replaces` clears the cards the decisions stand
+for. While a choice is open the post sits on top with the alerts (`arrange()`, `openDecisions`), is never cut by the
+feed's size nor aged out by the app (`formatOf` → `action`); once all are answered it is a `note` in its place in
+time.
+
+A tap is `POST /api/foryou/<item>/decide { decision, choices }` → `decide()`. Only the person's own tap answers
+(`origin === 'user'`: never loopback, a script or an agent). The answer goes into the session that waits as the
+person's own message (`to: "session"`; a run of an automation is theirs from then on), or to weevboss with the
+pick's hidden `brief`, the session and the ledger request it answers; that session's row then stops asking
+(`core.ts question`). Not delivered: not recorded, the answers stay to tap. Where an answer goes and what a pick
+asks for never leave the server (`view()` copies the readable fields only). In the app: `src/ui/foryou-decisions.tsx`
+(answers as living links, the colours of an action in weevboss's thread, never a row of buttons; square boxes for a list), shared by the
+classic app and next. Tests: `server/foryou-decisions.test.ts`, `src/ui/foryou-decisions.test.tsx`.
+
 ### 3.5 The curator (`server/foryou-curator.ts`) — generated content, on a budget
 
 **Current user override:** the timed editorial reservoir is disabled by default after complaints about repetitive

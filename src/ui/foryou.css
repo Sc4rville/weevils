@@ -1713,6 +1713,131 @@ button.fy-hit {
   overflow-wrap: anywhere;
 }
 
+/* ---------- A « decisions » post: the person's own choices, one under the other (foryou-decisions.tsx) ----------
+   Each one: where it waits (small), the question (bold), then what to tap as living links (the colours of an
+   action in weevboss's thread), never a row of buttons. A list is ticked in square boxes, then sent. Answered, it says so and steps back. */
+.fy-decs {
+  display: flex;
+  flex-direction: column;
+  padding-top: 10px;
+}
+.fy-dec {
+  padding-block: 12px 2px;
+  border-top: 1px solid color-mix(in oklab, currentColor 22%, transparent);
+}
+.fy-dec-from {
+  display: block;
+  margin: 0 0 3px;
+  font-size: 0.8125rem;
+  font-weight: 750;
+  line-height: 1.3;
+  opacity: 0.74;
+  text-align: left;
+}
+.fy-dec-q {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 750;
+  line-height: 1.3;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+.fy-dec-note {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+.fy-dec-picks {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 22px;
+  margin: 2px 0 0;
+}
+.fy-dec-pick {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 1rem;
+  text-align: left;
+}
+.fy-dec-pick.quiet {
+  opacity: 0.74;
+}
+.fy-dec-pick:disabled {
+  opacity: 0.42;
+  animation: none;
+}
+.fy-dec-ticks {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fy-dec-tick {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding-block: 9px;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: pointer;
+}
+/* The real box stays for the keyboard and the screen reader; the drawn one is what is seen. */
+.fy-dec-tick input {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  opacity: 0;
+}
+.fy-dec-box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid currentColor;
+}
+.fy-dec-tick input:checked + .fy-dec-box {
+  background: currentColor;
+}
+.fy-dec-tick input:checked + .fy-dec-box::after {
+  content: '';
+  width: 11px;
+  height: 6px;
+  border-left: 3px solid var(--c);
+  border-bottom: 3px solid var(--c);
+  transform: translateY(-2px) rotate(-45deg);
+}
+.fy-dec-tick input:focus-visible + .fy-dec-box {
+  outline: var(--focus-halo);
+  outline-offset: 2px;
+}
+.fy-dec.done .fy-dec-q {
+  font-weight: 600;
+  opacity: 0.72;
+}
+.fy-dec-said {
+  margin: 4px 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.fy-dec-said li + li {
+  margin-top: 4px;
+}
+.fy-dec-err {
+  margin: 0 0 8px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
 .fy-post-foot {
   padding-bottom: 14px;
 }

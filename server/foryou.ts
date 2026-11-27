@@ -26,7 +26,7 @@ import fs from 'node:fs'
 import type http from 'node:http'
 import path from 'node:path'
 import type { InterruptReason, Message, RequestOrigin, Session, SessionDetail, Snapshot, WinKind } from '../shared/api.ts'
-import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
+import type { ForYouAction, ForYouCard, ForYouDecision, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
 import { evidenceInput, evidenceLabel, mergeEvidence, type EvidenceInput } from '../shared/evidence.ts'
 import { postLink, type PostLink } from '../shared/post-link.ts'
@@ -115,6 +115,12 @@ export const BACKFILL_MS = 4 * 24 * 3600_000
 export const BACKFILL_MAX = 40
 export const MAIL_BODY_MAX = 12_000
 export const MAX_ACTIONS = 2
+/** A « decisions » post (publishDecisions): how many questions it holds, the answers one offers, the lines of a list
+ *  to tick, and the longest question. Few and short, or it is a form. */
+export const MAX_DECISIONS = 9
+export const MAX_CHOICES = 4
+export const MAX_TICKS = 9
+export const DECISION_MAX = 220
 /** Files shown by the same session within this delay join one item, up to MAX_MEDIA. */
 export const MEDIA_JOIN_MS = 2 * 60_000
 export const MAX_MEDIA = 6
@@ -164,8 +170,13 @@ export function arrange(items: ForYouItem[], _now: number): ForYouItem[] {
     const slot = Math.max(2, ranked.filter((i) => _now - i.at <= 10 * 60_000).length)
     if (index > slot) ranked.splice(slot, 0, ...ranked.splice(index, 1))
   }
-  return [...items.filter((i) => i.kind === 'alert').sort(newest), ...pace(ranked)]
+  // The person's own choices still to make sit on top with what blocks: they are a state too, and leave once answered.
+  const open = ranked.filter(openDecisions)
+  return [...items.filter((i) => i.kind === 'alert').sort(newest), ...open, ...pace(ranked.filter((i) => !openDecisions(i)))]
 }
+
+/** A « decisions » post with a question still unanswered. */
+export const openDecisions = (i: { decisions?: { answer?: unknown }[] }): boolean => !!i.decisions?.some((d) => !d.answer)
 
 /**
  * A band still waiting for a yes or a no (the live proposals: one-off tasks to do once) is an action, not news: it never
@@ -174,7 +185,7 @@ export function arrange(items: ForYouItem[], _now: number): ForYouItem[] {
  */
 export const LIVE_REACH = 12
 export function keepLive(list: ForYouItem[], max: number): ForYouItem[] {
-  const waiting = (i: ForYouItem) => !!i.live && i.kind === 'proposals'
+  const waiting = (i: ForYouItem) => (!!i.live && i.kind === 'proposals') || openDecisions(i)
   const out = list.filter((i) => !waiting(i))
   list.forEach((i, at) => {
     if (waiting(i)) out.splice(Math.min(at, LIVE_REACH, out.length), 0, i)
@@ -374,6 +385,8 @@ export interface ForYouHost {
   sendMain(text: string, brief?: string): Promise<{ id: string }>
   resume(id: string): Promise<{ id: string }>
   close(id: string): Promise<unknown>
+  /** A finished session's question was answered elsewhere: its row stops asking (core.ts question). */
+  question?(id: string, how: 'settled'): Promise<unknown>
   orchestratorId: string | null
   /** One of weevboss's own conversations (current or older): never a session page of the app. */
   isBossThread?(id: string): boolean
@@ -454,8 +467,28 @@ export interface ForYouDeps {
 
 // ---------------------------------------------------------------- the store
 
+/** A decision as recorded: what the app reads (shared/foryou.ts ForYouDecision), and where its answer goes. */
+interface StoredDecision {
+  id: string
+  from?: string
+  question: string
+  note?: string
+  many?: boolean
+  /** brief: what this pick asks for, said to whoever gets the answer (never shown). */
+  choices: { id: string; label: string; brief?: string }[]
+  /** The session whose question this is: opened from the post, and its row stops asking once it is answered. */
+  session?: string
+  /** The request of weevboss's ledger it answers. */
+  ask?: string
+  /** The answer goes into that session, as the person's own message; otherwise to weevboss, which carries it out. */
+  to?: 'session'
+  answer?: { choices: string[]; at: number }
+}
+
 /** A recorded item. Everything the app may read is copied field by field in view(): the rest never leaves. */
 interface Stored {
+  /** A « decisions » post: the person's own choices, each answered with a tap (publishDecisions, decide). */
+  decisions?: StoredDecision[]
   /** A real win this card announces (shared/api.ts Win): the app celebrates it once. */
   win?: ForYouItem['win']
   recap?: ForYouItem['recap']
@@ -1128,6 +1161,112 @@ export class ForYou {
     return this.view(item, this.w.snapshot())
   }
 
+  /**
+   * « weevils decisions »: the few choices that are the person's alone, in one post, each answered with a tap. One such
+   * post is open at a time: publishing again adds to it (a decision already there takes the new wording while it is
+   * unanswered, and keeps its answer once it has one), `drop` takes unanswered ones out, and `replaces` clears the
+   * scattered cards these decisions stand for. A post whose decisions are all answered is a record: the next
+   * publication starts a new one. Local publication only, never from an automation's run.
+   */
+  publishDecisions(raw: unknown): ForYouItem {
+    const b = (raw ?? {}) as Record<string, any>
+    // Plain words only: no markdown marks, one line.
+    const line = (v: unknown, max: number) => (typeof v === 'string' ? clip(collapse(v.replace(/\*\*|__|`/g, '').replace(/^\s*(?:#{1,6}|[-*•>])\s+/, '')), max) : '')
+    const snap = this.w.snapshot()
+    const list = (Array.isArray(b.decisions) ? b.decisions : []).map((d: any): StoredDecision => {
+      const id = typeof d?.id === 'string' ? d.id.trim() : ''
+      const question = line(d?.question, DECISION_MAX)
+      const many = d?.many === true
+      const choices = (Array.isArray(d?.choices) ? d.choices : []).slice(0, many ? MAX_TICKS : MAX_CHOICES)
+        .map((c: any) => ({ label: line(typeof c === 'string' ? c : c?.label, STEP_MAX), brief: typeof c?.brief === 'string' ? c.brief.trim().slice(0, 4000) : '' }))
+        .filter((c: { label: string }) => c.label)
+        .map((c: { label: string; brief: string }, n: number) => ({ id: `c${n + 1}`, label: c.label, ...(c.brief ? { brief: c.brief } : {}) }))
+      if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(id) || !question || choices.length < (many ? 1 : 2)) throw new Error(tr(M).invalidDecisions)
+      // A session named by the start of its id, as the CLI does everywhere.
+      const named = typeof d.session === 'string' ? d.session.trim() : ''
+      const hits = named.length >= 8 ? snap.sessions.filter((x) => x.id.startsWith(named)) : []
+      if (named && hits.length !== 1) throw new Error(tr(M).decisionSession(named))
+      const session = hits[0]
+      const from = line(d.from, 60) || (session ? clip(cleanTitle(session.title), 60) : '')
+      const note = line(d.note, DECISION_MAX)
+      const ask = typeof d.ask === 'string' && /^[a-z0-9-]{1,40}$/i.test(d.ask) ? d.ask : ''
+      return { id, question, choices, ...(from ? { from } : {}), ...(note ? { note } : {}), ...(many ? { many } : {}), ...(session ? { session: session.id } : {}), ...(ask ? { ask } : {}), ...(session && d.to === 'session' ? { to: 'session' as const } : {}) }
+    })
+    if (new Set(list.map((d: StoredDecision) => d.id)).size !== list.length) throw new Error(tr(M).invalidDecisions)
+    const drop = new Set((Array.isArray(b.drop) ? b.drop : []).filter((x: unknown): x is string => typeof x === 'string'))
+    const now = this.now()
+    let item = this.s.items.filter((i) => !i.gone && openDecisions(i)).sort((x, y) => y.at - x.at)[0]
+    if (!item && !list.length) throw new Error(tr(M).decisionsNone)
+    const intro = line(b.text, 300)
+    if (!item) item = { id: newId('q'), kind: 'boss', tone: 'question', at: now, who: 'weevboss', text: intro, decisions: [], reply: 'boss', open: { page: 'boss' } }
+    else if (intro) item.text = intro
+    let news = false
+    const kept = item.decisions!.filter((d) => d.answer || !drop.has(d.id))
+    for (const d of list) {
+      const at = kept.findIndex((x) => x.id === d.id)
+      if (at < 0) { kept.push(d); news = true }
+      else if (!kept[at].answer) kept[at] = d
+    }
+    if (kept.length > MAX_DECISIONS) throw new Error(tr(M).invalidDecisions)
+    item.decisions = kept
+    // Nothing left in it (all dropped): the post goes with them.
+    if (!kept.length) item.gone = true
+    else if (news) { item.at = now; delete item.seen }
+    // The cards these decisions stand for leave the stream: one place to answer, not two.
+    for (const id of Array.isArray(b.replaces) ? b.replaces : []) {
+      const old = typeof id === 'string' && id !== item.id ? this.get(id) : undefined
+      if (old) old.gone = true
+    }
+    this.put(item)
+    this.changed()
+    return this.view({ ...item, gone: false }, this.w.snapshot(), true)!
+  }
+
+  /** The decisions still open and the ones answered lately, with what was picked: for whoever published them. */
+  decisions(): { item: string; id: string; from?: string; question: string; session?: string; ask?: string; answer?: string[]; at?: number }[] {
+    return this.s.items.filter((i) => !i.gone && i.decisions?.length).sort((a, b) => b.at - a.at).slice(0, 5).flatMap((i) => i.decisions!.map((d) => ({
+      item: i.id, id: d.id, question: d.question, ...(d.from ? { from: d.from } : {}), ...(d.session ? { session: d.session } : {}), ...(d.ask ? { ask: d.ask } : {}),
+      ...(d.answer ? { answer: d.choices.filter((c) => d.answer!.choices.includes(c.id)).map((c) => c.label), at: d.answer.at } : {}),
+    })))
+  }
+
+  private deciding = new Set<string>()
+
+  /**
+   * The person's tap on a decision: recorded, and sent back to where the question waits. Into its session as their own
+   * message (a run of an automation is theirs from then on, core.ts sendOne), or to weevboss with what the pick asks
+   * for. Only the person's own tap: a choice of theirs is never made by a script or an agent. Not delivered: not
+   * recorded, the choices stay to tap.
+   */
+  async decide(id: string, decision: unknown, picked: unknown, l?: unknown, origin?: RequestOrigin): Promise<{ ok: true }> {
+    const t = withLang(l, () => tr(M))
+    const i = this.get(id)
+    const d = i && !i.gone ? i.decisions?.find((x) => x.id === decision) : undefined
+    if (!i || !d) throw new Error(t.notFound)
+    if (origin !== 'user') throw new Error(t.decisionYours)
+    const key = `${id}:${d.id}`
+    if (d.answer || this.deciding.has(key)) throw new Error(t.decisionAnswered)
+    const ids = [...new Set((Array.isArray(picked) ? picked : []).filter((x): x is string => typeof x === 'string'))]
+    const chosen = d.choices.filter((c) => ids.includes(c.id))
+    if (chosen.length !== ids.length || (!d.many && chosen.length !== 1)) throw new Error(t.noAction)
+    this.deciding.add(key)
+    const session = d.to === 'session' && d.session ? this.w.snapshot().sessions.find((s) => s.id === d.session && s.controllable) : undefined
+    try {
+      // Several picks: one per line (a label may hold a comma).
+      const said = chosen.length > 1 ? chosen.map((c) => `\n- ${c.label}`).join('') : (chosen[0]?.label ?? t.decisionNone)
+      const asks = chosen.map((c) => c.brief).filter(Boolean).join('\n')
+      if (session) await this.w.send(session.id, t.decisionToSession(d.question, said, asks), undefined, undefined, origin)
+      else await this.w.sendMain(t.decisionSaid(d.question, said), t.decisionBrief({ from: d.from, session: d.session, ask: d.ask, asks }))
+    } finally {
+      this.deciding.delete(key)
+    }
+    d.answer = { choices: chosen.map((c) => c.id), at: this.now() }
+    // Answered through weevboss: the session that asked has its answer, its row stops asking.
+    if (!session && d.session) await this.w.question?.(d.session, 'settled').catch(() => undefined)
+    this.changed()
+    return { ok: true }
+  }
+
   /** Explicit editorial publication only. Repeating a key never duplicates or revives a card. */
   publishComposition(raw: unknown): ForYouItem | null {
     const b = raw as Record<string, any>
@@ -1421,6 +1560,17 @@ export class ForYou {
     const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text }
     if (i.visualProposal) out.visualProposal = i.visualProposal
     if (i.composition) out.composition = i.composition
+    if (i.decisions?.length) {
+      // Where an answer goes and what each pick asks for stay here.
+      out.decisions = i.decisions.map(({ id, from, question, note, many, choices, session, answer }): ForYouDecision => ({
+        id, question, choices: choices.map((c) => ({ id: c.id, label: c.label })),
+        ...(from ? { from } : {}), ...(note ? { note } : {}), ...(many ? { many } : {}), ...(answer ? { answer } : {}),
+        ...(session && snap.sessions.some((x) => x.id === session && !x.archived) ? { open: { page: 'session' as const, id: session } } : {}),
+      }))
+      const left = i.decisions.filter((d) => !d.answer).length
+      out.title = left ? tr(M).decisionsTitle(left) : tr(M).decisionsDone
+      out.text = left ? (text || tr(M).decisionsText) : tr(M).decisionsDoneText
+    }
     if (i.recap) out.recap = i.recap
     if (i.win) out.win = i.win
     if (i.projectId) out.projectId = i.projectId
@@ -1735,6 +1885,8 @@ export class ForYou {
     // most, the rest stays stored as history, untouched.
     const kept = this.deps.extras ? this.s.items : this.s.items.filter((i) => !NOT_POSTS.has(i.kind))
     const recent = kept.length > VIEW_REACH ? [...kept].sort((a, b) => b.at - a.at).slice(0, VIEW_REACH) : kept
+    // Choices still to make are never out of reach, however much came in since.
+    for (const i of kept) if (!i.gone && openDecisions(i) && !recent.includes(i)) recent.push(i)
     for (const i of recent) {
       // Stored before the stream became posts only: kept as history, never sent (they would take a post's place).
       if (!this.deps.extras && NOT_POSTS.has(i.kind)) continue
@@ -2155,6 +2307,18 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
       if (!fy.shelf) return json(res, 404, { error: tr(M).noMedia })
       fy.shelf.serve(req, res, mid, u.searchParams.get('download') === '1')
     }]),
+    // weevils decisions: this machine only, and never an automation's run (a jailed caller is refused by its route list).
+    ['POST', /^\/api\/foryou\/decisions$/, async (req, res) => {
+      const b = await readBody(req)
+      if (!isLocal(req) || jailedPeer(req.socket)) return json(res, 403, { error: tr(M).localOnly })
+      await run(res, true, () => ({ item: fy.publishDecisions(b) }))
+    }],
+    ['GET', /^\/api\/foryou\/decisions$/, (req, res) => (isLocal(req) ? json(res, 200, { decisions: fy.decisions() }) : json(res, 403, { error: tr(M).localOnly }))],
+    // The person's tap on one decision of the post.
+    ['POST', /^\/api\/foryou\/([^/]+)\/decide$/, async (req, res, url, [raw]) => {
+      const b = await readBody(req)
+      await run(res, exists(id(raw)), () => fy.decide(id(raw), b?.decision, b?.choices, langOf(url), originOf(req, b)))
+    }],
     ['POST', /^\/api\/foryou\/([^/]+)\/dismiss$/, async (req, res, _u, [raw]) => {
       const b = await readBody(req)
       const ok = fy.dismiss(id(raw), typeof b?.eventId === 'string' ? b.eventId : undefined)

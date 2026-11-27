@@ -4,6 +4,17 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-27
 
+### Decisions: the person's own choices, in one post
+- The few choices that are the person's alone (spend, publish outside, delete, a matter of taste) arrive as ONE For
+  you post, « 3 decisions for you »: each a short plain question with its answers to tap as links, or a list to tick
+  and send. A tap records the answer and sends it back to where it waits: into the session as the person's own
+  message, or to weevboss with what that pick asks for; the session that asked stops asking. The post stays on top
+  while a choice is open, counts down as they are answered, and is a short record once all are.
+- weevboss (or any session of this machine) publishes them with `weevils decisions <file.json>`; publishing again
+  adds to the open post, `replaces` clears the scattered cards the decisions stand for, and `weevils decisions`
+  alone lists what is open and what was answered. Only the person's own tap answers: never a script, an agent or an
+  automation's run. `POST /api/foryou/decisions`, `POST /api/foryou/:id/decide`; shared/foryou.ts `ForYouDecision`.
+
 ### A question that was answered stops asking
 - A finished session whose last message ends on « Needs you: … » wears the question mark in the side bar. When the
   answer came from elsewhere (a restart done since, a card tapped, another session did it), weevboss or any agent

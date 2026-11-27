@@ -36,6 +36,8 @@ export function routine(item: ForYouItem): boolean {
 
 /** The layout an item takes in the stream, or null when it is hidden. */
 export function formatOf(item: ForYouItem): ForYouFormat | null {
+  // The person's own choices: something to do while one is open (never stale), a short record once all are answered.
+  if (item.decisions?.length) return item.decisions.some((d) => !d.answer) ? 'action' : 'note'
   if (item.work) {
     // Work the user already launched: only its outcome is news; the status chatter in between is not.
     if (item.work.status !== 'completed') return null

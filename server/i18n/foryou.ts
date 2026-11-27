@@ -63,6 +63,21 @@ export default defineMessages({
     actBrief: (post: string, brief: string) => `l'utilisateur a touché ce bouton sous ton mot dans son flux « pour toi » (« ${post} »). À faire : ${brief}`,
     /** Hidden note joined to a reply typed under a post. */
     replyBrief: (post: string) => `réponds au message ci-dessus : l'utilisateur l'a écrit dans son flux « pour toi », sous le post « ${post} »`,
+    invalidDecisions: 'une décision a un id (lettres minuscules, chiffres, tirets), une question courte et au moins deux réponses (une ligne suffit pour une liste à cocher)',
+    decisionSession: (id: string) => `aucune session (ou plusieurs) ne commence par ${id}`,
+    decisionsNone: 'aucune décision à poster',
+    decisionsTitle: (n: number) => (n === 1 ? '1 décision pour toi' : `${n} décisions pour toi`),
+    decisionsText: 'Touche une réponse : elle repart tout de suite là où on l’attend.',
+    decisionsDone: 'Tout est répondu',
+    decisionsDoneText: 'Chaque réponse est repartie là où on l’attendait.',
+    decisionYours: 'seule la personne peut répondre, depuis l’app',
+    decisionAnswered: 'déjà répondu',
+    decisionNone: 'Aucun',
+    decisionToSession: (question: string, answer: string, asks: string) => `Tu demandais : « ${question} »\nMa réponse : ${answer}${asks ? `\n\n${asks}` : ''}`,
+    decisionSaid: (question: string, answer: string) => `${question}\n${answer}`,
+    decisionBrief: (o: { from?: string; session?: string; ask?: string; asks: string }) =>
+      `l'utilisateur vient de répondre à cette question dans le post « décisions » de son flux « pour toi »${o.from ? ` (elle attendait dans : ${o.from}${o.session ? `, session ${o.session}` : ''})` : o.session ? ` (session ${o.session})` : ''}${o.ask ? `, demande ${o.ask} du registre` : ''}. ` +
+      `${o.asks ? `Ce que cette réponse demande : ${o.asks}` : 'Applique sa réponse, ou passe-la à la session qui attend.'} C'est sa décision : ne la redemande pas, et dis en une ligne ce qui part.`,
     /** The prompt that titles a session result card (a light model reads the whole closing message). */
     resultTitle: (project: string, asked: string, text: string) =>
       `Voici le compte rendu de fin de tour d'un agent de code qui travaille sur le projet « ${project} »${asked ? ` ; l'utilisateur lui avait demandé : ${asked}` : ''}.\n\nCompte rendu :\n${text}\n\n` +
@@ -118,6 +133,21 @@ export default defineMessages({
     go: (label: string) => `Go ahead: ${label}`,
     actBrief: (post: string, brief: string) => `the user tapped this button under your post in their "for you" stream ("${post}"). To do: ${brief}`,
     replyBrief: (post: string) => `answer the message above: the user wrote it in their "for you" stream, under the post "${post}"`,
+    invalidDecisions: 'a decision has an id (lowercase letters, digits, dashes), a short question and at least two answers (one line is enough for a list to tick)',
+    decisionSession: (id: string) => `no session (or several) starts with ${id}`,
+    decisionsNone: 'no decision to post',
+    decisionsTitle: (n: number) => (n === 1 ? '1 decision for you' : `${n} decisions for you`),
+    decisionsText: 'Tap an answer and it goes straight back to where it waits.',
+    decisionsDone: 'All answered',
+    decisionsDoneText: 'Each answer went back to where it was waited for.',
+    decisionYours: 'only the person can answer this, from the app',
+    decisionAnswered: 'already answered',
+    decisionNone: 'None of these',
+    decisionToSession: (question: string, answer: string, asks: string) => `You asked: "${question}"\nMy answer: ${answer}${asks ? `\n\n${asks}` : ''}`,
+    decisionSaid: (question: string, answer: string) => `${question}\n${answer}`,
+    decisionBrief: (o: { from?: string; session?: string; ask?: string; asks: string }) =>
+      `the user just answered this question in the "decisions" post of their "for you" stream${o.from ? ` (it was waiting in: ${o.from}${o.session ? `, session ${o.session}` : ''})` : o.session ? ` (session ${o.session})` : ''}${o.ask ? `, request ${o.ask} of the ledger` : ''}. ` +
+      `${o.asks ? `What this answer asks for: ${o.asks}` : 'Carry their answer out, or pass it on to the session that waits.'} It is their decision: do not ask it again, and say in one line what is set off.`,
     resultTitle: (project: string, asked: string, text: string) =>
       `Here is the end-of-turn report of a coding agent working on the project "${project}"${asked ? `; the user had asked it: ${asked}` : ''}.\n\nReport:\n${text}\n\n` +
       `Write the title of this result's card in the user's feed: ONE complete sentence that stands on its own and says what was done or found (or what is blocking), understandable without reading the report. ` +

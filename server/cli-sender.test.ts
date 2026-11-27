@@ -84,3 +84,15 @@ it('« --help » after post or show prints the usage and posts nothing', async (
  await expect(cli(['post','A real word','-h'],{})).rejects.toBeTruthy()
  expect(seen.length).toBe(before)
 })
+
+it('publishes the person\'s decisions from a file, as written, and refuses a missing file or « --help » without posting', async () => {
+ const file=path.join(process.env.HOME!,'decisions.json')
+ const body={decisions:[{id:'ad-factory',question:'Resume the ad factory?',choices:[{label:'Yes, resume',brief:'resume it'},{label:'Keep it stopped'}]}]}
+ fs.writeFileSync(file,JSON.stringify(body))
+ await cli(['decisions',file],{})
+ expect(seen.at(-1)?.body).toEqual(body)
+ const before=seen.length
+ await expect(cli(['decisions',path.join(process.env.HOME!,'nowhere.json')],{})).rejects.toBeTruthy()
+ await expect(cli(['decisions','--help'],{})).rejects.toBeTruthy()
+ expect(seen.length).toBe(before)
+})

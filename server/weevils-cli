@@ -28,6 +28,9 @@
 #     weevils page list <items.json> "titre" [--kind …] · page library "titre" <dossier>… · pages · page rm <slug>
 #     post et show, quand ils rapportent un résultat : --demonstrated "où ça a tourné" · --verified "environnement vérifié"
 #     · --limit "ce qui n'a pas été vérifié" (répétable). Sans rien : « codé » au plus, quoi que dise le texte.
+#   weevils decisions <fichier.json|->   les choix qui reviennent à la personne, dans UN post « pour toi » : chaque réponse
+#                                        se touche et repart là où on l'attend (server/foryou.ts publishDecisions) ; sans
+#                                        argument : ce qui est ouvert et ce qui a été répondu
 #   weevils asks [open|all|stale|done]   le registre des demandes de weevboss (server/boss-ledger.ts)
 #   weevils ask done|drop|open <id> ["note"] · ask add "demande" [--goal <id>] · ask link <id> <session> ["retour attendu"] · ask goal <id> <objectif>
 #   weevils goals [all] · goal add <id> "titre" ["pourquoi"] · goal note <id> "avancée" · goal done|pause|open <id>
@@ -91,6 +94,7 @@ weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   we
   usage+=$'\n''  post et show : --link <https://…> [--link-label "libellé"] quand le résultat vit à une adresse (site, aperçu, page), jamais localhost   weevils link <id du post> <https://…>' # i18n-ignore
   usage+=$'\n''weevils diagram <schéma.mmd> [sortie.diagram.png]   weevils compare <avant> <après> <sortie.compare.png>' # i18n-ignore
   usage+=$'\n''weevils question <id> settled|reset|"phrase claire"   ce qu’une session finie demande encore : réglé, ou redit (sans réveiller l’agent)' # i18n-ignore
+  usage+=$'\n''weevils decisions <fichier.json|->   les choix de la personne dans un seul post « pour toi », une réponse = un tap   weevils decisions   ce qui est ouvert, ce qui est répondu' # i18n-ignore
   usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
   usage+=$'\n''weevils react <emoji> [<message>|last] [--session <id>]   une réaction sur un message de la personne' # i18n-ignore
   usage+=$'\n''weevils ask add "demande" [--goal <id>]   weevils ask link <id> <session> ["retour attendu"]   weevils ask goal <id> <objectif>' # i18n-ignore
@@ -112,6 +116,9 @@ weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   we
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
   export WVM_ERROR='erreur' WVM_NEW='nouvelle session ' WVM_BACKGROUND='en arrière-plan' # i18n-ignore
   m_sent='accepté pour livraison à %s (peut être en file)' m_not_sent='NON reçu par %s : %s' m_resumed='%s relancée' # i18n-ignore
+  m_decisions_usage='weevils decisions <fichier.json|->   {"text":"une ligne d’intro (facultatif)","decisions":[{"id":"ad-factory","from":"Ad factory","question":"Une question courte ?","note":"une ligne de contexte","session":"<id>","to":"session","ask":"r12","many":false,"choices":[{"label":"Oui","brief":"ce que ce choix demande"},{"label":"Non"}]}],"replaces":["<id de post>"],"drop":["<id de décision>"]}' # i18n-ignore
+  m_decisions_posted='posté dans « pour toi » : %s. Dis-le en une ligne à la personne, avec ce lien : [%s](/#foryou)' # i18n-ignore
+  export WVM_NO_DECISIONS='(aucune décision)' WVM_DECISION_NONE='aucun' WVM_DECISION_OPEN='en attente' # i18n-ignore
   m_question_usage='weevils question <id> settled|reset|"phrase claire"' m_question_settled='%s ne demande plus rien' m_question_now='%s demande : %s' m_question_no='%s : %s' m_help_not_posted='rien n’a été posté : --help n’est pas un texte' # i18n-ignore
   export WVM_CUT='coupée en plein travail' # i18n-ignore
   export WVM_MORE='(résumé court : weevils read {} 20 pour plus ; une lecture lourde passe par un sous-agent léger)' WVM_NO_LINE='ligne introuvable dans le journal : ' # i18n-ignore
@@ -144,6 +151,7 @@ weevils post "text" [--title "title"] [--action "label::what to do"]…      wee
 weevils diagram <flow.mmd> [out.diagram.png]   weevils compare <before> <after> <out.compare.png>
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
 weevils question <id> settled|reset|"plain sentence"   what a finished session still asks: settled, or said again (the agent is not woken)
+weevils decisions <file.json|->   the person’s own choices in one For you post, each answered with a tap   weevils decisions   what is open, what was answered
 weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
 weevils react <emoji> [<message>|last] [--session <id>]   a reaction on one of the person’s messages
 weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expected report"]   weevils ask goal <id> <goal>
@@ -165,6 +173,9 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
   export WVM_ERROR='error' WVM_NEW='new session ' WVM_BACKGROUND='in background'
   m_sent='accepted for delivery to %s (may be queued)' m_not_sent='NOT received by %s: %s' m_resumed='%s restarted'
+  m_decisions_usage='weevils decisions <file.json|->   {"text":"one line of intro (optional)","decisions":[{"id":"ad-factory","from":"Ad factory","question":"A short question?","note":"one line of context","session":"<id>","to":"session","ask":"r12","many":false,"choices":[{"label":"Yes","brief":"what this pick asks for"},{"label":"No"}]}],"replaces":["<post id>"],"drop":["<decision id>"]}'
+  m_decisions_posted='posted in For you: %s. Tell the person in one line, with this link: [%s](/#foryou)'
+  export WVM_NO_DECISIONS='(no decision)' WVM_DECISION_NONE='none' WVM_DECISION_OPEN='waiting'
   m_question_usage='weevils question <id> settled|reset|"plain sentence"' m_question_settled='%s no longer asks anything' m_question_now='%s asks: %s' m_question_no='%s: %s' m_help_not_posted='nothing was posted: --help is not a text'
   export WVM_CUT='cut off mid-work'
   export WVM_MORE='(short summary: weevils read {} 20 for more; a heavy read goes through a light subagent)' WVM_NO_LINE='no such line in the log: '
@@ -503,6 +514,35 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     code=${out##*$'\n'}
     if [ "$code" = 200 ]; then printf "$m_sent\n" "${id:0:8}"
     else printf "$m_not_sent\n" "${id:0:8}" "$(printf '%s' "${out%$'\n'*}" | "$py" -c 'import json,sys,os; print(json.load(sys.stdin).get("error",os.environ["WVM_ERROR"]))' 2>/dev/null || echo "$WVM_ERROR $code")" >&2; exit 1; fi ;;
+  decisions)
+    # The person's own choices, in one For you post, each answered with a tap that goes back to where it waits
+    # (server/foryou.ts publishDecisions). With a JSON file (or - for stdin): publish, added to the open post. Alone:
+    # what is open and what was answered.
+    file=${2:-}
+    case "$file" in
+      '')
+        curl -sf -m 10 "$base/api/foryou/decisions" | json "
+rows=d.get('decisions') or []
+if not rows: print(E['WVM_NO_DECISIONS'])
+for r in rows:
+    said=(', '.join(r['answer']) or E['WVM_DECISION_NONE']) if 'answer' in r else E['WVM_DECISION_OPEN']
+    print(f\"{r['id']}  {r['question']}  [{said}]\")
+" ;;
+      --help|-h) echo "$m_decisions_usage"; exit 1 ;;
+      *)
+        [ "$file" = - ] || [ -r "$file" ] || { echo "$m_decisions_usage" >&2; exit 1; }
+        out=$(if [ "$file" = - ]; then cat; else cat "$file"; fi | curl -s -m 30 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/foryou/decisions") || true
+        code=${out##*$'\n'} body=${out%$'\n'*}
+        if [ "$code" = 200 ]; then
+          title=$(printf '%s' "$body" | json "print((d.get('item') or {}).get('title') or '')" 2>/dev/null || true)
+          # shellcheck disable=SC2059
+          printf "$m_decisions_posted\n" "$title" "$title"
+        else
+          printf '%s' "$body" | json "print(d.get('error') or '')" 2>/dev/null | grep . >&2 || echo "$WVM_ERROR $code" >&2
+          echo "$m_decisions_usage" >&2
+          exit 1
+        fi ;;
+    esac ;;
   question)
     # What a finished session's last message still asks (the « ? » on its row), told from outside: settled elsewhere,
     # said again in one plain sentence, or its own words again. Nothing is sent to the agent (server/core.ts question).

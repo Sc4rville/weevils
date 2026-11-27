@@ -52,18 +52,20 @@ export function contextOf(node: Node): { where: string; around: string } {
   return { where: where.slice(0, 120), around: around.slice(0, 3000) }
 }
 
-/** What a tap at (x, y) takes: a label's whole text (a button, a link, a chip), otherwise the word under the finger. */
+/** What a tap at (x, y) takes: in a label, the line under the finger or the whole label (a button, a chip, a post's title), otherwise the word under the finger. */
 export function pickAt(x: number, y: number): Omit<Picked, 'where' | 'around' | 'native'> | null {
   const target = document.elementFromPoint(x, y)
   if (!target || target.closest(OWN) || target.closest(FIELD)) return null
   const label = target.closest(LABEL)
-  if (label) {
-    const text = textOf(label)
-    if (text && text.length <= 80) {
-      const range = document.createRange()
-      range.selectNodeContents(label)
-      return { text, range }
-    }
+  // Inside a label (a button, a link, a For you post's head): the smallest part under the finger that reads as one
+  // line (a title, a source, a chip), up to the whole label.
+  for (let e: Element | null = label ? target : null; e; e = e === label ? null : e.parentElement) {
+    const text = textOf(e)
+    if (!text) continue
+    if (text.length > 120) break
+    const range = document.createRange()
+    range.selectNodeContents(e)
+    return { text, range }
   }
   const c = caretAt(x, y)
   if (!c || c.node.nodeType !== Node.TEXT_NODE) return null

@@ -88,3 +88,16 @@ it('computer: no mark; a mouse selection anywhere opens the bar, but not inside 
     window.getSelection()!.removeAllRanges()
   }
 })
+
+it('in a long label (a For you post head), a tap takes the line under the finger: its title, not the whole post', async () => {
+  const go = vi.fn()
+  await act(async () => root.render(<><section><h2>For you</h2><button className="head" onClick={go}><span className="src">weevboss · 55m</span><span className="title">6 decisions for you</span><span className="body">These are yours alone. Tap an answer and it goes straight back to where it waits, and the session stops asking you.</span></button></section><Select top="60%" hideMark={false} /></>))
+  await act(async () => mark()!.click())
+  const title = host.querySelector('.title')!
+  document.elementFromPoint = () => title
+  await act(async () => { fire(title, 'pointerdown'); fire(title, 'pointerup'); (title as HTMLElement).click() })
+  expect(go).not.toHaveBeenCalled()
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>('.pick-bar button')].find((b) => b.textContent === 'explain')!.click())
+  expect(explain).toHaveBeenLastCalledWith(expect.objectContaining({ selection: '6 decisions for you' }))
+  await act(async () => mark()!.click())
+})
